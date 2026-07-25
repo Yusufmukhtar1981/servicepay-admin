@@ -1,0 +1,70 @@
+name: Deploy ServicePay Customer Web
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "lib/**"
+      - "!lib/admin/**"
+      - "web/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/deploy-customer-web.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: servicepay-customer-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Flutter Web
+        run: flutter config --enable-web
+
+      - name: Install Packages
+        run: flutter pub get
+
+      - name: Build Customer Website
+        run: flutter build web --release --target lib/main.dart --base-href /
+
+      - name: Add Custom Domain
+        run: echo "servicepay.ng" > build/web/CNAME
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Customer Website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy Customer Website
+        id: deployment
+        uses: actions/deploy-pages@v4

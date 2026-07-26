@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
+import 'users_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -17,8 +18,7 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState
     extends State<AdminDashboardScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
   String adminName = 'Admin';
   String adminRole = 'HEAD_OFFICE';
@@ -72,10 +72,7 @@ class _AdminDashboardScreenState
       return value.toInt();
     }
 
-    return int.tryParse(
-          value?.toString() ?? '',
-        ) ??
-        0;
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   double toDouble(dynamic value) {
@@ -87,10 +84,7 @@ class _AdminDashboardScreenState
       return value.toDouble();
     }
 
-    return double.tryParse(
-          value?.toString() ?? '',
-        ) ??
-        0;
+    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String cleanError(Object error) {
@@ -110,8 +104,7 @@ class _AdminDashboardScreenState
     }
 
     try {
-      final prefs =
-          await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
 
       final savedName =
           prefs.getString('user_name') ??
@@ -125,109 +118,69 @@ class _AdminDashboardScreenState
 
       final token =
           prefs.getString('auth_token') ??
-          prefs.getString('token');
+          prefs.getString('token') ??
+          prefs.getString('admin_token');
 
-      if (token == null ||
-          token.trim().isEmpty) {
+      if (token == null || token.trim().isEmpty) {
         throw Exception(
-          'Admin login token was not found. '
-          'Please log in again.',
+          'Admin login token was not found. Please log in again.',
         );
       }
 
-      final uri = Uri.parse(
-        '$baseUrl/admin/dashboard',
-      );
+      final uri = Uri.parse('$baseUrl/admin/dashboard');
 
       final response = await http
           .get(
             uri,
             headers: {
               'Accept': 'application/json',
-              'Authorization':
-                  'Bearer ${token.trim()}',
+              'Authorization': 'Bearer ${token.trim()}',
             },
           )
-          .timeout(
-            const Duration(seconds: 30),
-          );
+          .timeout(const Duration(seconds: 30));
 
-      final rawBody =
-          response.body.trim();
+      final rawBody = response.body.trim();
 
       final contentType =
-          response.headers['content-type']
-                  ?.toLowerCase() ??
-              '';
-
-      debugPrint(
-        'Admin dashboard URL: $uri',
-      );
-
-      debugPrint(
-        'Admin dashboard status: '
-        '${response.statusCode}',
-      );
-
-      debugPrint(
-        'Admin dashboard content type: '
-        '$contentType',
-      );
-
-      debugPrint(
-        'Admin dashboard response: '
-        '${rawBody.length > 400 ? rawBody.substring(0, 400) : rawBody}',
-      );
+          response.headers['content-type']?.toLowerCase() ?? '';
 
       if (rawBody.isEmpty) {
-        throw Exception(
-          'The server returned an empty response.',
-        );
+        throw Exception('The server returned an empty response.');
       }
 
-      final lowerBody =
-          rawBody.toLowerCase();
+      final lowerBody = rawBody.toLowerCase();
 
-      if (lowerBody.startsWith(
-            '<!doctype html',
-          ) ||
+      if (lowerBody.startsWith('<!doctype html') ||
           lowerBody.startsWith('<html') ||
           contentType.contains('text/html')) {
         throw Exception(
-          'Admin dashboard API was not found '
-          'on the backend. Please deploy '
-          'GET /api/admin/dashboard.',
+          'The admin dashboard API returned an invalid web page.',
         );
       }
 
       dynamic decodedBody;
 
       try {
-        decodedBody =
-            jsonDecode(rawBody);
+        decodedBody = jsonDecode(rawBody);
       } on FormatException {
         throw Exception(
-          'The server returned an invalid '
-          'response instead of JSON.',
+          'The server returned an invalid response instead of JSON.',
         );
       }
 
-      final body =
-          toMap(decodedBody);
+      final body = toMap(decodedBody);
 
       if (response.statusCode == 401) {
         throw Exception(
           body['message']?.toString() ??
-              'Your login session has expired. '
-                  'Please log in again.',
+              'Your login session has expired. Please log in again.',
         );
       }
 
       if (response.statusCode == 403) {
         throw Exception(
           body['message']?.toString() ??
-              'You are not allowed to access '
-                  'the admin dashboard.',
+              'You are not allowed to access the admin dashboard.',
         );
       }
 
@@ -235,9 +188,7 @@ class _AdminDashboardScreenState
           response.statusCode >= 300) {
         throw Exception(
           body['message']?.toString() ??
-              'Unable to load dashboard. '
-                  'Server error '
-                  '${response.statusCode}.',
+              'Unable to load dashboard. Server error ${response.statusCode}.',
         );
       }
 
@@ -248,102 +199,65 @@ class _AdminDashboardScreenState
         );
       }
 
-      final data =
-          toMap(body['data']);
-
-      final users =
-          toMap(data['users']);
-
-      final kyc =
-          toMap(data['kyc']);
-
-      final wallets =
-          toMap(data['wallets']);
-
-      final transactions =
-          toMap(data['transactions']);
+      final data = toMap(body['data']);
+      final users = toMap(data['users']);
+      final kyc = toMap(data['kyc']);
+      final wallets = toMap(data['wallets']);
+      final transactions = toMap(data['transactions']);
+      final servicepay = toMap(data['servicepay']);
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        adminName =
-            savedName?.trim().isNotEmpty ==
-                    true
-                ? savedName!.trim()
-                : 'Admin';
+        adminName = savedName?.trim().isNotEmpty == true
+            ? savedName!.trim()
+            : 'Admin';
 
-        adminRole =
-            savedRole.trim().isNotEmpty
-                ? savedRole
-                    .trim()
-                    .toUpperCase()
-                : 'HEAD_OFFICE';
+        adminRole = savedRole.trim().isNotEmpty
+            ? savedRole.trim().toUpperCase()
+            : 'HEAD_OFFICE';
 
-        totalUsers =
-            toInt(users['total']);
+        totalUsers = toInt(users['total']);
+        activeUsers = toInt(users['active']);
+        totalCustomers = toInt(users['customers']);
+        totalAgents = toInt(users['agents']);
 
-        activeUsers =
-            toInt(users['active']);
+        pendingVerifications = toInt(kyc['pending']);
 
-        totalCustomers =
-            toInt(users['customers']);
-
-        totalAgents =
-            toInt(users['agents']);
-
-        pendingVerifications =
-            toInt(kyc['pending']);
-
-        totalWalletBalance =
-            toDouble(
-          wallets['totalBalance'],
+        totalWalletBalance = toDouble(
+          wallets['totalWalletBalance'] ??
+              wallets['totalBalance'],
         );
 
-        totalTransactions =
-            toInt(
-          transactions['total'],
-        );
+        totalTransactions = toInt(transactions['total']);
 
-        totalTransactionValue =
-            toDouble(
-          transactions['totalValue'],
+        totalTransactionValue = toDouble(
+          transactions['totalVolume'] ??
+              transactions['totalValue'],
         );
 
         successfulTransactions =
-            toInt(
-          transactions['successful'],
+            toInt(transactions['successful']);
+
+        pendingTransactions = toInt(transactions['pending']);
+
+        failedTransactions = toInt(transactions['failed']);
+
+        servicepayProfit = toDouble(
+          servicepay['totalProfit'] ??
+              transactions['servicepayProfit'],
         );
 
-        pendingTransactions =
-            toInt(
-          transactions['pending'],
-        );
-
-        failedTransactions =
-            toInt(
-          transactions['failed'],
-        );
-
-        servicepayProfit =
-            toDouble(
-          transactions['servicepayProfit'],
-        );
-
-        recentUsers =
-            data['recentUsers'] is List
-                ? List<dynamic>.from(
-                    data['recentUsers'],
-                  )
-                : <dynamic>[];
+        recentUsers = data['recentUsers'] is List
+            ? List<dynamic>.from(data['recentUsers'])
+            : <dynamic>[];
 
         recentTransactions =
-            data['recentTransactions']
-                    is List
+            data['recentTransactions'] is List
                 ? List<dynamic>.from(
-                    data[
-                        'recentTransactions'],
+                    data['recentTransactions'],
                   )
                 : <dynamic>[];
 
@@ -360,9 +274,7 @@ class _AdminDashboardScreenState
         isLoading = false;
         hasError = true;
         errorMessage =
-            'The request timed out. '
-            'Check your internet connection '
-            'and try again.';
+            'The request timed out. Check your internet connection and try again.';
       });
     } catch (error) {
       if (!mounted) {
@@ -372,8 +284,7 @@ class _AdminDashboardScreenState
       setState(() {
         isLoading = false;
         hasError = true;
-        errorMessage =
-            cleanError(error);
+        errorMessage = cleanError(error);
       });
     }
   }
@@ -383,17 +294,11 @@ class _AdminDashboardScreenState
   }
 
   String formatMoney(double amount) {
-    final rounded =
-        amount.toStringAsFixed(2);
+    final rounded = amount.toStringAsFixed(2);
+    final parts = rounded.split('.');
 
-    final parts =
-        rounded.split('.');
-
-    final formattedWhole =
-        parts[0].replaceAllMapped(
-      RegExp(
-        r'\B(?=(\d{3})+(?!\d))',
-      ),
+    final formattedWhole = parts[0].replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
       (match) => ',',
     );
 
@@ -401,25 +306,18 @@ class _AdminDashboardScreenState
   }
 
   String formatDate(dynamic value) {
-    final date = DateTime.tryParse(
-      value?.toString() ?? '',
-    );
+    final date = DateTime.tryParse(value?.toString() ?? '');
 
     if (date == null) {
       return 'Unknown date';
     }
 
-    final localDate =
-        date.toLocal();
+    final localDate = date.toLocal();
 
-    return '${localDate.day}/'
-        '${localDate.month}/'
-        '${localDate.year}';
+    return '${localDate.day}/${localDate.month}/${localDate.year}';
   }
 
-  Color transactionStatusColor(
-    String status,
-  ) {
+  Color transactionStatusColor(String status) {
     switch (status.toUpperCase()) {
       case 'SUCCESSFUL':
       case 'SUCCESS':
@@ -436,31 +334,51 @@ class _AdminDashboardScreenState
     }
   }
 
+  Future<void> openUsers() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AdminUsersScreen(),
+      ),
+    );
+
+    if (mounted) {
+      await refreshDashboard();
+    }
+  }
+
   Future<void> openNotifications() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const AdminNotificationsScreen(),
+        builder: (_) => const AdminNotificationsScreen(),
       ),
     );
 
-    await refreshDashboard();
+    if (mounted) {
+      await refreshDashboard();
+    }
   }
 
-  void showComingSoon(
-    String title,
-  ) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content: Text(
-          '$title is coming soon.',
+  Future<void> openModule({
+    required String title,
+    required String description,
+    required IconData icon,
+  }) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminModuleScreen(
+          title: title,
+          description: description,
+          icon: icon,
         ),
-        behavior:
-            SnackBarBehavior.floating,
       ),
     );
+
+    if (mounted) {
+      await refreshDashboard();
+    }
   }
 
   Widget buildStatCard({
@@ -470,24 +388,18 @@ class _AdminDashboardScreenState
     required Color color,
   }) {
     return Container(
-      padding:
-          const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black
-                .withValues(
-              alpha: 0.04,
-            ),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
-            offset:
-                const Offset(0, 5),
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -497,11 +409,8 @@ class _AdminDashboardScreenState
             width: 45,
             height: 45,
             decoration: BoxDecoration(
-              color: color.withValues(
-                alpha: 0.12,
-              ),
-              borderRadius:
-                  BorderRadius.circular(13),
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(
               icon,
@@ -511,33 +420,26 @@ class _AdminDashboardScreenState
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     fontSize: 18,
-                    fontWeight:
-                        FontWeight.w900,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   title,
                   maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
-                    color:
-                        Colors.grey.shade600,
+                    color: Colors.grey.shade600,
                   ),
                 ),
               ],
@@ -552,37 +454,30 @@ class _AdminDashboardScreenState
     return RefreshIndicator(
       onRefresh: refreshDashboard,
       child: ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
-        padding:
-            const EdgeInsets.all(24),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
         children: [
           const SizedBox(height: 80),
           Icon(
             Icons.cloud_off_rounded,
             size: 72,
-            color:
-                Colors.red.shade300,
+            color: Colors.red.shade300,
           ),
           const SizedBox(height: 20),
           const Text(
             'Unable to load dashboard',
-            textAlign:
-                TextAlign.center,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 21,
-              fontWeight:
-                  FontWeight.w900,
+              fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 10),
           Text(
             errorMessage,
-            textAlign:
-                TextAlign.center,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color:
-                  Colors.grey.shade700,
+              color: Colors.grey.shade700,
               height: 1.5,
             ),
           ),
@@ -590,16 +485,10 @@ class _AdminDashboardScreenState
           Center(
             child: FilledButton.icon(
               onPressed: loadDashboard,
-              icon: const Icon(
-                Icons.refresh,
-              ),
-              label: const Text(
-                'Try Again',
-              ),
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    Colors.green,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.green,
               ),
             ),
           ),
@@ -615,12 +504,10 @@ class _AdminDashboardScreenState
     required List<Widget> children,
   }) {
     return Container(
-      padding:
-          const EdgeInsets.all(17),
+      padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -632,19 +519,16 @@ class _AdminDashboardScreenState
               Expanded(
                 child: Text(
                   title,
-                  style:
-                      const TextStyle(
+                  style: const TextStyle(
                     fontSize: 18,
-                    fontWeight:
-                        FontWeight.w900,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
               Text(
                 '$count shown',
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade600,
+                  color: Colors.grey.shade600,
                   fontSize: 12,
                 ),
               ),
@@ -653,8 +537,7 @@ class _AdminDashboardScreenState
           const SizedBox(height: 12),
           if (children.isEmpty)
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(
+              padding: const EdgeInsets.symmetric(
                 vertical: 20,
               ),
               child: Text(emptyText),
@@ -667,47 +550,34 @@ class _AdminDashboardScreenState
   }
 
   Widget buildRecentUsersSection() {
-    final userWidgets =
-        recentUsers.map((rawUser) {
-      final user =
-          toMap(rawUser);
+    final userWidgets = recentUsers.map((rawUser) {
+      final user = toMap(rawUser);
 
       final name =
-          user['fullName']?.toString() ??
-              'Unknown User';
+          user['fullName']?.toString() ?? 'Unknown User';
 
       final role =
-          user['role']?.toString() ??
-              'CUSTOMER';
+          user['role']?.toString() ?? 'CUSTOMER';
 
       final status =
-          user['status']?.toString() ??
-              'UNKNOWN';
+          user['status']?.toString() ?? 'UNKNOWN';
 
       return ListTile(
-        contentPadding:
-            EdgeInsets.zero,
+        contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(
-          backgroundColor:
-              Colors.green.shade50,
+          backgroundColor: Colors.green.shade50,
           child: Text(
-            name.isNotEmpty
-                ? name[0].toUpperCase()
-                : 'U',
-            style:
-                const TextStyle(
+            name.isNotEmpty ? name[0].toUpperCase() : 'U',
+            style: const TextStyle(
               color: Colors.green,
-              fontWeight:
-                  FontWeight.w900,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ),
         title: Text(
           name,
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.w800,
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
           ),
         ),
         subtitle: Text(
@@ -721,8 +591,7 @@ class _AdminDashboardScreenState
                 ? Colors.green
                 : Colors.orange,
             fontSize: 10,
-            fontWeight:
-                FontWeight.w800,
+            fontWeight: FontWeight.w800,
           ),
         ),
       );
@@ -731,113 +600,80 @@ class _AdminDashboardScreenState
     return buildSectionCard(
       title: 'Recent Users',
       count: recentUsers.length,
-      emptyText:
-          'No users found.',
+      emptyText: 'No users found.',
       children: userWidgets,
     );
   }
 
   Widget buildRecentTransactionsSection() {
     final transactionWidgets =
-        recentTransactions.map(
-      (rawTransaction) {
-        final transaction =
-            toMap(rawTransaction);
+        recentTransactions.map((rawTransaction) {
+      final transaction = toMap(rawTransaction);
 
-        final customer =
-            toMap(
-          transaction['customerId'],
-        );
+      final customer = toMap(transaction['customerId']);
 
-        final serviceType =
-            transaction['serviceType']
-                    ?.toString() ??
-                'TRANSACTION';
+      final serviceType =
+          transaction['serviceType']?.toString() ??
+              'TRANSACTION';
 
-        final status =
-            transaction['status']
-                    ?.toString() ??
-                'UNKNOWN';
+      final status =
+          transaction['status']?.toString() ?? 'UNKNOWN';
 
-        final amount =
-            toDouble(
-          transaction['amount'],
-        );
+      final amount = toDouble(transaction['amount']);
 
-        return ListTile(
-          contentPadding:
-              EdgeInsets.zero,
-          leading: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color:
-                  Colors.purple.shade50,
-              borderRadius:
-                  BorderRadius.circular(13),
-            ),
-            child: const Icon(
-              Icons.receipt_long_outlined,
-              color: Colors.purple,
-            ),
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.purple.shade50,
+            borderRadius: BorderRadius.circular(13),
           ),
-          title: Text(
-            serviceType.replaceAll(
-              '_',
-              ' ',
-            ),
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.w800,
-            ),
+          child: const Icon(
+            Icons.receipt_long_outlined,
+            color: Colors.purple,
           ),
-          subtitle: Text(
-            '${customer['fullName'] ?? 'Unknown User'} • '
-            '${formatDate(transaction['createdAt'])}',
+        ),
+        title: Text(
+          serviceType.replaceAll('_', ' '),
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
           ),
-          trailing: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
-            crossAxisAlignment:
-                CrossAxisAlignment.end,
-            children: [
-              Text(
-                formatMoney(amount),
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.w900,
-                ),
+        ),
+        subtitle: Text(
+          '${customer['fullName'] ?? 'Unknown User'} • '
+          '${formatDate(transaction['createdAt'])}',
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              formatMoney(amount),
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
               ),
-              const SizedBox(height: 3),
-              Text(
-                status,
-                style: TextStyle(
-                  color:
-                      transactionStatusColor(
-                    status,
-                  ),
-                  fontSize: 10,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              status,
+              style: TextStyle(
+                color: transactionStatusColor(status),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
               ),
-            ],
-          ),
-        );
-      },
-    ).toList();
+            ),
+          ],
+        ),
+      );
+    }).toList();
 
     return buildSectionCard(
-      title:
-          'Recent Transactions',
-      count:
-          recentTransactions.length,
-      emptyText:
-          'No transactions found.',
-      children:
-          transactionWidgets,
+      title: 'Recent Transactions',
+      count: recentTransactions.length,
+      emptyText: 'No transactions found.',
+      children: transactionWidgets,
     );
   }
 
@@ -848,24 +684,17 @@ class _AdminDashboardScreenState
     required VoidCallback onTap,
   }) {
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
       color: Colors.white,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color:
-              Colors.grey.shade200,
+          color: Colors.grey.shade200,
         ),
       ),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(
+        contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 8,
         ),
@@ -873,12 +702,8 @@ class _AdminDashboardScreenState
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: Colors.green
-                .withValues(
-              alpha: 0.1,
-            ),
-            borderRadius:
-                BorderRadius.circular(14),
+            color: Colors.green.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
             icon,
@@ -887,17 +712,12 @@ class _AdminDashboardScreenState
         ),
         title: Text(
           title,
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
         subtitle: Padding(
-          padding:
-              const EdgeInsets.only(
-            top: 4,
-          ),
+          padding: const EdgeInsets.only(top: 4),
           child: Text(subtitle),
         ),
         trailing: const Icon(
@@ -912,31 +732,22 @@ class _AdminDashboardScreenState
   Widget buildHeader() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient:
-            const LinearGradient(
+        gradient: const LinearGradient(
           colors: [
             Color(0xFF1D7D32),
             Color(0xFF48A84F),
           ],
-          begin:
-              Alignment.topLeft,
-          end:
-              Alignment.bottomRight,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.green
-                .withValues(
-              alpha: 0.24,
-            ),
+            color: Colors.green.withValues(alpha: 0.24),
             blurRadius: 18,
-            offset:
-                const Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -944,56 +755,40 @@ class _AdminDashboardScreenState
         children: [
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Welcome Back',
                   style: TextStyle(
-                    color:
-                        Colors.white70,
+                    color: Colors.white70,
                     fontSize: 15,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   adminName,
-                  style:
-                      const TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 26,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white
-                        .withValues(
-                      alpha: 0.18,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      20,
-                    ),
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    adminRole.replaceAll(
-                      '_',
-                      ' ',
-                    ),
-                    style:
-                        const TextStyle(
+                    adminRole.replaceAll('_', ' '),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1001,8 +796,7 @@ class _AdminDashboardScreenState
             ),
           ),
           const Icon(
-            Icons
-                .admin_panel_settings_rounded,
+            Icons.admin_panel_settings_rounded,
             color: Colors.white,
             size: 64,
           ),
@@ -1011,136 +805,92 @@ class _AdminDashboardScreenState
     );
   }
 
-  Widget buildOverviewGrid(
-    BoxConstraints constraints,
-  ) {
-    final crossAxisCount =
-        constraints.maxWidth >= 900
-            ? 4
-            : constraints.maxWidth >= 600
-                ? 3
-                : 2;
+  Widget buildOverviewGrid(BoxConstraints constraints) {
+    final crossAxisCount = constraints.maxWidth >= 900
+        ? 4
+        : constraints.maxWidth >= 600
+            ? 3
+            : 2;
 
     return GridView.count(
-      crossAxisCount:
-          crossAxisCount,
+      crossAxisCount: crossAxisCount,
       shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 14,
       crossAxisSpacing: 14,
       childAspectRatio:
-          constraints.maxWidth < 600
-              ? 1.32
-              : 1.5,
+          constraints.maxWidth < 600 ? 1.32 : 1.5,
       children: [
         buildStatCard(
           title: 'Total Users',
-          value:
-              totalUsers.toString(),
-          icon:
-              Icons.groups_outlined,
+          value: totalUsers.toString(),
+          icon: Icons.groups_outlined,
           color: Colors.blue,
         ),
         buildStatCard(
           title: 'Active Users',
-          value:
-              activeUsers.toString(),
-          icon: Icons
-              .verified_user_outlined,
+          value: activeUsers.toString(),
+          icon: Icons.verified_user_outlined,
           color: Colors.green,
         ),
         buildStatCard(
           title: 'Customers',
-          value:
-              totalCustomers.toString(),
-          icon:
-              Icons.person_outline,
+          value: totalCustomers.toString(),
+          icon: Icons.person_outline,
           color: Colors.indigo,
         ),
         buildStatCard(
           title: 'Agents',
-          value:
-              totalAgents.toString(),
-          icon: Icons
-              .support_agent_outlined,
+          value: totalAgents.toString(),
+          icon: Icons.support_agent_outlined,
           color: Colors.teal,
         ),
         buildStatCard(
           title: 'Transactions',
-          value:
-              totalTransactions.toString(),
-          icon: Icons
-              .receipt_long_outlined,
+          value: totalTransactions.toString(),
+          icon: Icons.receipt_long_outlined,
           color: Colors.purple,
         ),
         buildStatCard(
-          title:
-              'Transaction Value',
-          value: formatMoney(
-            totalTransactionValue,
-          ),
-          icon:
-              Icons.payments_outlined,
-          color:
-              Colors.deepPurple,
+          title: 'Transaction Value',
+          value: formatMoney(totalTransactionValue),
+          icon: Icons.payments_outlined,
+          color: Colors.deepPurple,
         ),
         buildStatCard(
           title: 'Wallet Balance',
-          value: formatMoney(
-            totalWalletBalance,
-          ),
-          icon: Icons
-              .account_balance_wallet_outlined,
+          value: formatMoney(totalWalletBalance),
+          icon: Icons.account_balance_wallet_outlined,
           color: Colors.orange,
         ),
         buildStatCard(
           title: 'Pending KYC',
-          value:
-              pendingVerifications
-                  .toString(),
-          icon:
-              Icons.badge_outlined,
-          color:
-              Colors.deepOrange,
+          value: pendingVerifications.toString(),
+          icon: Icons.badge_outlined,
+          color: Colors.deepOrange,
         ),
         buildStatCard(
           title: 'Successful',
-          value:
-              successfulTransactions
-                  .toString(),
-          icon: Icons
-              .check_circle_outline,
+          value: successfulTransactions.toString(),
+          icon: Icons.check_circle_outline,
           color: Colors.green,
         ),
         buildStatCard(
-          title:
-              'Pending Transactions',
-          value:
-              pendingTransactions
-                  .toString(),
-          icon:
-              Icons.schedule_outlined,
+          title: 'Pending Transactions',
+          value: pendingTransactions.toString(),
+          icon: Icons.schedule_outlined,
           color: Colors.orange,
         ),
         buildStatCard(
-          title:
-              'Failed Transactions',
-          value:
-              failedTransactions
-                  .toString(),
-          icon:
-              Icons.error_outline,
+          title: 'Failed Transactions',
+          value: failedTransactions.toString(),
+          icon: Icons.error_outline,
           color: Colors.red,
         ),
         buildStatCard(
-          title:
-              'Servicepay Profit',
-          value: formatMoney(
-            servicepayProfit,
-          ),
-          icon: Icons
-              .trending_up_outlined,
+          title: 'Servicepay Profit',
+          value: formatMoney(servicepayProfit),
+          icon: Icons.trending_up_outlined,
           color: Colors.green,
         ),
       ],
@@ -1154,23 +904,19 @@ class _AdminDashboardScreenState
           title: 'Manage Users',
           subtitle:
               'View, activate, suspend and manage Servicepay users.',
-          icon: Icons
-              .manage_accounts_outlined,
-          onTap: () {
-            showComingSoon(
-              'User Management',
-            );
-          },
+          icon: Icons.manage_accounts_outlined,
+          onTap: openUsers,
         ),
         buildAdminTool(
           title: 'Transactions',
-          subtitle:
-              'Monitor all customer transactions.',
-          icon: Icons
-              .receipt_long_outlined,
+          subtitle: 'Monitor all customer transactions.',
+          icon: Icons.receipt_long_outlined,
           onTap: () {
-            showComingSoon(
-              'Admin Transactions',
+            openModule(
+              title: 'Transactions',
+              description:
+                  'Review customer transactions, payment status, references and service information.',
+              icon: Icons.receipt_long_outlined,
             );
           },
         ),
@@ -1178,11 +924,13 @@ class _AdminDashboardScreenState
           title: 'Delivery Management',
           subtitle:
               'Set delivery fees and update delivery status.',
-          icon: Icons
-              .local_shipping_outlined,
+          icon: Icons.local_shipping_outlined,
           onTap: () {
-            showComingSoon(
-              'Delivery Management',
+            openModule(
+              title: 'Delivery Management',
+              description:
+                  'Manage delivery requests, fees, assigned riders and delivery status.',
+              icon: Icons.local_shipping_outlined,
             );
           },
         ),
@@ -1190,33 +938,34 @@ class _AdminDashboardScreenState
           title: 'ID Verification',
           subtitle:
               'Review and approve customer verification requests.',
-          icon: Icons
-              .verified_user_outlined,
+          icon: Icons.verified_user_outlined,
           onTap: () {
-            showComingSoon(
-              'ID Verification Management',
+            openModule(
+              title: 'ID Verification',
+              description:
+                  'Review NIN, BVN and other customer verification requests.',
+              icon: Icons.verified_user_outlined,
             );
           },
         ),
         buildAdminTool(
-          title:
-              'Send Notifications',
+          title: 'Send Notifications',
           subtitle:
               'Send direct or broadcast notifications to users.',
-          icon: Icons
-              .notifications_active_outlined,
+          icon: Icons.notifications_active_outlined,
           onTap: openNotifications,
         ),
         buildAdminTool(
-          title:
-              'Commission Management',
+          title: 'Commission Management',
           subtitle:
               'Manage agent and manager commissions.',
-          icon:
-              Icons.percent_outlined,
+          icon: Icons.percent_outlined,
           onTap: () {
-            showComingSoon(
-              'Commission Management',
+            openModule(
+              title: 'Commission Management',
+              description:
+                  'Review and manage agent, state manager and zonal manager commissions.',
+              icon: Icons.percent_outlined,
             );
           },
         ),
@@ -1225,135 +974,88 @@ class _AdminDashboardScreenState
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor:
-            Colors.green,
-        foregroundColor:
-            Colors.white,
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
           'Admin Dashboard',
           style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: isLoading
-                ? null
-                : refreshDashboard,
-            icon: const Icon(
-              Icons.refresh,
-            ),
+            onPressed: isLoading ? null : refreshDashboard,
+            icon: const Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip:
-                'Send Notifications',
-            onPressed:
-                openNotifications,
+            tooltip: 'Send Notifications',
+            onPressed: openNotifications,
             icon: const Icon(
-              Icons
-                  .notifications_active_outlined,
+              Icons.notifications_active_outlined,
             ),
           ),
         ],
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 color: Colors.green,
               ),
             )
           : hasError
               ? buildErrorState()
               : RefreshIndicator(
-                  onRefresh:
-                      refreshDashboard,
-                  child:
-                      LayoutBuilder(
-                    builder: (
-                      context,
-                      constraints,
-                    ) {
+                  onRefresh: refreshDashboard,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
                       final contentWidth =
-                          constraints.maxWidth >
-                                  1100
+                          constraints.maxWidth > 1100
                               ? 1050.0
                               : double.infinity;
 
                       return ListView(
                         physics:
                             const AlwaysScrollableScrollPhysics(),
-                        padding:
-                            const EdgeInsets.all(
-                          18,
-                        ),
+                        padding: const EdgeInsets.all(18),
                         children: [
                           Align(
-                            alignment:
-                                Alignment
-                                    .topCenter,
+                            alignment: Alignment.topCenter,
                             child: SizedBox(
-                              width:
-                                  contentWidth,
+                              width: contentWidth,
                               child: Column(
                                 crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
+                                    CrossAxisAlignment.start,
                                 children: [
                                   buildHeader(),
-                                  const SizedBox(
-                                    height: 26,
-                                  ),
+                                  const SizedBox(height: 26),
                                   const Text(
                                     'Overview',
-                                    style:
-                                        TextStyle(
+                                    style: TextStyle(
                                       fontSize: 20,
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  const SizedBox(
-                                    height: 15,
-                                  ),
-                                  buildOverviewGrid(
-                                    constraints,
-                                  ),
-                                  const SizedBox(
-                                    height: 26,
-                                  ),
+                                  const SizedBox(height: 15),
+                                  buildOverviewGrid(constraints),
+                                  const SizedBox(height: 26),
                                   buildRecentUsersSection(),
-                                  const SizedBox(
-                                    height: 18,
-                                  ),
+                                  const SizedBox(height: 18),
                                   buildRecentTransactionsSection(),
-                                  const SizedBox(
-                                    height: 28,
-                                  ),
+                                  const SizedBox(height: 28),
                                   const Text(
                                     'Admin Tools',
-                                    style:
-                                        TextStyle(
+                                    style: TextStyle(
                                       fontSize: 20,
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  const SizedBox(
-                                    height: 14,
-                                  ),
+                                  const SizedBox(height: 14),
                                   buildAdminTools(),
                                 ],
                               ),
@@ -1364,6 +1066,104 @@ class _AdminDashboardScreenState
                     },
                   ),
                 ),
+    );
+  }
+}
+
+class AdminModuleScreen extends StatelessWidget {
+  const AdminModuleScreen({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.icon,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            width: 520,
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.grey.shade200,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 82,
+                  height: 82,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: Colors.green,
+                    size: 42,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  description,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 15,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Back to Dashboard'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

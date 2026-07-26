@@ -13,6 +13,7 @@ const idVerificationRoutes = require("./routes/idVerification.routes");
 connectDB();
 const deliveryRoutes = require("./routes/delivery.routes");
 const notificationRoutes = require("./routes/notification.routes");
+const adminRoutes = require("./routes/admin.routes");
 const app = express();
 
 app.use(helmet());
@@ -32,6 +33,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/transfer", transferRoutes);
 app.use("/api/id-verification", idVerificationRoutes);
 app.use("/api/delivery", deliveryRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/notifications", notificationRoutes);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {

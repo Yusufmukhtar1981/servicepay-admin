@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_dashboard_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'users_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
@@ -17,6 +18,7 @@ class _AdminMainNavigationState
 
   final List<Widget> pages = const [
     AdminDashboardScreen(),
+    AdminUsersScreen(),
     Center(
       child: Text(
         'Admin Transactions',
@@ -60,6 +62,11 @@ class _AdminMainNavigationState
             icon: Icon(Icons.dashboard_outlined),
             activeIcon: Icon(Icons.dashboard),
             label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_outline),
+            activeIcon: Icon(Icons.people),
+            label: 'Users',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -28,15 +29,8 @@ class _AdminDashboardScreenState
 
   int totalUsers = 0;
   int activeUsers = 0;
-  int suspendedUsers = 0;
-  int blockedUsers = 0;
-
   int totalCustomers = 0;
   int totalAgents = 0;
-  int totalStateManagers = 0;
-  int totalZonalManagers = 0;
-
-  int verifiedUsers = 0;
   int pendingVerifications = 0;
 
   int totalTransactions = 0;
@@ -46,8 +40,6 @@ class _AdminDashboardScreenState
 
   double totalTransactionValue = 0;
   double totalWalletBalance = 0;
-  double totalCommissionBalance = 0;
-  double totalEarnings = 0;
   double servicepayProfit = 0;
 
   List<dynamic> recentUsers = [];
@@ -57,6 +49,55 @@ class _AdminDashboardScreenState
   void initState() {
     super.initState();
     loadDashboard();
+  }
+
+  Map<String, dynamic> toMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  int toInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  double toDouble(dynamic value) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  String cleanError(Object error) {
+    return error
+        .toString()
+        .replaceFirst('Exception: ', '')
+        .trim();
   }
 
   Future<void> loadDashboard() async {
@@ -69,7 +110,8 @@ class _AdminDashboardScreenState
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs =
+          await SharedPreferences.getInstance();
 
       final savedName =
           prefs.getString('user_name') ??
@@ -85,222 +127,338 @@ class _AdminDashboardScreenState
           prefs.getString('auth_token') ??
           prefs.getString('token');
 
-      if (token == null || token.trim().isEmpty) {
+      if (token == null ||
+          token.trim().isEmpty) {
         throw Exception(
-          'Admin login token was not found. Please log in again.',
+          'Admin login token was not found. '
+          'Please log in again.',
         );
       }
 
+      final uri = Uri.parse(
+        '$baseUrl/admin/dashboard',
+      );
+
       final response = await http
           .get(
-            Uri.parse('$baseUrl/admin/dashboard'),
+            uri,
             headers: {
               'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
+              'Authorization':
+                  'Bearer ${token.trim()}',
             },
           )
           .timeout(
             const Duration(seconds: 30),
           );
 
-      final decodedBody = jsonDecode(response.body);
+      final rawBody =
+          response.body.trim();
 
-      if (response.statusCode != 200) {
-        final message = decodedBody is Map<String, dynamic>
-            ? decodedBody['message']?.toString()
-            : null;
+      final contentType =
+          response.headers['content-type']
+                  ?.toLowerCase() ??
+              '';
 
+      debugPrint(
+        'Admin dashboard URL: $uri',
+      );
+
+      debugPrint(
+        'Admin dashboard status: '
+        '${response.statusCode}',
+      );
+
+      debugPrint(
+        'Admin dashboard content type: '
+        '$contentType',
+      );
+
+      debugPrint(
+        'Admin dashboard response: '
+        '${rawBody.length > 400 ? rawBody.substring(0, 400) : rawBody}',
+      );
+
+      if (rawBody.isEmpty) {
         throw Exception(
-          message ?? 'Unable to load admin dashboard.',
+          'The server returned an empty response.',
         );
       }
 
-      if (decodedBody is! Map<String, dynamic>) {
+      final lowerBody =
+          rawBody.toLowerCase();
+
+      if (lowerBody.startsWith(
+            '<!doctype html',
+          ) ||
+          lowerBody.startsWith('<html') ||
+          contentType.contains('text/html')) {
         throw Exception(
-          'Invalid response received from the server.',
+          'Admin dashboard API was not found '
+          'on the backend. Please deploy '
+          'GET /api/admin/dashboard.',
         );
       }
 
-      if (decodedBody['success'] != true) {
+      dynamic decodedBody;
+
+      try {
+        decodedBody =
+            jsonDecode(rawBody);
+      } on FormatException {
         throw Exception(
-          decodedBody['message']?.toString() ??
+          'The server returned an invalid '
+          'response instead of JSON.',
+        );
+      }
+
+      final body =
+          toMap(decodedBody);
+
+      if (response.statusCode == 401) {
+        throw Exception(
+          body['message']?.toString() ??
+              'Your login session has expired. '
+                  'Please log in again.',
+        );
+      }
+
+      if (response.statusCode == 403) {
+        throw Exception(
+          body['message']?.toString() ??
+              'You are not allowed to access '
+                  'the admin dashboard.',
+        );
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        throw Exception(
+          body['message']?.toString() ??
+              'Unable to load dashboard. '
+                  'Server error '
+                  '${response.statusCode}.',
+        );
+      }
+
+      if (body['success'] != true) {
+        throw Exception(
+          body['message']?.toString() ??
               'Unable to load admin dashboard.',
         );
       }
 
       final data =
-          decodedBody['data'] as Map<String, dynamic>? ?? {};
+          toMap(body['data']);
 
       final users =
-          data['users'] as Map<String, dynamic>? ?? {};
+          toMap(data['users']);
 
       final kyc =
-          data['kyc'] as Map<String, dynamic>? ?? {};
+          toMap(data['kyc']);
 
       final wallets =
-          data['wallets'] as Map<String, dynamic>? ?? {};
+          toMap(data['wallets']);
 
       final transactions =
-          data['transactions'] as Map<String, dynamic>? ?? {};
+          toMap(data['transactions']);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
-        adminName = savedName?.trim().isNotEmpty == true
-            ? savedName!.trim()
-            : 'Admin';
+        adminName =
+            savedName?.trim().isNotEmpty ==
+                    true
+                ? savedName!.trim()
+                : 'Admin';
 
-        adminRole = savedRole.trim().isNotEmpty
-            ? savedRole.trim().toUpperCase()
-            : 'HEAD_OFFICE';
+        adminRole =
+            savedRole.trim().isNotEmpty
+                ? savedRole
+                    .trim()
+                    .toUpperCase()
+                : 'HEAD_OFFICE';
 
-        totalUsers = toInt(users['total']);
-        activeUsers = toInt(users['active']);
-        suspendedUsers = toInt(users['suspended']);
-        blockedUsers = toInt(users['blocked']);
+        totalUsers =
+            toInt(users['total']);
 
-        totalCustomers = toInt(users['customers']);
-        totalAgents = toInt(users['agents']);
-        totalStateManagers =
-            toInt(users['stateManagers']);
-        totalZonalManagers =
-            toInt(users['zonalManagers']);
+        activeUsers =
+            toInt(users['active']);
 
-        verifiedUsers = toInt(kyc['verified']);
-        pendingVerifications = toInt(kyc['pending']);
+        totalCustomers =
+            toInt(users['customers']);
+
+        totalAgents =
+            toInt(users['agents']);
+
+        pendingVerifications =
+            toInt(kyc['pending']);
 
         totalWalletBalance =
-            toDouble(wallets['totalBalance']);
-
-        totalCommissionBalance =
-            toDouble(wallets['totalCommissionBalance']);
-
-        totalEarnings =
-            toDouble(wallets['totalEarnings']);
+            toDouble(
+          wallets['totalBalance'],
+        );
 
         totalTransactions =
-            toInt(transactions['total']);
+            toInt(
+          transactions['total'],
+        );
 
         totalTransactionValue =
-            toDouble(transactions['totalValue']);
+            toDouble(
+          transactions['totalValue'],
+        );
 
         successfulTransactions =
-            toInt(transactions['successful']);
+            toInt(
+          transactions['successful'],
+        );
 
         pendingTransactions =
-            toInt(transactions['pending']);
+            toInt(
+          transactions['pending'],
+        );
 
         failedTransactions =
-            toInt(transactions['failed']);
+            toInt(
+          transactions['failed'],
+        );
 
         servicepayProfit =
-            toDouble(transactions['servicepayProfit']);
+            toDouble(
+          transactions['servicepayProfit'],
+        );
 
         recentUsers =
             data['recentUsers'] is List
-                ? data['recentUsers'] as List<dynamic>
-                : [];
+                ? List<dynamic>.from(
+                    data['recentUsers'],
+                  )
+                : <dynamic>[];
 
         recentTransactions =
-            data['recentTransactions'] is List
-                ? data['recentTransactions']
-                    as List<dynamic>
-                : [];
+            data['recentTransactions']
+                    is List
+                ? List<dynamic>.from(
+                    data[
+                        'recentTransactions'],
+                  )
+                : <dynamic>[];
 
         isLoading = false;
         hasError = false;
+        errorMessage = '';
       });
-    } catch (error) {
-      if (!mounted) return;
+    } on TimeoutException {
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         isLoading = false;
         hasError = true;
-        errorMessage = cleanError(error);
+        errorMessage =
+            'The request timed out. '
+            'Check your internet connection '
+            'and try again.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoading = false;
+        hasError = true;
+        errorMessage =
+            cleanError(error);
       });
     }
-  }
-
-  int toInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-
-    if (value is num) {
-      return value.toInt();
-    }
-
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  double toDouble(dynamic value) {
-    if (value is double) {
-      return value;
-    }
-
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  String cleanError(Object error) {
-    return error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .trim();
-  }
-
-  String formatMoney(double amount) {
-    final rounded = amount.toStringAsFixed(2);
-    final parts = rounded.split('.');
-    final wholeNumber = parts[0];
-
-    final formattedWhole = wholeNumber.replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (match) => ',',
-    );
-
-    return '₦$formattedWhole.${parts[1]}';
-  }
-
-  String formatDate(dynamic rawDate) {
-    if (rawDate == null) {
-      return 'Unknown date';
-    }
-
-    final date = DateTime.tryParse(rawDate.toString());
-
-    if (date == null) {
-      return 'Unknown date';
-    }
-
-    final localDate = date.toLocal();
-
-    return '${localDate.day}/${localDate.month}/${localDate.year}';
   }
 
   Future<void> refreshDashboard() async {
     await loadDashboard();
   }
 
-  Future<void> openPage(Widget page) async {
+  String formatMoney(double amount) {
+    final rounded =
+        amount.toStringAsFixed(2);
+
+    final parts =
+        rounded.split('.');
+
+    final formattedWhole =
+        parts[0].replaceAllMapped(
+      RegExp(
+        r'\B(?=(\d{3})+(?!\d))',
+      ),
+      (match) => ',',
+    );
+
+    return '₦$formattedWhole.${parts[1]}';
+  }
+
+  String formatDate(dynamic value) {
+    final date = DateTime.tryParse(
+      value?.toString() ?? '',
+    );
+
+    if (date == null) {
+      return 'Unknown date';
+    }
+
+    final localDate =
+        date.toLocal();
+
+    return '${localDate.day}/'
+        '${localDate.month}/'
+        '${localDate.year}';
+  }
+
+  Color transactionStatusColor(
+    String status,
+  ) {
+    switch (status.toUpperCase()) {
+      case 'SUCCESSFUL':
+      case 'SUCCESS':
+        return Colors.green;
+
+      case 'FAILED':
+        return Colors.red;
+
+      case 'REFUNDED':
+        return Colors.blue;
+
+      default:
+        return Colors.orange;
+    }
+  }
+
+  Future<void> openNotifications() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => page,
+        builder: (_) =>
+            const AdminNotificationsScreen(),
       ),
     );
 
     await refreshDashboard();
   }
 
-  void showComingSoon(String title) {
-    ScaffoldMessenger.of(context).showSnackBar(
+  void showComingSoon(
+    String title,
+  ) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
-        content: Text('$title is coming soon.'),
-        behavior: SnackBarBehavior.floating,
+        content: Text(
+          '$title is coming soon.',
+        ),
+        behavior:
+            SnackBarBehavior.floating,
       ),
     );
   }
@@ -312,64 +470,74 @@ class _AdminDashboardScreenState
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding:
+          const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
-              alpha: 0.045,
+            color: Colors.black
+                .withValues(
+              alpha: 0.04,
             ),
             blurRadius: 12,
-            offset: const Offset(0, 5),
+            offset:
+                const Offset(0, 5),
           ),
         ],
       ),
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 45,
+            height: 45,
             decoration: BoxDecoration(
               color: color.withValues(
                 alpha: 0.12,
               ),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius:
+                  BorderRadius.circular(13),
             ),
             child: Icon(
               icon,
               color: color,
-              size: 26,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               crossAxisAlignment:
                   CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   value,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(
+                    fontSize: 18,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   title,
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
+                    fontSize: 11,
+                    color:
+                        Colors.grey.shade600,
                   ),
                 ),
               ],
@@ -380,24 +548,324 @@ class _AdminDashboardScreenState
     );
   }
 
-  Widget buildAdminAction({
+  Widget buildErrorState() {
+    return RefreshIndicator(
+      onRefresh: refreshDashboard,
+      child: ListView(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 80),
+          Icon(
+            Icons.cloud_off_rounded,
+            size: 72,
+            color:
+                Colors.red.shade300,
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Unable to load dashboard',
+            textAlign:
+                TextAlign.center,
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight:
+                  FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            errorMessage,
+            textAlign:
+                TextAlign.center,
+            style: TextStyle(
+              color:
+                  Colors.grey.shade700,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: FilledButton.icon(
+              onPressed: loadDashboard,
+              icon: const Icon(
+                Icons.refresh,
+              ),
+              label: const Text(
+                'Try Again',
+              ),
+              style:
+                  FilledButton.styleFrom(
+                backgroundColor:
+                    Colors.green,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildSectionCard({
+    required String title,
+    required int count,
+    required String emptyText,
+    required List<Widget> children,
+  }) {
+    return Container(
+      padding:
+          const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style:
+                      const TextStyle(
+                    fontSize: 18,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$count shown',
+                style: TextStyle(
+                  color:
+                      Colors.grey.shade600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (children.isEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(
+                vertical: 20,
+              ),
+              child: Text(emptyText),
+            )
+          else
+            ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget buildRecentUsersSection() {
+    final userWidgets =
+        recentUsers.map((rawUser) {
+      final user =
+          toMap(rawUser);
+
+      final name =
+          user['fullName']?.toString() ??
+              'Unknown User';
+
+      final role =
+          user['role']?.toString() ??
+              'CUSTOMER';
+
+      final status =
+          user['status']?.toString() ??
+              'UNKNOWN';
+
+      return ListTile(
+        contentPadding:
+            EdgeInsets.zero,
+        leading: CircleAvatar(
+          backgroundColor:
+              Colors.green.shade50,
+          child: Text(
+            name.isNotEmpty
+                ? name[0].toUpperCase()
+                : 'U',
+            style:
+                const TextStyle(
+              color: Colors.green,
+              fontWeight:
+                  FontWeight.w900,
+            ),
+          ),
+        ),
+        title: Text(
+          name,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.w800,
+          ),
+        ),
+        subtitle: Text(
+          '${role.replaceAll('_', ' ')} • '
+          '${formatDate(user['createdAt'])}',
+        ),
+        trailing: Text(
+          status,
+          style: TextStyle(
+            color: status == 'ACTIVE'
+                ? Colors.green
+                : Colors.orange,
+            fontSize: 10,
+            fontWeight:
+                FontWeight.w800,
+          ),
+        ),
+      );
+    }).toList();
+
+    return buildSectionCard(
+      title: 'Recent Users',
+      count: recentUsers.length,
+      emptyText:
+          'No users found.',
+      children: userWidgets,
+    );
+  }
+
+  Widget buildRecentTransactionsSection() {
+    final transactionWidgets =
+        recentTransactions.map(
+      (rawTransaction) {
+        final transaction =
+            toMap(rawTransaction);
+
+        final customer =
+            toMap(
+          transaction['customerId'],
+        );
+
+        final serviceType =
+            transaction['serviceType']
+                    ?.toString() ??
+                'TRANSACTION';
+
+        final status =
+            transaction['status']
+                    ?.toString() ??
+                'UNKNOWN';
+
+        final amount =
+            toDouble(
+          transaction['amount'],
+        );
+
+        return ListTile(
+          contentPadding:
+              EdgeInsets.zero,
+          leading: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color:
+                  Colors.purple.shade50,
+              borderRadius:
+                  BorderRadius.circular(13),
+            ),
+            child: const Icon(
+              Icons.receipt_long_outlined,
+              color: Colors.purple,
+            ),
+          ),
+          title: Text(
+            serviceType.replaceAll(
+              '_',
+              ' ',
+            ),
+            style:
+                const TextStyle(
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          subtitle: Text(
+            '${customer['fullName'] ?? 'Unknown User'} • '
+            '${formatDate(transaction['createdAt'])}',
+          ),
+          trailing: Column(
+            mainAxisAlignment:
+                MainAxisAlignment.center,
+            crossAxisAlignment:
+                CrossAxisAlignment.end,
+            children: [
+              Text(
+                formatMoney(amount),
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                status,
+                style: TextStyle(
+                  color:
+                      transactionStatusColor(
+                    status,
+                  ),
+                  fontSize: 10,
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ).toList();
+
+    return buildSectionCard(
+      title:
+          'Recent Transactions',
+      count:
+          recentTransactions.length,
+      emptyText:
+          'No transactions found.',
+      children:
+          transactionWidgets,
+    );
+  }
+
+  Widget buildAdminTool({
     required String title,
     required String subtitle,
     required IconData icon,
     required VoidCallback onTap,
   }) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin:
+          const EdgeInsets.only(
+        bottom: 12,
+      ),
       elevation: 0,
       color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+      shape:
+          RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(16),
         side: BorderSide(
-          color: Colors.grey.shade200,
+          color:
+              Colors.grey.shade200,
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
+        contentPadding:
+            const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 8,
         ),
@@ -405,10 +873,12 @@ class _AdminDashboardScreenState
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: Colors.green.withValues(
+            color: Colors.green
+                .withValues(
               alpha: 0.1,
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius:
+                BorderRadius.circular(14),
           ),
           child: Icon(
             icon,
@@ -417,12 +887,17 @@ class _AdminDashboardScreenState
         ),
         title: Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding:
+              const EdgeInsets.only(
+            top: 4,
+          ),
           child: Text(subtitle),
         ),
         trailing: const Icon(
@@ -434,673 +909,426 @@ class _AdminDashboardScreenState
     );
   }
 
-  Widget buildErrorState() {
-    return RefreshIndicator(
-      onRefresh: refreshDashboard,
-      child: ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        children: [
-          const SizedBox(height: 80),
-          Icon(
-            Icons.cloud_off_rounded,
-            size: 72,
-            color: Colors.red.shade300,
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Unable to load dashboard',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.w900,
+  Widget buildHeader() {
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient:
+            const LinearGradient(
+          colors: [
+            Color(0xFF1D7D32),
+            Color(0xFF48A84F),
+          ],
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
+        ),
+        borderRadius:
+            BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green
+                .withValues(
+              alpha: 0.24,
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            errorMessage,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Center(
-            child: FilledButton.icon(
-              onPressed: loadDashboard,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try Again'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.green,
-              ),
-            ),
+            blurRadius: 18,
+            offset:
+                const Offset(0, 8),
           ),
         ],
       ),
-    );
-  }
-
-  Widget buildRecentUsersSection() {
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Recent Users',
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Welcome Back',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    color:
+                        Colors.white70,
+                    fontSize: 15,
                   ),
                 ),
-              ),
-              Text(
-                '${recentUsers.length} shown',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (recentUsers.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: 20,
-              ),
-              child: Text(
-                'No users found.',
-              ),
-            )
-          else
-            ...recentUsers.map((rawUser) {
-              final user =
-                  rawUser as Map<String, dynamic>? ?? {};
-
-              final name =
-                  user['fullName']?.toString() ??
-                      'Unknown User';
-
-              final role =
-                  user['role']?.toString() ??
-                      'CUSTOMER';
-
-              final status =
-                  user['status']?.toString() ??
-                      'UNKNOWN';
-
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor:
-                      Colors.green.shade50,
-                  child: Text(
-                    name.isNotEmpty
-                        ? name[0].toUpperCase()
-                        : 'U',
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.w900,
-                    ),
+                const SizedBox(height: 6),
+                Text(
+                  adminName,
+                  style:
+                      const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
-                title: Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                subtitle: Text(
-                  '${role.replaceAll('_', ' ')} • '
-                  '${formatDate(user['createdAt'])}',
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: status == 'ACTIVE'
-                        ? Colors.green.shade50
-                        : Colors.orange.shade50,
+                    color: Colors.white
+                        .withValues(
+                      alpha: 0.18,
+                    ),
                     borderRadius:
-                        BorderRadius.circular(20),
+                        BorderRadius.circular(
+                      20,
+                    ),
                   ),
                   child: Text(
-                    status,
-                    style: TextStyle(
-                      color: status == 'ACTIVE'
-                          ? Colors.green.shade700
-                          : Colors.orange.shade800,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
+                    adminRole.replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                    style:
+                        const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight:
+                          FontWeight.w600,
                     ),
                   ),
                 ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-
-  Widget buildRecentTransactionsSection() {
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Recent Transactions',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Text(
-                '${recentTransactions.length} shown',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          if (recentTransactions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: 20,
-              ),
-              child: Text(
-                'No transactions found.',
-              ),
-            )
-          else
-            ...recentTransactions.map((rawTransaction) {
-              final transaction =
-                  rawTransaction
-                          as Map<String, dynamic>? ??
-                      {};
-
-              final customer =
-                  transaction['customerId']
-                          as Map<String, dynamic>? ??
-                      {};
-
-              final serviceType =
-                  transaction['serviceType']
-                          ?.toString() ??
-                      'TRANSACTION';
-
-              final status =
-                  transaction['status']?.toString() ??
-                      'UNKNOWN';
-
-              final amount =
-                  toDouble(transaction['amount']);
-
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.purple.shade50,
-                    borderRadius:
-                        BorderRadius.circular(13),
-                  ),
-                  child: const Icon(
-                    Icons.receipt_long_outlined,
-                    color: Colors.purple,
-                  ),
-                ),
-                title: Text(
-                  serviceType.replaceAll('_', ' '),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                subtitle: Text(
-                  '${customer['fullName'] ?? 'Unknown User'} • '
-                  '${formatDate(transaction['createdAt'])}',
-                ),
-                trailing: Column(
-                  mainAxisAlignment:
-                      MainAxisAlignment.center,
-                  crossAxisAlignment:
-                      CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      formatMoney(amount),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      status,
-                      style: TextStyle(
-                        color: transactionStatusColor(
-                          status,
-                        ),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+          const Icon(
+            Icons
+                .admin_panel_settings_rounded,
+            color: Colors.white,
+            size: 64,
+          ),
         ],
       ),
     );
   }
 
-  Color transactionStatusColor(String status) {
-    switch (status) {
-      case 'SUCCESSFUL':
-        return Colors.green;
-      case 'FAILED':
-        return Colors.red;
-      case 'REFUNDED':
-        return Colors.blue;
-      default:
-        return Colors.orange;
-    }
+  Widget buildOverviewGrid(
+    BoxConstraints constraints,
+  ) {
+    final crossAxisCount =
+        constraints.maxWidth >= 900
+            ? 4
+            : constraints.maxWidth >= 600
+                ? 3
+                : 2;
+
+    return GridView.count(
+      crossAxisCount:
+          crossAxisCount,
+      shrinkWrap: true,
+      physics:
+          const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 14,
+      crossAxisSpacing: 14,
+      childAspectRatio:
+          constraints.maxWidth < 600
+              ? 1.32
+              : 1.5,
+      children: [
+        buildStatCard(
+          title: 'Total Users',
+          value:
+              totalUsers.toString(),
+          icon:
+              Icons.groups_outlined,
+          color: Colors.blue,
+        ),
+        buildStatCard(
+          title: 'Active Users',
+          value:
+              activeUsers.toString(),
+          icon: Icons
+              .verified_user_outlined,
+          color: Colors.green,
+        ),
+        buildStatCard(
+          title: 'Customers',
+          value:
+              totalCustomers.toString(),
+          icon:
+              Icons.person_outline,
+          color: Colors.indigo,
+        ),
+        buildStatCard(
+          title: 'Agents',
+          value:
+              totalAgents.toString(),
+          icon: Icons
+              .support_agent_outlined,
+          color: Colors.teal,
+        ),
+        buildStatCard(
+          title: 'Transactions',
+          value:
+              totalTransactions.toString(),
+          icon: Icons
+              .receipt_long_outlined,
+          color: Colors.purple,
+        ),
+        buildStatCard(
+          title:
+              'Transaction Value',
+          value: formatMoney(
+            totalTransactionValue,
+          ),
+          icon:
+              Icons.payments_outlined,
+          color:
+              Colors.deepPurple,
+        ),
+        buildStatCard(
+          title: 'Wallet Balance',
+          value: formatMoney(
+            totalWalletBalance,
+          ),
+          icon: Icons
+              .account_balance_wallet_outlined,
+          color: Colors.orange,
+        ),
+        buildStatCard(
+          title: 'Pending KYC',
+          value:
+              pendingVerifications
+                  .toString(),
+          icon:
+              Icons.badge_outlined,
+          color:
+              Colors.deepOrange,
+        ),
+        buildStatCard(
+          title: 'Successful',
+          value:
+              successfulTransactions
+                  .toString(),
+          icon: Icons
+              .check_circle_outline,
+          color: Colors.green,
+        ),
+        buildStatCard(
+          title:
+              'Pending Transactions',
+          value:
+              pendingTransactions
+                  .toString(),
+          icon:
+              Icons.schedule_outlined,
+          color: Colors.orange,
+        ),
+        buildStatCard(
+          title:
+              'Failed Transactions',
+          value:
+              failedTransactions
+                  .toString(),
+          icon:
+              Icons.error_outline,
+          color: Colors.red,
+        ),
+        buildStatCard(
+          title:
+              'Servicepay Profit',
+          value: formatMoney(
+            servicepayProfit,
+          ),
+          icon: Icons
+              .trending_up_outlined,
+          color: Colors.green,
+        ),
+      ],
+    );
+  }
+
+  Widget buildAdminTools() {
+    return Column(
+      children: [
+        buildAdminTool(
+          title: 'Manage Users',
+          subtitle:
+              'View, activate, suspend and manage Servicepay users.',
+          icon: Icons
+              .manage_accounts_outlined,
+          onTap: () {
+            showComingSoon(
+              'User Management',
+            );
+          },
+        ),
+        buildAdminTool(
+          title: 'Transactions',
+          subtitle:
+              'Monitor all customer transactions.',
+          icon: Icons
+              .receipt_long_outlined,
+          onTap: () {
+            showComingSoon(
+              'Admin Transactions',
+            );
+          },
+        ),
+        buildAdminTool(
+          title: 'Delivery Management',
+          subtitle:
+              'Set delivery fees and update delivery status.',
+          icon: Icons
+              .local_shipping_outlined,
+          onTap: () {
+            showComingSoon(
+              'Delivery Management',
+            );
+          },
+        ),
+        buildAdminTool(
+          title: 'ID Verification',
+          subtitle:
+              'Review and approve customer verification requests.',
+          icon: Icons
+              .verified_user_outlined,
+          onTap: () {
+            showComingSoon(
+              'ID Verification Management',
+            );
+          },
+        ),
+        buildAdminTool(
+          title:
+              'Send Notifications',
+          subtitle:
+              'Send direct or broadcast notifications to users.',
+          icon: Icons
+              .notifications_active_outlined,
+          onTap: openNotifications,
+        ),
+        buildAdminTool(
+          title:
+              'Commission Management',
+          subtitle:
+              'Manage agent and manager commissions.',
+          icon:
+              Icons.percent_outlined,
+          onTap: () {
+            showComingSoon(
+              'Commission Management',
+            );
+          },
+        ),
+      ],
+    );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor:
+          const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        backgroundColor:
+            Colors.green,
+        foregroundColor:
+            Colors.white,
         elevation: 0,
         title: const Text(
           'Admin Dashboard',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed:
-                isLoading ? null : refreshDashboard,
-            icon: const Icon(Icons.refresh),
+            onPressed: isLoading
+                ? null
+                : refreshDashboard,
+            icon: const Icon(
+              Icons.refresh,
+            ),
           ),
           IconButton(
-            tooltip: 'Send Notifications',
-            onPressed: () {
-              openPage(
-                const AdminNotificationsScreen(),
-              );
-            },
+            tooltip:
+                'Send Notifications',
+            onPressed:
+                openNotifications,
             icon: const Icon(
-              Icons.notifications_active_outlined,
+              Icons
+                  .notifications_active_outlined,
             ),
           ),
         ],
       ),
       body: isLoading
           ? const Center(
-              child: CircularProgressIndicator(
+              child:
+                  CircularProgressIndicator(
                 color: Colors.green,
               ),
             )
           : hasError
               ? buildErrorState()
               : RefreshIndicator(
-                  onRefresh: refreshDashboard,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
+                  onRefresh:
+                      refreshDashboard,
+                  child:
+                      LayoutBuilder(
+                    builder: (
+                      context,
+                      constraints,
+                    ) {
                       final contentWidth =
-                          constraints.maxWidth > 1100
+                          constraints.maxWidth >
+                                  1100
                               ? 1050.0
                               : double.infinity;
-
-                      final crossAxisCount =
-                          constraints.maxWidth >= 900
-                              ? 4
-                              : constraints.maxWidth >= 600
-                                  ? 3
-                                  : 2;
 
                       return ListView(
                         physics:
                             const AlwaysScrollableScrollPhysics(),
                         padding:
-                            const EdgeInsets.all(18),
+                            const EdgeInsets.all(
+                          18,
+                        ),
                         children: [
                           Align(
                             alignment:
-                                Alignment.topCenter,
+                                Alignment
+                                    .topCenter,
                             child: SizedBox(
-                              width: contentWidth,
+                              width:
+                                  contentWidth,
                               child: Column(
                                 crossAxisAlignment:
                                     CrossAxisAlignment
                                         .start,
                                 children: [
-                                  Container(
-                                    width:
-                                        double.infinity,
-                                    padding:
-                                        const EdgeInsets
-                                            .all(22),
-                                    decoration:
-                                        BoxDecoration(
-                                      gradient:
-                                          const LinearGradient(
-                                        colors: [
-                                          Color(
-                                            0xFF1D7D32,
-                                          ),
-                                          Color(
-                                            0xFF48A84F,
-                                          ),
-                                        ],
-                                        begin:
-                                            Alignment.topLeft,
-                                        end: Alignment
-                                            .bottomRight,
-                                      ),
-                                      borderRadius:
-                                          BorderRadius
-                                              .circular(22),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors
-                                              .green
-                                              .withValues(
-                                            alpha: 0.24,
-                                          ),
-                                          blurRadius: 18,
-                                          offset:
-                                              const Offset(
-                                            0,
-                                            8,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment
-                                                    .start,
-                                            children: [
-                                              const Text(
-                                                'Welcome Back',
-                                                style:
-                                                    TextStyle(
-                                                  color: Colors
-                                                      .white70,
-                                                  fontSize:
-                                                      15,
-                                                ),
-                                              ),
-                                              const SizedBox(
-                                                height: 6,
-                                              ),
-                                              Text(
-                                                adminName,
-                                                style:
-                                                    const TextStyle(
-                                                  color: Colors
-                                                      .white,
-                                                  fontSize:
-                                                      26,
-                                                  fontWeight:
-                                                      FontWeight
-                                                          .bold,
-                                                ),
-                                              ),
-                                              const SizedBox(
-                                                height: 8,
-                                              ),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets
-                                                        .symmetric(
-                                                  horizontal:
-                                                      12,
-                                                  vertical:
-                                                      6,
-                                                ),
-                                                decoration:
-                                                    BoxDecoration(
-                                                  color: Colors
-                                                      .white
-                                                      .withValues(
-                                                    alpha:
-                                                        0.18,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius
-                                                          .circular(
-                                                    20,
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  adminRole
-                                                      .replaceAll(
-                                                    '_',
-                                                    ' ',
-                                                  ),
-                                                  style:
-                                                      const TextStyle(
-                                                    color: Colors
-                                                        .white,
-                                                    fontWeight:
-                                                        FontWeight
-                                                            .w600,
-                                                    fontSize:
-                                                        12,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const Icon(
-                                          Icons
-                                              .admin_panel_settings_rounded,
-                                          color:
-                                              Colors.white,
-                                          size: 64,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                  buildHeader(),
                                   const SizedBox(
                                     height: 26,
                                   ),
                                   const Text(
                                     'Overview',
-                                    style: TextStyle(
+                                    style:
+                                        TextStyle(
                                       fontSize: 20,
                                       fontWeight:
-                                          FontWeight.bold,
+                                          FontWeight
+                                              .bold,
                                     ),
                                   ),
                                   const SizedBox(
                                     height: 15,
                                   ),
-                                  GridView.count(
-                                    crossAxisCount:
-                                        crossAxisCount,
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    mainAxisSpacing: 14,
-                                    crossAxisSpacing: 14,
-                                    childAspectRatio:
-                                        constraints
-                                                    .maxWidth <
-                                                600
-                                            ? 1.38
-                                            : 1.5,
-                                    children: [
-                                      buildStatCard(
-                                        title:
-                                            'Total Users',
-                                        value: totalUsers
-                                            .toString(),
-                                        icon: Icons
-                                            .groups_outlined,
-                                        color:
-                                            Colors.blue,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Active Users',
-                                        value: activeUsers
-                                            .toString(),
-                                        icon: Icons
-                                            .verified_user_outlined,
-                                        color:
-                                            Colors.green,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Customers',
-                                        value:
-                                            totalCustomers
-                                                .toString(),
-                                        icon: Icons
-                                            .person_outline,
-                                        color:
-                                            Colors.indigo,
-                                      ),
-                                      buildStatCard(
-                                        title: 'Agents',
-                                        value:
-                                            totalAgents
-                                                .toString(),
-                                        icon: Icons
-                                            .support_agent_outlined,
-                                        color:
-                                            Colors.teal,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Transactions',
-                                        value:
-                                            totalTransactions
-                                                .toString(),
-                                        icon: Icons
-                                            .receipt_long_outlined,
-                                        color:
-                                            Colors.purple,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Transaction Value',
-                                        value:
-                                            formatMoney(
-                                          totalTransactionValue,
-                                        ),
-                                        icon: Icons
-                                            .payments_outlined,
-                                        color:
-                                            Colors.deepPurple,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Wallet Balance',
-                                        value:
-                                            formatMoney(
-                                          totalWalletBalance,
-                                        ),
-                                        icon: Icons
-                                            .account_balance_wallet_outlined,
-                                        color:
-                                            Colors.orange,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Pending KYC',
-                                        value:
-                                            pendingVerifications
-                                                .toString(),
-                                        icon: Icons
-                                            .badge_outlined,
-                                        color:
-                                            Colors.deepOrange,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Successful',
-                                        value:
-                                            successfulTransactions
-                                                .toString(),
-                                        icon: Icons
-                                            .check_circle_outline,
-                                        color:
-                                            Colors.green,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Pending Transactions',
-                                        value:
-                                            pendingTransactions
-                                                .toString(),
-                                        icon: Icons
-                                            .schedule_outlined,
-                                        color:
-                                            Colors.orange,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Failed Transactions',
-                                        value:
-                                            failedTransactions
-                                                .toString(),
-                                        icon: Icons
-                                            .error_outline,
-                                        color:
-                                            Colors.red,
-                                      ),
-                                      buildStatCard(
-                                        title:
-                                            'Servicepay Profit',
-                                        value:
-                                            formatMoney(
-                                          servicepayProfit,
-                                        ),
-                                        icon: Icons
-                                            .trending_up_outlined,
-                                        color:
-                                            Colors.green,
-                                      ),
-                                    ],
+                                  buildOverviewGrid(
+                                    constraints,
                                   ),
                                   const SizedBox(
                                     height: 26,
@@ -1115,93 +1343,18 @@ class _AdminDashboardScreenState
                                   ),
                                   const Text(
                                     'Admin Tools',
-                                    style: TextStyle(
+                                    style:
+                                        TextStyle(
                                       fontSize: 20,
                                       fontWeight:
-                                          FontWeight.bold,
+                                          FontWeight
+                                              .bold,
                                     ),
                                   ),
                                   const SizedBox(
                                     height: 14,
                                   ),
-                                  buildAdminAction(
-                                    title:
-                                        'Manage Users',
-                                    subtitle:
-                                        'View, activate, suspend and manage Servicepay users.',
-                                    icon: Icons
-                                        .manage_accounts_outlined,
-                                    onTap: () {
-                                      showComingSoon(
-                                        'User Management',
-                                      );
-                                    },
-                                  ),
-                                  buildAdminAction(
-                                    title:
-                                        'Transactions',
-                                    subtitle:
-                                        'Monitor all customer transactions.',
-                                    icon: Icons
-                                        .receipt_long_outlined,
-                                    onTap: () {
-                                      showComingSoon(
-                                        'Admin Transactions',
-                                      );
-                                    },
-                                  ),
-                                  buildAdminAction(
-                                    title:
-                                        'Delivery Management',
-                                    subtitle:
-                                        'Set delivery fees and update delivery status.',
-                                    icon: Icons
-                                        .local_shipping_outlined,
-                                    onTap: () {
-                                      showComingSoon(
-                                        'Delivery Management',
-                                      );
-                                    },
-                                  ),
-                                  buildAdminAction(
-                                    title:
-                                        'ID Verification',
-                                    subtitle:
-                                        'Review and approve customer verification requests.',
-                                    icon: Icons
-                                        .verified_user_outlined,
-                                    onTap: () {
-                                      showComingSoon(
-                                        'ID Verification Management',
-                                      );
-                                    },
-                                  ),
-                                  buildAdminAction(
-                                    title:
-                                        'Send Notifications',
-                                    subtitle:
-                                        'Send direct or broadcast notifications to users.',
-                                    icon: Icons
-                                        .notifications_active_outlined,
-                                    onTap: () {
-                                      openPage(
-                                        const AdminNotificationsScreen(),
-                                      );
-                                    },
-                                  ),
-                                  buildAdminAction(
-                                    title:
-                                        'Commission Management',
-                                    subtitle:
-                                        'Manage agent and manager commissions.',
-                                    icon: Icons
-                                        .percent_outlined,
-                                    onTap: () {
-                                      showComingSoon(
-                                        'Commission Management',
-                                      );
-                                    },
-                                  ),
+                                  buildAdminTools(),
                                 ],
                               ),
                             ),

@@ -50,7 +50,7 @@ jobs:
         run: |
           flutter build web \
             --release \
-            --target=lib/main.dart \
+            --target=lib/admin/ain.dart \
             --base-href=/
 
       - name: Add Admin Custom Domain

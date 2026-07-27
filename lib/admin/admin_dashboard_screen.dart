@@ -919,19 +919,12 @@ Future<void> openTransactions() async {
           icon: Icons.manage_accounts_outlined,
           onTap: openUsers,
         ),
-        buildAdminTool(
-          title: 'Transactions',
-          subtitle: 'Monitor all customer transactions.',
-          icon: Icons.receipt_long_outlined,
-          onTap: () {
-            openModule(
-              title: 'Transactions',
-              description:
-                  'Review customer transactions, payment status, references and service information.',
-              icon: Icons.receipt_long_outlined,
-            );
-          },
-        ),
+       buildAdminTool(
+  title: 'Transactions',
+  subtitle: 'Monitor all customer transactions.',
+  icon: Icons.receipt_long_outlined,
+  onTap: openTransactions,
+),
         buildAdminTool(
           title: 'Delivery Management',
           subtitle:

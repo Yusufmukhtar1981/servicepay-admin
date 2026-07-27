@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   getAdminDashboard,
+  getAdminTransactions,
 } = require("../controllers/admin.controller");
 
 const {
@@ -16,6 +17,13 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminDashboard
+);
+
+router.get(
+  "/transactions",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminTransactions
 );
 
 module.exports = router;

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'admin_transactions_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'users_screen.dart';
 
@@ -346,7 +346,19 @@ class _AdminDashboardScreenState
       await refreshDashboard();
     }
   }
+Future<void> openTransactions() async {
+  await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) =>
+          const AdminTransactionsScreen(),
+    ),
+  );
 
+  if (mounted) {
+    await refreshDashboard();
+  }
+}
   Future<void> openNotifications() async {
     await Navigator.push(
       context,

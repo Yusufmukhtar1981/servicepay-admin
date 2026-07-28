@@ -379,6 +379,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         'SUPER_ADMIN',
         'HEAD_OFFICE',
         'HEAD_OFFICE_ADMIN',
+        'ZONAL_MANAGER',
+        'STATE_MANAGER',
       };
 
       if (!allowedAdminRoles.contains(role)) {

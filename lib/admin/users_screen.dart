@@ -478,10 +478,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            tooltip: 'Create Account',
-            onPressed: isUpdating
-                ? null
-                : () async {
+            tooltip: 'Create Managed Account',
+            onPressed: () async {
                     final created =
                         await showCreateAdminUserDialog(
                       context,
@@ -503,9 +501,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: isUpdating
-            ? null
-            : () async {
+        onPressed: () async {
                 final created =
                     await showCreateAdminUserDialog(
                   context,

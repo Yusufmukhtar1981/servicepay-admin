@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'create_admin_user_dialog.dart';
+
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
 
@@ -475,6 +477,25 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Create Account',
+            onPressed: isUpdating
+                ? null
+                : () async {
+                    final created =
+                        await showCreateAdminUserDialog(
+                      context,
+                      users,
+                    );
+
+                    if (created == true) {
+                      await loadUsers();
+                    }
+                  },
+            icon: const Icon(
+              Icons.person_add_alt_1,
+            ),
+          ),
           IconButton(
             onPressed: isLoading ? null : loadUsers,
             icon: const Icon(Icons.refresh),

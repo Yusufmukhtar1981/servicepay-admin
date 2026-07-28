@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'admin_dashboard_screen.dart';
+import 'admin_delivery_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 
@@ -18,6 +19,7 @@ class _AdminMainNavigationState
 
   final List<Widget> pages = const [
     AdminDashboardScreen(),
+    AdminDeliveryScreen(),
     AdminManualFundingScreen(),
     AdminNotificationsScreen(),
     Center(
@@ -47,13 +49,13 @@ class _AdminMainNavigationState
             const Color(0xFF94A3B8),
         backgroundColor: Colors.white,
         elevation: 12,
+        selectedFontSize: 10,
+        unselectedFontSize: 10,
         selectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w700,
-          fontSize: 11,
         ),
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.w600,
-          fontSize: 11,
         ),
         onTap: (int index) {
           setState(() {
@@ -72,6 +74,15 @@ class _AdminMainNavigationState
           ),
           BottomNavigationBarItem(
             icon: Icon(
+              Icons.local_shipping_outlined,
+            ),
+            activeIcon: Icon(
+              Icons.local_shipping_rounded,
+            ),
+            label: 'Deliveries',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(
               Icons.account_balance_wallet_outlined,
             ),
             activeIcon: Icon(
@@ -86,7 +97,7 @@ class _AdminMainNavigationState
             activeIcon: Icon(
               Icons.notifications_rounded,
             ),
-            label: 'Notifications',
+            label: 'Alerts',
           ),
           BottomNavigationBarItem(
             icon: Icon(

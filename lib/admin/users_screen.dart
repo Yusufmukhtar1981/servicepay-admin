@@ -502,6 +502,25 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: isUpdating
+            ? null
+            : () async {
+                final created =
+                    await showCreateAdminUserDialog(
+                  context,
+                  users,
+                );
+
+                if (created == true) {
+                  await loadUsers();
+                }
+              },
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.person_add_alt_1),
+        label: const Text('Create Account'),
+      ),
       body: Column(
         children: [
           Container(

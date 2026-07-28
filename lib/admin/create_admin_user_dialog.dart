@@ -40,6 +40,8 @@ class _CreateAdminUserDialogState
   final lgaController = TextEditingController();
 
   String role = 'ZONAL_MANAGER';
+  String creatorRole = 'HEAD_OFFICE';
+  String? creatorId;
   String status = 'ACTIVE';
   String? zone;
   String? zonalManagerId;
@@ -56,6 +58,48 @@ class _CreateAdminUserDialogState
     'South South',
     'South West',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadCreatorDetails();
+  }
+
+  Future<void> loadCreatorDetails() async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    final savedRole =
+        (prefs.getString('user_role') ??
+                prefs.getString('admin_role') ??
+                'HEAD_OFFICE')
+            .trim()
+            .toUpperCase();
+
+    final savedId =
+        prefs.getString('user_id') ??
+        prefs.getString('admin_id');
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      creatorRole = savedRole;
+      creatorId = savedId;
+
+      if (creatorRole == 'ZONAL_MANAGER') {
+        role = 'STATE_MANAGER';
+        zonalManagerId = creatorId;
+      } else if (creatorRole ==
+          'STATE_MANAGER') {
+        role = 'AGENT';
+        stateManagerId = creatorId;
+      } else {
+        role = 'ZONAL_MANAGER';
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -139,12 +183,14 @@ class _CreateAdminUserDialogState
     }
 
     if (role == 'STATE_MANAGER' &&
+        creatorRole == 'HEAD_OFFICE' &&
         zonalManagerId == null) {
       showMessage('Select a Zonal Manager.');
       return;
     }
 
     if (role == 'AGENT' &&
+        creatorRole == 'HEAD_OFFICE' &&
         stateManagerId == null) {
       showMessage('Select a State Manager.');
       return;
@@ -267,21 +313,36 @@ class _CreateAdminUserDialogState
                   labelText: 'Role',
                   border: OutlineInputBorder(),
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'ZONAL_MANAGER',
-                    child: Text('Zonal Manager'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'STATE_MANAGER',
-                    child: Text('State Manager'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'AGENT',
-                    child: Text('Agent'),
-                  ),
-                ],
-                onChanged: saving
+                items: creatorRole == 'ZONAL_MANAGER'
+                    ? const [
+                        DropdownMenuItem(
+                          value: 'STATE_MANAGER',
+                          child: Text('State Manager'),
+                        ),
+                      ]
+                    : creatorRole == 'STATE_MANAGER'
+                        ? const [
+                            DropdownMenuItem(
+                              value: 'AGENT',
+                              child: Text('Agent'),
+                            ),
+                          ]
+                        : const [
+                            DropdownMenuItem(
+                              value: 'ZONAL_MANAGER',
+                              child: Text('Zonal Manager'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'STATE_MANAGER',
+                              child: Text('State Manager'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'AGENT',
+                              child: Text('Agent'),
+                            ),
+                          ],
+                onChanged: saving ||
+                        creatorRole != 'HEAD_OFFICE'
                     ? null
                     : (value) {
                         if (value == null) {
@@ -401,7 +462,8 @@ class _CreateAdminUserDialogState
                   ),
                 ),
               ],
-              if (role == 'STATE_MANAGER') ...[
+              if (role == 'STATE_MANAGER' &&
+                  creatorRole == 'HEAD_OFFICE') ...[
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   value: zonalManagerId,
@@ -434,7 +496,8 @@ class _CreateAdminUserDialogState
                         },
                 ),
               ],
-              if (role == 'AGENT') ...[
+              if (role == 'AGENT' &&
+                  creatorRole == 'HEAD_OFFICE') ...[
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   value: stateManagerId,

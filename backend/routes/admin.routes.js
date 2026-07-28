@@ -3,6 +3,8 @@ const express = require("express");
 const {
   getAdminDashboard,
   getAdminTransactions,
+  getAdminDeliveries,
+  updateDeliveryStatus,
 } = require("../controllers/admin.controller");
 
 const {
@@ -24,6 +26,20 @@ router.get(
   protect,
   adminOnly("HEAD_OFFICE"),
   getAdminTransactions
+);
+
+router.get(
+  "/deliveries",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminDeliveries
+);
+
+router.patch(
+  "/deliveries/:id/status",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateDeliveryStatus
 );
 
 module.exports = router;

@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminDeliveryScreen extends StatefulWidget {
   const AdminDeliveryScreen({super.key});
@@ -10,24 +14,38 @@ class AdminDeliveryScreen extends StatefulWidget {
 
 class _AdminDeliveryScreenState
     extends State<AdminDeliveryScreen> {
+  static const String baseUrl =
+      'https://api.servicepay.ng/api';
+
   final TextEditingController searchController =
       TextEditingController();
 
+  List<Map<String, dynamic>> deliveries = [];
+
   String selectedStatus = 'ALL';
 
-  final List<Map<String, dynamic>> deliveries = [
-    {
-      'trackingId': 'SP-DEL-1001',
-      'customerName': 'ServicePay Customer',
-      'customerPhone': '08000000000',
-      'pickupAddress': 'Kano Municipal, Kano',
-      'destinationAddress': 'Nassarawa, Kano',
-      'packageDescription': 'Small Package',
-      'deliveryFee': 1500.0,
-      'status': 'PENDING',
-      'createdAt': 'Today',
-    },
-  ];
+  bool isLoading = true;
+  bool isRefreshing = false;
+  bool hasError = false;
+
+  String errorMessage = '';
+
+  int totalDeliveries = 0;
+  int pendingDeliveries = 0;
+  int acceptedDeliveries = 0;
+  int pickedUpDeliveries = 0;
+  int inTransitDeliveries = 0;
+  int deliveredDeliveries = 0;
+  int cancelledDeliveries = 0;
+  int failedDeliveries = 0;
+
+  double totalRevenue = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    loadDeliveries();
+  }
 
   @override
   void dispose() {
@@ -35,61 +53,452 @@ class _AdminDeliveryScreenState
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get filteredDeliveries {
-    final String search =
-        searchController.text.trim().toLowerCase();
+  Future<String?> getToken() async {
+    final prefs =
+        await SharedPreferences.getInstance();
 
-    return deliveries.where((delivery) {
-      final String status =
-          delivery['status'].toString().toUpperCase();
-
-      final bool matchesStatus =
-          selectedStatus == 'ALL' ||
-              status == selectedStatus;
-
-      final bool matchesSearch =
-          search.isEmpty ||
-              delivery['trackingId']
-                  .toString()
-                  .toLowerCase()
-                  .contains(search) ||
-              delivery['customerName']
-                  .toString()
-                  .toLowerCase()
-                  .contains(search) ||
-              delivery['customerPhone']
-                  .toString()
-                  .toLowerCase()
-                  .contains(search);
-
-      return matchesStatus && matchesSearch;
-    }).toList();
+    return prefs.getString('auth_token') ??
+        prefs.getString('token');
   }
 
-  int countByStatus(String status) {
-    return deliveries.where((delivery) {
-      return delivery['status']
-              .toString()
-              .toUpperCase() ==
-          status;
-    }).length;
-  }
-
-  Color getStatusColor(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED':
-        return Colors.blue;
-      case 'PICKED_UP':
-        return Colors.deepPurple;
-      case 'IN_TRANSIT':
-        return Colors.orange;
-      case 'DELIVERED':
-        return Colors.green;
-      case 'CANCELLED':
-        return Colors.red;
-      default:
-        return Colors.amber.shade800;
+  Future<void> loadDeliveries({
+    bool showLoading = true,
+  }) async {
+    if (showLoading) {
+      setState(() {
+        isLoading = true;
+        hasError = false;
+        errorMessage = '';
+      });
+    } else {
+      setState(() {
+        isRefreshing = true;
+      });
     }
+
+    try {
+      final token = await getToken();
+
+      if (token == null || token.trim().isEmpty) {
+        throw Exception(
+          'Admin session has expired. Please sign in again.',
+        );
+      }
+
+      final queryParameters = <String, String>{
+        'page': '1',
+        'limit': '100',
+      };
+
+      final search =
+          searchController.text.trim();
+
+      if (search.isNotEmpty) {
+        queryParameters['search'] = search;
+      }
+
+      if (selectedStatus != 'ALL') {
+        queryParameters['status'] =
+            selectedStatus;
+      }
+
+      final uri = Uri.parse(
+        '$baseUrl/admin/deliveries',
+      ).replace(
+        queryParameters: queryParameters,
+      );
+
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 45),
+          );
+
+      dynamic decoded;
+
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        throw Exception(
+          'The server returned an invalid response.',
+        );
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        final message = decoded is Map
+            ? decoded['message']?.toString()
+            : null;
+
+        throw Exception(
+          message ??
+              'Failed to load deliveries.',
+        );
+      }
+
+      final root = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+
+      final rawData = root['data'];
+
+      final data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : <String, dynamic>{};
+
+      final rawDeliveries = data['deliveries'];
+
+      final loadedDeliveries =
+          rawDeliveries is List
+              ? rawDeliveries
+                  .whereType<Map>()
+                  .map(
+                    (item) =>
+                        Map<String, dynamic>.from(
+                      item,
+                    ),
+                  )
+                  .toList()
+              : <Map<String, dynamic>>[];
+
+      final rawSummary = data['summary'];
+
+      final summary = rawSummary is Map
+          ? Map<String, dynamic>.from(
+              rawSummary,
+            )
+          : <String, dynamic>{};
+
+      if (!mounted) return;
+
+      setState(() {
+        deliveries = loadedDeliveries;
+
+        totalDeliveries = toInt(
+          summary['total'],
+        );
+
+        pendingDeliveries = toInt(
+          summary['pending'],
+        );
+
+        acceptedDeliveries = toInt(
+          summary['accepted'] ??
+              summary['assigned'],
+        );
+
+        pickedUpDeliveries = toInt(
+          summary['pickedUp'],
+        );
+
+        inTransitDeliveries = toInt(
+          summary['inTransit'],
+        );
+
+        deliveredDeliveries = toInt(
+          summary['delivered'],
+        );
+
+        cancelledDeliveries = toInt(
+          summary['cancelled'],
+        );
+
+        failedDeliveries = toInt(
+          summary['failed'],
+        );
+
+        totalRevenue = toDouble(
+          summary['totalRevenue'],
+        );
+
+        isLoading = false;
+        isRefreshing = false;
+        hasError = false;
+        errorMessage = '';
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+        isRefreshing = false;
+        hasError = true;
+        errorMessage = cleanError(error);
+      });
+    }
+  }
+
+  Future<void> updateDeliveryStatus({
+    required Map<String, dynamic> delivery,
+    required String status,
+  }) async {
+    final deliveryId =
+        delivery['_id']?.toString() ?? '';
+
+    if (deliveryId.isEmpty) {
+      showMessage(
+        'Invalid delivery ID.',
+        isError: true,
+      );
+      return;
+    }
+
+    try {
+      final token = await getToken();
+
+      if (token == null || token.trim().isEmpty) {
+        throw Exception(
+          'Admin session has expired. Please sign in again.',
+        );
+      }
+
+      final response = await http
+          .patch(
+            Uri.parse(
+              '$baseUrl/admin/deliveries/'
+              '$deliveryId/status',
+            ),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type':
+                  'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'status': status,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 45),
+          );
+
+      dynamic decoded;
+
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        throw Exception(
+          'The server returned an invalid response.',
+        );
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        final message = decoded is Map
+            ? decoded['message']?.toString()
+            : null;
+
+        throw Exception(
+          message ??
+              'Failed to update delivery status.',
+        );
+      }
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop();
+
+      showMessage(
+        'Delivery status updated successfully.',
+      );
+
+      await loadDeliveries(
+        showLoading: false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      showMessage(
+        cleanError(error),
+        isError: true,
+      );
+    }
+  }
+
+  int toInt(dynamic value) {
+    if (value is int) return value;
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  double toDouble(dynamic value) {
+    if (value is double) return value;
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  String cleanError(Object error) {
+    return error
+        .toString()
+        .replaceFirst(
+          'Exception: ',
+          '',
+        );
+  }
+
+  String getCustomerName(
+    Map<String, dynamic> delivery,
+  ) {
+    final customer = delivery['customerId'];
+
+    if (customer is Map) {
+      return customer['fullName']
+              ?.toString()
+              .trim()
+              .isNotEmpty ==
+          true
+          ? customer['fullName'].toString()
+          : customer['name']
+                      ?.toString()
+                      .trim()
+                      .isNotEmpty ==
+                  true
+              ? customer['name'].toString()
+              : delivery['senderName']
+                      ?.toString() ??
+                  'ServicePay Customer';
+    }
+
+    return delivery['senderName']
+            ?.toString() ??
+        'ServicePay Customer';
+  }
+
+  String getCustomerPhone(
+    Map<String, dynamic> delivery,
+  ) {
+    final customer = delivery['customerId'];
+
+    if (customer is Map) {
+      final phone =
+          customer['phone']?.toString();
+
+      if (phone != null &&
+          phone.trim().isNotEmpty) {
+        return phone;
+      }
+    }
+
+    return delivery['senderPhone']
+            ?.toString() ??
+        'Not available';
+  }
+
+  String getTrackingNumber(
+    Map<String, dynamic> delivery,
+  ) {
+    return delivery['trackingNumber']
+            ?.toString() ??
+        delivery['trackingId']?.toString() ??
+        'No tracking number';
+  }
+
+  String getPackageName(
+    Map<String, dynamic> delivery,
+  ) {
+    final packageName =
+        delivery['packageName']?.toString();
+
+    final description =
+        delivery['packageDescription']
+            ?.toString();
+
+    if (packageName != null &&
+        packageName.trim().isNotEmpty) {
+      return packageName;
+    }
+
+    if (description != null &&
+        description.trim().isNotEmpty) {
+      return description;
+    }
+
+    return 'Package';
+  }
+
+  String formatDate(dynamic value) {
+    if (value == null) {
+      return 'Not available';
+    }
+
+    final date =
+        DateTime.tryParse(value.toString());
+
+    if (date == null) {
+      return value.toString();
+    }
+
+    final localDate = date.toLocal();
+
+    final now = DateTime.now();
+
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+
+    final deliveryDay = DateTime(
+      localDate.year,
+      localDate.month,
+      localDate.day,
+    );
+
+    final difference =
+        today.difference(deliveryDay).inDays;
+
+    if (difference == 0) {
+      return 'Today';
+    }
+
+    if (difference == 1) {
+      return 'Yesterday';
+    }
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${localDate.day} '
+        '${months[localDate.month - 1]} '
+        '${localDate.year}';
+  }
+
+  String formatMoney(dynamic value) {
+    final amount = toDouble(value);
+
+    return '₦${amount.toStringAsFixed(2)}';
   }
 
   String formatStatus(String status) {
@@ -105,18 +514,64 @@ class _AdminDeliveryScreenState
         .join(' ');
   }
 
+  Color getStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'ACCEPTED':
+        return Colors.blue;
+
+      case 'PICKED_UP':
+        return Colors.deepPurple;
+
+      case 'IN_TRANSIT':
+        return Colors.orange;
+
+      case 'DELIVERED':
+        return Colors.green;
+
+      case 'CANCELLED':
+        return Colors.red;
+
+      case 'FAILED':
+        return Colors.red.shade900;
+
+      default:
+        return Colors.amber.shade800;
+    }
+  }
+
+  void showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError
+              ? Colors.red.shade700
+              : const Color(0xFF0F766E),
+        ),
+      );
+  }
+
   void showDeliveryDetails(
     Map<String, dynamic> delivery,
   ) {
+    final status =
+        delivery['status']?.toString() ??
+            'PENDING';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (bottomSheetContext) {
         return Container(
           constraints: BoxConstraints(
             maxHeight:
-                MediaQuery.of(context).size.height * 0.88,
+                MediaQuery.of(context).size.height *
+                    0.90,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -141,8 +596,9 @@ class _AdminDeliveryScreenState
                     child: Container(
                       width: 45,
                       height: 5,
-                      margin:
-                          const EdgeInsets.only(bottom: 20),
+                      margin: const EdgeInsets.only(
+                        bottom: 20,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade300,
                         borderRadius:
@@ -156,8 +612,11 @@ class _AdminDeliveryScreenState
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F766E)
-                              .withValues(alpha: 0.10),
+                          color:
+                              const Color(0xFF0F766E)
+                                  .withValues(
+                            alpha: 0.10,
+                          ),
                           borderRadius:
                               BorderRadius.circular(14),
                         ),
@@ -173,8 +632,9 @@ class _AdminDeliveryScreenState
                               CrossAxisAlignment.start,
                           children: [
                             Text(
-                              delivery['trackingId']
-                                  .toString(),
+                              getTrackingNumber(
+                                delivery,
+                              ),
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight:
@@ -183,8 +643,9 @@ class _AdminDeliveryScreenState
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              delivery['createdAt']
-                                  .toString(),
+                              formatDate(
+                                delivery['createdAt'],
+                              ),
                               style: TextStyle(
                                 color:
                                     Colors.grey.shade600,
@@ -194,65 +655,117 @@ class _AdminDeliveryScreenState
                         ),
                       ),
                       _StatusBadge(
-                        text: formatStatus(
-                          delivery['status'].toString(),
-                        ),
-                        color: getStatusColor(
-                          delivery['status'].toString(),
-                        ),
+                        text:
+                            formatStatus(status),
+                        color:
+                            getStatusColor(status),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
                   _DetailSection(
-                    title: 'Customer Information',
+                    title:
+                        'Customer Information',
                     children: [
                       _DetailRow(
-                        icon: Icons.person_outline,
+                        icon:
+                            Icons.person_outline,
                         label: 'Customer',
-                        value: delivery['customerName']
-                            .toString(),
+                        value: getCustomerName(
+                          delivery,
+                        ),
                       ),
                       _DetailRow(
-                        icon: Icons.phone_outlined,
+                        icon:
+                            Icons.phone_outlined,
                         label: 'Phone',
-                        value: delivery['customerPhone']
-                            .toString(),
+                        value: getCustomerPhone(
+                          delivery,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _DetailSection(
-                    title: 'Delivery Information',
+                    title:
+                        'Delivery Information',
                     children: [
                       _DetailRow(
-                        icon:
-                            Icons.location_on_outlined,
+                        icon: Icons
+                            .location_on_outlined,
                         label: 'Pickup',
-                        value: delivery['pickupAddress']
-                            .toString(),
+                        value: delivery[
+                                    'pickupAddress']
+                                ?.toString() ??
+                            'Not available',
                       ),
                       _DetailRow(
-                        icon: Icons.flag_outlined,
+                        icon:
+                            Icons.flag_outlined,
                         label: 'Destination',
                         value: delivery[
-                                'destinationAddress']
-                            .toString(),
+                                    'deliveryAddress']
+                                ?.toString() ??
+                            'Not available',
+                      ),
+                      _DetailRow(
+                        icon: Icons
+                            .inventory_2_outlined,
+                        label: 'Package',
+                        value: getPackageName(
+                          delivery,
+                        ),
                       ),
                       _DetailRow(
                         icon:
-                            Icons.inventory_2_outlined,
-                        label: 'Package',
-                        value: delivery[
-                                'packageDescription']
-                            .toString(),
+                            Icons.scale_outlined,
+                        label: 'Weight',
+                        value:
+                            '${toDouble(delivery['packageWeight']).toStringAsFixed(2)} kg',
                       ),
                       _DetailRow(
                         icon:
                             Icons.payments_outlined,
                         label: 'Delivery Fee',
-                        value:
-                            '₦${delivery['deliveryFee'].toStringAsFixed(2)}',
+                        value: formatMoney(
+                          delivery['deliveryFee'],
+                        ),
+                      ),
+                      _DetailRow(
+                        icon: Icons
+                            .account_balance_wallet_outlined,
+                        label: 'Payment Status',
+                        value: formatStatus(
+                          delivery[
+                                      'paymentStatus']
+                                  ?.toString() ??
+                              'UNPAID',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _DetailSection(
+                    title:
+                        'Receiver Information',
+                    children: [
+                      _DetailRow(
+                        icon:
+                            Icons.person_outline,
+                        label: 'Receiver',
+                        value: delivery[
+                                    'receiverName']
+                                ?.toString() ??
+                            'Not available',
+                      ),
+                      _DetailRow(
+                        icon:
+                            Icons.phone_outlined,
+                        label: 'Receiver Phone',
+                        value: delivery[
+                                    'receiverPhone']
+                                ?.toString() ??
+                            'Not available',
                       ),
                     ],
                   ),
@@ -262,16 +775,26 @@ class _AdminDeliveryScreenState
                     height: 52,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        Navigator.pop(context);
-                        showStatusDialog(delivery);
+                        Navigator.of(
+                          bottomSheetContext,
+                        ).pop();
+
+                        showStatusDialog(
+                          delivery,
+                        );
                       },
-                      style: ElevatedButton.styleFrom(
+                      style:
+                          ElevatedButton.styleFrom(
                         backgroundColor:
                             const Color(0xFF0F766E),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
+                        foregroundColor:
+                            Colors.white,
+                        shape:
+                            RoundedRectangleBorder(
                           borderRadius:
-                              BorderRadius.circular(14),
+                              BorderRadius.circular(
+                            14,
+                          ),
                         ),
                       ),
                       icon: const Icon(
@@ -280,7 +803,8 @@ class _AdminDeliveryScreenState
                       label: const Text(
                         'Update Delivery Status',
                         style: TextStyle(
-                          fontWeight: FontWeight.w700,
+                          fontWeight:
+                              FontWeight.w700,
                         ),
                       ),
                     ),
@@ -298,25 +822,40 @@ class _AdminDeliveryScreenState
     Map<String, dynamic> delivery,
   ) {
     String newStatus =
-        delivery['status'].toString().toUpperCase();
+        delivery['status']
+                ?.toString()
+                .toUpperCase() ??
+            'PENDING';
 
     const statuses = [
       'PENDING',
-      'ASSIGNED',
+      'ACCEPTED',
       'PICKED_UP',
       'IN_TRANSIT',
       'DELIVERED',
       'CANCELLED',
+      'FAILED',
     ];
+
+    if (!statuses.contains(newStatus)) {
+      newStatus = 'PENDING';
+    }
+
+    bool isUpdating = false;
 
     showDialog(
       context: context,
-      builder: (context) {
+      barrierDismissible: false,
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (
+            dialogContext,
+            setDialogState,
+          ) {
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius:
+                    BorderRadius.circular(20),
               ),
               title: const Text(
                 'Update Delivery Status',
@@ -324,7 +863,8 @@ class _AdminDeliveryScreenState
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              content: DropdownButtonFormField<String>(
+              content:
+                  DropdownButtonFormField<String>(
                 initialValue: newStatus,
                 decoration: InputDecoration(
                   labelText: 'Delivery Status',
@@ -336,49 +876,70 @@ class _AdminDeliveryScreenState
                 items: statuses.map((status) {
                   return DropdownMenuItem(
                     value: status,
-                    child: Text(formatStatus(status)),
+                    child: Text(
+                      formatStatus(status),
+                    ),
                   );
                 }).toList(),
-                onChanged: (value) {
-                  if (value == null) return;
+                onChanged: isUpdating
+                    ? null
+                    : (value) {
+                        if (value == null) {
+                          return;
+                        }
 
-                  setDialogState(() {
-                    newStatus = value;
-                  });
-                },
+                        setDialogState(() {
+                          newStatus = value;
+                        });
+                      },
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
+                  onPressed: isUpdating
+                      ? null
+                      : () {
+                          Navigator.of(
+                            dialogContext,
+                          ).pop();
+                        },
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      delivery['status'] = newStatus;
-                    });
+                  onPressed: isUpdating
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isUpdating = true;
+                          });
 
-                    Navigator.pop(context);
+                          await updateDeliveryStatus(
+                            delivery: delivery,
+                            status: newStatus,
+                          );
 
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Delivery status updated.',
-                        ),
-                        backgroundColor:
-                            Color(0xFF0F766E),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
+                          if (mounted) {
+                            setDialogState(() {
+                              isUpdating = false;
+                            });
+                          }
+                        },
+                  style:
+                      ElevatedButton.styleFrom(
                     backgroundColor:
                         const Color(0xFF0F766E),
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('Update'),
+                  child: isUpdating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Update'),
                 ),
               ],
             );
@@ -397,7 +958,8 @@ class _AdminDeliveryScreenState
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -418,8 +980,11 @@ class _AdminDeliveryScreenState
             height: 44,
             decoration: BoxDecoration(
               color: const Color(0xFF0F766E)
-                  .withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(13),
+                  .withValues(
+                alpha: 0.10,
+              ),
+              borderRadius:
+                  BorderRadius.circular(13),
             ),
             child: Icon(
               icon,
@@ -444,11 +1009,14 @@ class _AdminDeliveryScreenState
                 Text(
                   title,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w600,
+                    color:
+                        Colors.grey.shade600,
+                    fontWeight:
+                        FontWeight.w600,
                   ),
                 ),
               ],
@@ -459,14 +1027,491 @@ class _AdminDeliveryScreenState
     );
   }
 
+  Widget buildLoadingState() {
+    return const Center(
+      child: CircularProgressIndicator(
+        color: Color(0xFF0F766E),
+      ),
+    );
+  }
+
+  Widget buildErrorState() {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize:
+              MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 70,
+              color: Colors.red.shade300,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Unable to load deliveries',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: loadDeliveries,
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFF0F766E),
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(
+                Icons.refresh_rounded,
+              ),
+              label: const Text('Try Again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildDeliveryContent() {
+    return RefreshIndicator(
+      onRefresh: () {
+        return loadDeliveries(
+          showLoading: false,
+        );
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          GridView.count(
+            crossAxisCount:
+                MediaQuery.of(context).size.width >
+                        700
+                    ? 4
+                    : 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 2.0,
+            shrinkWrap: true,
+            physics:
+                const NeverScrollableScrollPhysics(),
+            children: [
+              buildSummaryCard(
+                title: 'Total Deliveries',
+                value: totalDeliveries,
+                icon:
+                    Icons.local_shipping_outlined,
+              ),
+              buildSummaryCard(
+                title: 'Pending',
+                value: pendingDeliveries,
+                icon: Icons.schedule_rounded,
+              ),
+              buildSummaryCard(
+                title: 'In Transit',
+                value: inTransitDeliveries,
+                icon: Icons.route_outlined,
+              ),
+              buildSummaryCard(
+                title: 'Delivered',
+                value: deliveredDeliveries,
+                icon: Icons
+                    .check_circle_outline_rounded,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: searchController,
+            textInputAction:
+                TextInputAction.search,
+            onSubmitted: (_) {
+              loadDeliveries();
+            },
+            decoration: InputDecoration(
+              hintText:
+                  'Search tracking ID, customer or phone',
+              prefixIcon:
+                  const Icon(Icons.search_rounded),
+              suffixIcon: searchController
+                      .text.isNotEmpty
+                  ? IconButton(
+                      onPressed: () {
+                        searchController.clear();
+                        loadDeliveries();
+                      },
+                      icon: const Icon(
+                        Icons.close_rounded,
+                      ),
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide: BorderSide(
+                  color: Colors.grey.shade200,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 42,
+            child: ListView(
+              scrollDirection:
+                  Axis.horizontal,
+              children: [
+                'ALL',
+                'PENDING',
+                'ACCEPTED',
+                'PICKED_UP',
+                'IN_TRANSIT',
+                'DELIVERED',
+                'CANCELLED',
+                'FAILED',
+              ].map((status) {
+                final selected =
+                    selectedStatus == status;
+
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    right: 8,
+                  ),
+                  child: ChoiceChip(
+                    selected: selected,
+                    label: Text(
+                      status == 'ACCEPTED'
+                          ? 'Accepted'
+                          : formatStatus(
+                              status,
+                            ),
+                    ),
+                    selectedColor:
+                        const Color(0xFF0F766E),
+                    backgroundColor:
+                        Colors.white,
+                    labelStyle: TextStyle(
+                      color: selected
+                          ? Colors.white
+                          : Colors.grey.shade700,
+                      fontWeight:
+                          FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    side: BorderSide(
+                      color: selected
+                          ? const Color(
+                              0xFF0F766E,
+                            )
+                          : Colors.grey.shade300,
+                    ),
+                    onSelected: (_) {
+                      setState(() {
+                        selectedStatus =
+                            status;
+                      });
+
+                      loadDeliveries();
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Recent Deliveries',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                '${deliveries.length} records',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight:
+                      FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (deliveries.isEmpty)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                vertical: 50,
+                horizontal: 20,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    BorderRadius.circular(18),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons
+                        .local_shipping_outlined,
+                    size: 60,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'No deliveries found',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'New customer delivery requests will appear here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color:
+                          Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...deliveries.map((delivery) {
+              final status =
+                  delivery['status']
+                          ?.toString() ??
+                      'PENDING';
+
+              return Container(
+                margin:
+                    const EdgeInsets.only(
+                  bottom: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      BorderRadius.circular(18),
+                  border: Border.all(
+                    color:
+                        Colors.grey.shade200,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius:
+                      BorderRadius.circular(18),
+                  onTap: () {
+                    showDeliveryDetails(
+                      delivery,
+                    );
+                  },
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.all(
+                      15,
+                    ),
+                    child: Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration:
+                              BoxDecoration(
+                            color: const Color(
+                              0xFF0F766E,
+                            ).withValues(
+                              alpha: 0.10,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              14,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons
+                                .local_shipping_rounded,
+                            color: Color(
+                              0xFF0F766E,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 12,
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      getTrackingNumber(
+                                        delivery,
+                                      ),
+                                      style:
+                                          const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight:
+                                            FontWeight
+                                                .w800,
+                                      ),
+                                    ),
+                                  ),
+                                  _StatusBadge(
+                                    text:
+                                        formatStatus(
+                                      status,
+                                    ),
+                                    color:
+                                        getStatusColor(
+                                      status,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(
+                                height: 7,
+                              ),
+                              Text(
+                                getCustomerName(
+                                  delivery,
+                                ),
+                                style:
+                                    const TextStyle(
+                                  fontWeight:
+                                      FontWeight
+                                          .w700,
+                                ),
+                              ),
+                              const SizedBox(
+                                height: 6,
+                              ),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons
+                                        .location_on_outlined,
+                                    size: 16,
+                                    color: Colors
+                                        .grey.shade500,
+                                  ),
+                                  const SizedBox(
+                                    width: 5,
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      delivery[
+                                                  'deliveryAddress']
+                                              ?.toString() ??
+                                          'Not available',
+                                      maxLines: 1,
+                                      overflow:
+                                          TextOverflow
+                                              .ellipsis,
+                                      style:
+                                          TextStyle(
+                                        color: Colors
+                                            .grey
+                                            .shade600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(
+                                height: 9,
+                              ),
+                              Row(
+                                children: [
+                                  Text(
+                                    formatMoney(
+                                      delivery[
+                                          'deliveryFee'],
+                                    ),
+                                    style:
+                                        const TextStyle(
+                                      color: Color(
+                                        0xFF0F766E,
+                                      ),
+                                      fontWeight:
+                                          FontWeight
+                                              .w800,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    formatDate(
+                                      delivery[
+                                          'createdAt'],
+                                    ),
+                                    style:
+                                        TextStyle(
+                                      color: Colors
+                                          .grey
+                                          .shade500,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filtered = filteredDeliveries;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FC),
+      backgroundColor:
+          const Color(0xFFF7F9FC),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F766E),
+        backgroundColor:
+            const Color(0xFF0F766E),
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -478,361 +1523,34 @@ class _AdminDeliveryScreenState
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: () {
-              setState(() {});
-            },
-            icon: const Icon(Icons.refresh_rounded),
+            onPressed: isRefreshing
+                ? null
+                : () {
+                    loadDeliveries(
+                      showLoading: false,
+                    );
+                  },
+            icon: isRefreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child:
+                        CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(
+                    Icons.refresh_rounded,
+                  ),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          setState(() {});
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            GridView.count(
-              crossAxisCount:
-                  MediaQuery.of(context).size.width >
-                          700
-                      ? 4
-                      : 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 2.0,
-              shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
-              children: [
-                buildSummaryCard(
-                  title: 'Total Deliveries',
-                  value: deliveries.length,
-                  icon: Icons.local_shipping_outlined,
-                ),
-                buildSummaryCard(
-                  title: 'Pending',
-                  value: countByStatus('PENDING'),
-                  icon: Icons.schedule_rounded,
-                ),
-                buildSummaryCard(
-                  title: 'In Transit',
-                  value: countByStatus('IN_TRANSIT'),
-                  icon: Icons.route_outlined,
-                ),
-                buildSummaryCard(
-                  title: 'Delivered',
-                  value: countByStatus('DELIVERED'),
-                  icon:
-                      Icons.check_circle_outline_rounded,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: searchController,
-              onChanged: (_) {
-                setState(() {});
-              },
-              decoration: InputDecoration(
-                hintText:
-                    'Search tracking ID, customer or phone',
-                prefixIcon:
-                    const Icon(Icons.search_rounded),
-                suffixIcon:
-                    searchController.text.isNotEmpty
-                        ? IconButton(
-                            onPressed: () {
-                              searchController.clear();
-                              setState(() {});
-                            },
-                            icon: const Icon(
-                              Icons.close_rounded,
-                            ),
-                          )
-                        : null,
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(15),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(15),
-                  borderSide: BorderSide(
-                    color: Colors.grey.shade200,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              height: 42,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  'ALL',
-                  'PENDING',
-                  'ASSIGNED',
-                  'PICKED_UP',
-                  'IN_TRANSIT',
-                  'DELIVERED',
-                  'CANCELLED',
-                ].map((status) {
-                  final bool selected =
-                      selectedStatus == status;
-
-                  return Padding(
-                    padding:
-                        const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      selected: selected,
-                      label: Text(
-                        formatStatus(status),
-                      ),
-                      selectedColor:
-                          const Color(0xFF0F766E),
-                      backgroundColor: Colors.white,
-                      labelStyle: TextStyle(
-                        color: selected
-                            ? Colors.white
-                            : Colors.grey.shade700,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                      side: BorderSide(
-                        color: selected
-                            ? const Color(0xFF0F766E)
-                            : Colors.grey.shade300,
-                      ),
-                      onSelected: (_) {
-                        setState(() {
-                          selectedStatus = status;
-                        });
-                      },
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Recent Deliveries',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${filtered.length} records',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (filtered.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 50,
-                  horizontal: 20,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.local_shipping_outlined,
-                      size: 60,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'No deliveries found',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'New customer delivery requests will appear here.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              ...filtered.map((delivery) {
-                final String status =
-                    delivery['status'].toString();
-
-                return Container(
-                  margin:
-                      const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.grey.shade200,
-                    ),
-                  ),
-                  child: InkWell(
-                    borderRadius:
-                        BorderRadius.circular(18),
-                    onTap: () {
-                      showDeliveryDetails(delivery);
-                    },
-                    child: Padding(
-                      padding:
-                          const EdgeInsets.all(15),
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color:
-                                  const Color(0xFF0F766E)
-                                      .withValues(
-                                alpha: 0.10,
-                              ),
-                              borderRadius:
-                                  BorderRadius.circular(
-                                14,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons
-                                  .local_shipping_rounded,
-                              color:
-                                  Color(0xFF0F766E),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        delivery[
-                                                'trackingId']
-                                            .toString(),
-                                        style:
-                                            const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight:
-                                              FontWeight
-                                                  .w800,
-                                        ),
-                                      ),
-                                    ),
-                                    _StatusBadge(
-                                      text: formatStatus(
-                                        status,
-                                      ),
-                                      color:
-                                          getStatusColor(
-                                        status,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 7),
-                                Text(
-                                  delivery['customerName']
-                                      .toString(),
-                                  style: const TextStyle(
-                                    fontWeight:
-                                        FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons
-                                          .location_on_outlined,
-                                      size: 16,
-                                      color:
-                                          Colors.grey.shade500,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Expanded(
-                                      child: Text(
-                                        delivery[
-                                                'destinationAddress']
-                                            .toString(),
-                                        maxLines: 1,
-                                        overflow: TextOverflow
-                                            .ellipsis,
-                                        style: TextStyle(
-                                          color: Colors
-                                              .grey.shade600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 9),
-                                Row(
-                                  children: [
-                                    Text(
-                                      '₦${delivery['deliveryFee'].toStringAsFixed(2)}',
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            Color(0xFF0F766E),
-                                        fontWeight:
-                                            FontWeight.w800,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      delivery['createdAt']
-                                          .toString(),
-                                      style: TextStyle(
-                                        color: Colors
-                                            .grey.shade500,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-          ],
-        ),
-      ),
+      body: isLoading
+          ? buildLoadingState()
+          : hasError
+              ? buildErrorState()
+              : buildDeliveryContent(),
     );
   }
 }
@@ -854,8 +1572,11 @@ class _StatusBadge extends StatelessWidget {
         vertical: 5,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(
+          alpha: 0.12,
+        ),
+        borderRadius:
+            BorderRadius.circular(20),
       ),
       child: Text(
         text,
@@ -885,10 +1606,12 @@ class _DetailSection extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Text(
             title,
@@ -919,7 +1642,10 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding:
+          const EdgeInsets.only(
+        bottom: 12,
+      ),
       child: Row(
         crossAxisAlignment:
             CrossAxisAlignment.start,
@@ -927,7 +1653,8 @@ class _DetailRow extends StatelessWidget {
           Icon(
             icon,
             size: 19,
-            color: const Color(0xFF0F766E),
+            color:
+                const Color(0xFF0F766E),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -938,16 +1665,19 @@ class _DetailRow extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color:
+                        Colors.grey.shade600,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight:
+                        FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   value,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
               ],

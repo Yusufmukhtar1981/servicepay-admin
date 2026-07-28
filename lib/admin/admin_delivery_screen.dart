@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,8 +91,7 @@ class _AdminDeliveryScreenState
         'limit': '100',
       };
 
-      final search =
-          searchController.text.trim();
+      final search = searchController.text.trim();
 
       if (search.isNotEmpty) {
         queryParameters['search'] = search;
@@ -234,7 +234,7 @@ class _AdminDeliveryScreenState
     }
   }
 
-  Future<void> updateDeliveryStatus({
+  Future<bool> updateDeliveryStatus({
     required Map<String, dynamic> delivery,
     required String status,
   }) async {
@@ -246,7 +246,7 @@ class _AdminDeliveryScreenState
         'Invalid delivery ID.',
         isError: true,
       );
-      return;
+      return false;
     }
 
     try {
@@ -300,9 +300,7 @@ class _AdminDeliveryScreenState
         );
       }
 
-      if (!mounted) return;
-
-      Navigator.of(context).pop();
+      if (!mounted) return false;
 
       showMessage(
         'Delivery status updated successfully.',
@@ -311,13 +309,116 @@ class _AdminDeliveryScreenState
       await loadDeliveries(
         showLoading: false,
       );
+
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
 
       showMessage(
         cleanError(error),
         isError: true,
       );
+
+      return false;
+    }
+  }
+
+  Future<bool> updateDeliveryPrice({
+    required Map<String, dynamic> delivery,
+    required double deliveryFee,
+    required String paymentStatus,
+  }) async {
+    final deliveryId =
+        delivery['_id']?.toString() ?? '';
+
+    if (deliveryId.isEmpty) {
+      showMessage(
+        'Invalid delivery ID.',
+        isError: true,
+      );
+      return false;
+    }
+
+    if (deliveryFee < 0) {
+      showMessage(
+        'Enter a valid delivery price.',
+        isError: true,
+      );
+      return false;
+    }
+
+    try {
+      final token = await getToken();
+
+      if (token == null || token.trim().isEmpty) {
+        throw Exception(
+          'Admin session has expired. Please sign in again.',
+        );
+      }
+
+      final response = await http
+          .patch(
+            Uri.parse(
+              '$baseUrl/admin/deliveries/'
+              '$deliveryId/price',
+            ),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type':
+                  'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'deliveryFee': deliveryFee,
+              'paymentStatus': paymentStatus,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 45),
+          );
+
+      dynamic decoded;
+
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        throw Exception(
+          'The server returned an invalid response.',
+        );
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        final message = decoded is Map
+            ? decoded['message']?.toString()
+            : null;
+
+        throw Exception(
+          message ??
+              'Failed to update delivery price.',
+        );
+      }
+
+      if (!mounted) return false;
+
+      showMessage(
+        'Delivery price updated successfully.',
+      );
+
+      await loadDeliveries(
+        showLoading: false,
+      );
+
+      return true;
+    } catch (error) {
+      if (!mounted) return false;
+
+      showMessage(
+        cleanError(error),
+        isError: true,
+      );
+
+      return false;
     }
   }
 
@@ -362,26 +463,31 @@ class _AdminDeliveryScreenState
     final customer = delivery['customerId'];
 
     if (customer is Map) {
-      return customer['fullName']
-              ?.toString()
-              .trim()
-              .isNotEmpty ==
-          true
-          ? customer['fullName'].toString()
-          : customer['name']
-                      ?.toString()
-                      .trim()
-                      .isNotEmpty ==
-                  true
-              ? customer['name'].toString()
-              : delivery['senderName']
-                      ?.toString() ??
-                  'ServicePay Customer';
+      final fullName =
+          customer['fullName']?.toString().trim();
+
+      final name =
+          customer['name']?.toString().trim();
+
+      if (fullName != null &&
+          fullName.isNotEmpty) {
+        return fullName;
+      }
+
+      if (name != null && name.isNotEmpty) {
+        return name;
+      }
     }
 
-    return delivery['senderName']
-            ?.toString() ??
-        'ServicePay Customer';
+    final senderName =
+        delivery['senderName']?.toString().trim();
+
+    if (senderName != null &&
+        senderName.isNotEmpty) {
+      return senderName;
+    }
+
+    return 'ServicePay Customer';
   }
 
   String getCustomerPhone(
@@ -399,9 +505,15 @@ class _AdminDeliveryScreenState
       }
     }
 
-    return delivery['senderPhone']
-            ?.toString() ??
-        'Not available';
+    final senderPhone =
+        delivery['senderPhone']?.toString();
+
+    if (senderPhone != null &&
+        senderPhone.trim().isNotEmpty) {
+      return senderPhone;
+    }
+
+    return 'Not available';
   }
 
   String getTrackingNumber(
@@ -539,6 +651,21 @@ class _AdminDeliveryScreenState
     }
   }
 
+  Color getPaymentStatusColor(
+    String paymentStatus,
+  ) {
+    switch (paymentStatus.toUpperCase()) {
+      case 'PAID':
+        return Colors.green;
+
+      case 'REFUNDED':
+        return Colors.blue;
+
+      default:
+        return Colors.orange;
+    }
+  }
+
   void showMessage(
     String message, {
     bool isError = false,
@@ -562,6 +689,12 @@ class _AdminDeliveryScreenState
         delivery['status']?.toString() ??
             'PENDING';
 
+    final paymentStatus =
+        delivery['paymentStatus']
+                ?.toString()
+                .toUpperCase() ??
+            'UNPAID';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -571,7 +704,7 @@ class _AdminDeliveryScreenState
           constraints: BoxConstraints(
             maxHeight:
                 MediaQuery.of(context).size.height *
-                    0.90,
+                    0.92,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -736,10 +869,7 @@ class _AdminDeliveryScreenState
                             .account_balance_wallet_outlined,
                         label: 'Payment Status',
                         value: formatStatus(
-                          delivery[
-                                      'paymentStatus']
-                                  ?.toString() ??
-                              'UNPAID',
+                          paymentStatus,
                         ),
                       ),
                     ],
@@ -770,6 +900,52 @@ class _AdminDeliveryScreenState
                     ],
                   ),
                   const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(
+                          bottomSheetContext,
+                        ).pop();
+
+                        showPriceDialog(
+                          delivery,
+                        );
+                      },
+                      style:
+                          ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFFB45309),
+                        foregroundColor:
+                            Colors.white,
+                        shape:
+                            RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            14,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.price_change_rounded,
+                      ),
+                      label: Text(
+                        toDouble(
+                                  delivery[
+                                      'deliveryFee'],
+                                ) >
+                                0
+                            ? 'Update Delivery Price'
+                            : 'Set Delivery Price',
+                        style: const TextStyle(
+                          fontWeight:
+                              FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -815,6 +991,282 @@ class _AdminDeliveryScreenState
           ),
         );
       },
+    );
+  }
+
+  void showPriceDialog(
+    Map<String, dynamic> delivery,
+  ) {
+    final currentFee = toDouble(
+      delivery['deliveryFee'],
+    );
+
+    final priceController =
+        TextEditingController(
+      text: currentFee > 0
+          ? currentFee.toStringAsFixed(2)
+          : '',
+    );
+
+    String paymentStatus =
+        delivery['paymentStatus']
+                ?.toString()
+                .toUpperCase() ??
+            'UNPAID';
+
+    const paymentStatuses = [
+      'UNPAID',
+      'PAID',
+      'REFUNDED',
+    ];
+
+    if (!paymentStatuses.contains(
+      paymentStatus,
+    )) {
+      paymentStatus = 'UNPAID';
+    }
+
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (
+            dialogContext,
+            setDialogState,
+          ) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(20),
+              ),
+              title: const Text(
+                'Set Delivery Price',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize:
+                      MainAxisSize.min,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      getTrackingNumber(
+                        delivery,
+                      ),
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontWeight:
+                            FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    TextField(
+                      controller:
+                          priceController,
+                      enabled: !isSaving,
+                      keyboardType:
+                          const TextInputType
+                              .numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter
+                            .allow(
+                          RegExp(r'^\d*\.?\d{0,2}'),
+                        ),
+                      ],
+                      decoration: InputDecoration(
+                        labelText:
+                            'Delivery Price',
+                        hintText: 'Example: 2500',
+                        prefixText: '₦ ',
+                        prefixIcon: const Icon(
+                          Icons
+                              .payments_outlined,
+                        ),
+                        border:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue:
+                          paymentStatus,
+                      decoration: InputDecoration(
+                        labelText:
+                            'Payment Status',
+                        prefixIcon: const Icon(
+                          Icons
+                              .account_balance_wallet_outlined,
+                        ),
+                        border:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            12,
+                          ),
+                        ),
+                      ),
+                      items: paymentStatuses
+                          .map(
+                        (status) {
+                          return DropdownMenuItem<
+                              String>(
+                            value: status,
+                            child: Text(
+                              formatStatus(status),
+                            ),
+                          );
+                        },
+                      ).toList(),
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              if (value == null) {
+                                return;
+                              }
+
+                              setDialogState(() {
+                                paymentStatus =
+                                    value;
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding:
+                          const EdgeInsets.all(
+                        12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(
+                          0xFFF1F5F9,
+                        ),
+                        borderRadius:
+                            BorderRadius.circular(
+                          12,
+                        ),
+                      ),
+                      child: const Text(
+                        'Set the agreed delivery fee. Keep payment status as Unpaid until payment has been confirmed.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving
+                      ? null
+                      : () {
+                          Navigator.of(
+                            dialogContext,
+                          ).pop();
+                        },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final price =
+                              double.tryParse(
+                            priceController.text
+                                .trim()
+                                .replaceAll(
+                                  ',',
+                                  '',
+                                ),
+                          );
+
+                          if (price == null ||
+                              price < 0) {
+                            showMessage(
+                              'Enter a valid delivery price.',
+                              isError: true,
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isSaving = true;
+                          });
+
+                          final success =
+                              await updateDeliveryPrice(
+                            delivery: delivery,
+                            deliveryFee: price,
+                            paymentStatus:
+                                paymentStatus,
+                          );
+
+                          if (!mounted) {
+                            return;
+                          }
+
+                          if (success &&
+                              dialogContext.mounted) {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop();
+                            return;
+                          }
+
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              isSaving = false;
+                            });
+                          }
+                        },
+                  style:
+                      ElevatedButton.styleFrom(
+                    backgroundColor:
+                        const Color(0xFFB45309),
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.save_rounded,
+                        ),
+                  label: Text(
+                    isSaving
+                        ? 'Saving...'
+                        : 'Save Price',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(
+      priceController.dispose,
     );
   }
 
@@ -912,12 +1364,25 @@ class _AdminDeliveryScreenState
                             isUpdating = true;
                           });
 
-                          await updateDeliveryStatus(
+                          final success =
+                              await updateDeliveryStatus(
                             delivery: delivery,
                             status: newStatus,
                           );
 
-                          if (mounted) {
+                          if (!mounted) {
+                            return;
+                          }
+
+                          if (success &&
+                              dialogContext.mounted) {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop();
+                            return;
+                          }
+
+                          if (dialogContext.mounted) {
                             setDialogState(() {
                               isUpdating = false;
                             });
@@ -951,7 +1416,7 @@ class _AdminDeliveryScreenState
 
   Widget buildSummaryCard({
     required String title,
-    required int value,
+    required String value,
     required IconData icon,
   }) {
     return Container(
@@ -999,9 +1464,12 @@ class _AdminDeliveryScreenState
                   CrossAxisAlignment.start,
               children: [
                 Text(
-                  value.toString(),
+                  value,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 21,
+                    fontSize: 19,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1111,25 +1579,30 @@ class _AdminDeliveryScreenState
             children: [
               buildSummaryCard(
                 title: 'Total Deliveries',
-                value: totalDeliveries,
+                value:
+                    totalDeliveries.toString(),
                 icon:
                     Icons.local_shipping_outlined,
               ),
               buildSummaryCard(
                 title: 'Pending',
-                value: pendingDeliveries,
+                value:
+                    pendingDeliveries.toString(),
                 icon: Icons.schedule_rounded,
               ),
               buildSummaryCard(
-                title: 'In Transit',
-                value: inTransitDeliveries,
-                icon: Icons.route_outlined,
-              ),
-              buildSummaryCard(
                 title: 'Delivered',
-                value: deliveredDeliveries,
+                value:
+                    deliveredDeliveries.toString(),
                 icon: Icons
                     .check_circle_outline_rounded,
+              ),
+              buildSummaryCard(
+                title: 'Revenue',
+                value:
+                    formatMoney(totalRevenue),
+                icon: Icons
+                    .payments_outlined,
               ),
             ],
           ),
@@ -1138,6 +1611,9 @@ class _AdminDeliveryScreenState
             controller: searchController,
             textInputAction:
                 TextInputAction.search,
+            onChanged: (_) {
+              setState(() {});
+            },
             onSubmitted: (_) {
               loadDeliveries();
             },
@@ -1151,6 +1627,7 @@ class _AdminDeliveryScreenState
                   ? IconButton(
                       onPressed: () {
                         searchController.clear();
+                        setState(() {});
                         loadDeliveries();
                       },
                       icon: const Icon(
@@ -1202,11 +1679,7 @@ class _AdminDeliveryScreenState
                   child: ChoiceChip(
                     selected: selected,
                     label: Text(
-                      status == 'ACCEPTED'
-                          ? 'Accepted'
-                          : formatStatus(
-                              status,
-                            ),
+                      formatStatus(status),
                     ),
                     selectedColor:
                         const Color(0xFF0F766E),
@@ -1311,6 +1784,16 @@ class _AdminDeliveryScreenState
                   delivery['status']
                           ?.toString() ??
                       'PENDING';
+
+              final paymentStatus =
+                  delivery['paymentStatus']
+                          ?.toString() ??
+                      'UNPAID';
+
+              final deliveryFee =
+                  toDouble(
+                delivery['deliveryFee'],
+              );
 
               return Container(
                 margin:
@@ -1455,23 +1938,81 @@ class _AdminDeliveryScreenState
                                 ],
                               ),
                               const SizedBox(
-                                height: 9,
+                                height: 10,
                               ),
-                              Row(
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                crossAxisAlignment:
+                                    WrapCrossAlignment
+                                        .center,
                                 children: [
                                   Text(
                                     formatMoney(
-                                      delivery[
-                                          'deliveryFee'],
+                                      deliveryFee,
                                     ),
                                     style:
-                                        const TextStyle(
-                                      color: Color(
-                                        0xFF0F766E,
-                                      ),
+                                        TextStyle(
+                                      color: deliveryFee >
+                                              0
+                                          ? const Color(
+                                              0xFF0F766E,
+                                            )
+                                          : Colors
+                                              .red
+                                              .shade700,
                                       fontWeight:
                                           FontWeight
                                               .w800,
+                                    ),
+                                  ),
+                                  _StatusBadge(
+                                    text: formatStatus(
+                                      paymentStatus,
+                                    ),
+                                    color:
+                                        getPaymentStatusColor(
+                                      paymentStatus,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(
+                                height: 8,
+                              ),
+                              Row(
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      showPriceDialog(
+                                        delivery,
+                                      );
+                                    },
+                                    style: TextButton
+                                        .styleFrom(
+                                      padding:
+                                          EdgeInsets
+                                              .zero,
+                                      foregroundColor:
+                                          const Color(
+                                        0xFFB45309,
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons
+                                          .price_change_rounded,
+                                      size: 17,
+                                    ),
+                                    label: Text(
+                                      deliveryFee > 0
+                                          ? 'Edit Price'
+                                          : 'Set Price',
+                                      style:
+                                          const TextStyle(
+                                        fontWeight:
+                                            FontWeight
+                                                .w800,
+                                      ),
                                     ),
                                   ),
                                   const Spacer(),

@@ -5,6 +5,9 @@ const {
   getAdminTransactions,
   getAdminDeliveries,
   updateDeliveryStatus,
+  getAdminUsers,
+  createAdminUser,
+  updateAdminUserStatus,
 } = require("../controllers/admin.controller");
 
 const {
@@ -14,13 +17,53 @@ const {
 
 const router = express.Router();
 
+const MANAGEMENT_ROLES = [
+  "HEAD_OFFICE",
+  "ZONAL_MANAGER",
+  "STATE_MANAGER",
+];
+
+/*
+ * Management dashboard.
+ *
+ * Important: getAdminDashboard should eventually
+ * return records limited to the logged-in manager's
+ * zone/state.
+ */
 router.get(
   "/dashboard",
   protect,
-  adminOnly("HEAD_OFFICE"),
+  adminOnly(...MANAGEMENT_ROLES),
   getAdminDashboard
 );
 
+/*
+ * User management.
+ */
+router.get(
+  "/users",
+  protect,
+  adminOnly(...MANAGEMENT_ROLES),
+  getAdminUsers
+);
+
+router.post(
+  "/users",
+  protect,
+  adminOnly(...MANAGEMENT_ROLES),
+  createAdminUser
+);
+
+router.patch(
+  "/users/:id/status",
+  protect,
+  adminOnly(...MANAGEMENT_ROLES),
+  updateAdminUserStatus
+);
+
+/*
+ * Head Office-only financial and operational routes.
+ */
 router.get(
   "/transactions",
   protect,

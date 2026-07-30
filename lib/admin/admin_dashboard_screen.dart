@@ -4,12 +4,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'admin_transactions_screen.dart';
+
 import 'admin_notifications_screen.dart';
+import 'admin_transactions_screen.dart';
 import 'users_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+  const AdminDashboardScreen({
+    super.key,
+  });
 
   @override
   State<AdminDashboardScreen> createState() =>
@@ -18,7 +21,8 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState
     extends State<AdminDashboardScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
+  static const String baseUrl =
+      'https://api.servicepay.ng/api';
 
   String adminName = 'Admin';
   String adminRole = 'HEAD_OFFICE';
@@ -51,19 +55,25 @@ class _AdminDashboardScreenState
     loadDashboard();
   }
 
-  Map<String, dynamic> toMap(dynamic value) {
+  Map<String, dynamic> toMap(
+    dynamic value,
+  ) {
     if (value is Map<String, dynamic>) {
       return value;
     }
 
     if (value is Map) {
-      return Map<String, dynamic>.from(value);
+      return Map<String, dynamic>.from(
+        value,
+      );
     }
 
     return <String, dynamic>{};
   }
 
-  int toInt(dynamic value) {
+  int toInt(
+    dynamic value,
+  ) {
     if (value is int) {
       return value;
     }
@@ -72,10 +82,15 @@ class _AdminDashboardScreenState
       return value.toInt();
     }
 
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
   }
 
-  double toDouble(dynamic value) {
+  double toDouble(
+    dynamic value,
+  ) {
     if (value is double) {
       return value;
     }
@@ -84,13 +99,21 @@ class _AdminDashboardScreenState
       return value.toDouble();
     }
 
-    return double.tryParse(value?.toString() ?? '') ?? 0;
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
   }
 
-  String cleanError(Object error) {
+  String cleanError(
+    Object error,
+  ) {
     return error
         .toString()
-        .replaceFirst('Exception: ', '')
+        .replaceFirst(
+          'Exception: ',
+          '',
+        )
         .trim();
   }
 
@@ -104,55 +127,75 @@ class _AdminDashboardScreenState
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
 
-      final savedName =
+      final String? savedName =
           prefs.getString('user_name') ??
-          prefs.getString('full_name') ??
-          prefs.getString('name');
+              prefs.getString('full_name') ??
+              prefs.getString('name');
 
-      final savedRole =
+      final String savedRole =
           prefs.getString('user_role') ??
-          prefs.getString('role') ??
-          'HEAD_OFFICE';
+              prefs.getString('role') ??
+              'HEAD_OFFICE';
 
-      final token =
+      final String? token =
           prefs.getString('auth_token') ??
-          prefs.getString('token') ??
-          prefs.getString('admin_token');
+              prefs.getString('token') ??
+              prefs.getString('admin_token');
 
-      if (token == null || token.trim().isEmpty) {
+      if (token == null ||
+          token.trim().isEmpty) {
         throw Exception(
           'Admin login token was not found. Please log in again.',
         );
       }
 
-      final uri = Uri.parse('$baseUrl/admin/dashboard');
+      final Uri uri = Uri.parse(
+        '$baseUrl/admin/dashboard',
+      );
 
-      final response = await http
-          .get(
-            uri,
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer ${token.trim()}',
-            },
-          )
-          .timeout(const Duration(seconds: 30));
+      final http.Response response =
+          await http
+              .get(
+                uri,
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization':
+                      'Bearer ${token.trim()}',
+                },
+              )
+              .timeout(
+                const Duration(
+                  seconds: 30,
+                ),
+              );
 
-      final rawBody = response.body.trim();
+      final String rawBody =
+          response.body.trim();
 
-      final contentType =
-          response.headers['content-type']?.toLowerCase() ?? '';
+      final String contentType =
+          response.headers['content-type']
+                  ?.toLowerCase() ??
+              '';
 
       if (rawBody.isEmpty) {
-        throw Exception('The server returned an empty response.');
+        throw Exception(
+          'The server returned an empty response.',
+        );
       }
 
-      final lowerBody = rawBody.toLowerCase();
+      final String lowerBody =
+          rawBody.toLowerCase();
 
-      if (lowerBody.startsWith('<!doctype html') ||
+      if (lowerBody.startsWith(
+            '<!doctype html',
+          ) ||
           lowerBody.startsWith('<html') ||
-          contentType.contains('text/html')) {
+          contentType.contains(
+            'text/html',
+          )) {
         throw Exception(
           'The admin dashboard API returned an invalid web page.',
         );
@@ -161,14 +204,17 @@ class _AdminDashboardScreenState
       dynamic decodedBody;
 
       try {
-        decodedBody = jsonDecode(rawBody);
+        decodedBody = jsonDecode(
+          rawBody,
+        );
       } on FormatException {
         throw Exception(
           'The server returned an invalid response instead of JSON.',
         );
       }
 
-      final body = toMap(decodedBody);
+      final Map<String, dynamic> body =
+          toMap(decodedBody);
 
       if (response.statusCode == 401) {
         throw Exception(
@@ -199,65 +245,111 @@ class _AdminDashboardScreenState
         );
       }
 
-      final data = toMap(body['data']);
-      final users = toMap(data['users']);
-      final kyc = toMap(data['kyc']);
-      final wallets = toMap(data['wallets']);
-      final transactions = toMap(data['transactions']);
-      final servicepay = toMap(data['servicepay']);
+      final Map<String, dynamic> data =
+          toMap(body['data']);
+
+      final Map<String, dynamic> users =
+          toMap(data['users']);
+
+      final Map<String, dynamic> kyc =
+          toMap(data['kyc']);
+
+      final Map<String, dynamic> wallets =
+          toMap(data['wallets']);
+
+      final Map<String, dynamic>
+          transactions =
+          toMap(data['transactions']);
+
+      final Map<String, dynamic> servicepay =
+          toMap(data['servicepay']);
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        adminName = savedName?.trim().isNotEmpty == true
-            ? savedName!.trim()
-            : 'Admin';
+        adminName =
+            savedName?.trim().isNotEmpty ==
+                    true
+                ? savedName!.trim()
+                : 'Admin';
 
-        adminRole = savedRole.trim().isNotEmpty
-            ? savedRole.trim().toUpperCase()
-            : 'HEAD_OFFICE';
+        adminRole =
+            savedRole.trim().isNotEmpty
+                ? savedRole
+                    .trim()
+                    .toUpperCase()
+                : 'HEAD_OFFICE';
 
-        totalUsers = toInt(users['total']);
-        activeUsers = toInt(users['active']);
-        totalCustomers = toInt(users['customers']);
-        totalAgents = toInt(users['agents']);
+        totalUsers =
+            toInt(users['total']);
 
-        pendingVerifications = toInt(kyc['pending']);
+        activeUsers =
+            toInt(users['active']);
 
-        totalWalletBalance = toDouble(
-          wallets['totalWalletBalance'] ??
+        totalCustomers =
+            toInt(users['customers']);
+
+        totalAgents =
+            toInt(users['agents']);
+
+        pendingVerifications =
+            toInt(kyc['pending']);
+
+        totalWalletBalance =
+            toDouble(
+          wallets[
+                  'totalWalletBalance'] ??
               wallets['totalBalance'],
         );
 
-        totalTransactions = toInt(transactions['total']);
+        totalTransactions =
+            toInt(
+          transactions['total'],
+        );
 
-        totalTransactionValue = toDouble(
+        totalTransactionValue =
+            toDouble(
           transactions['totalVolume'] ??
               transactions['totalValue'],
         );
 
         successfulTransactions =
-            toInt(transactions['successful']);
-
-        pendingTransactions = toInt(transactions['pending']);
-
-        failedTransactions = toInt(transactions['failed']);
-
-        servicepayProfit = toDouble(
-          servicepay['totalProfit'] ??
-              transactions['servicepayProfit'],
+            toInt(
+          transactions['successful'],
         );
 
-        recentUsers = data['recentUsers'] is List
-            ? List<dynamic>.from(data['recentUsers'])
-            : <dynamic>[];
+        pendingTransactions =
+            toInt(
+          transactions['pending'],
+        );
+
+        failedTransactions =
+            toInt(
+          transactions['failed'],
+        );
+
+        servicepayProfit =
+            toDouble(
+          servicepay['totalProfit'] ??
+              transactions[
+                  'servicepayProfit'],
+        );
+
+        recentUsers =
+            data['recentUsers'] is List
+                ? List<dynamic>.from(
+                    data['recentUsers'],
+                  )
+                : <dynamic>[];
 
         recentTransactions =
-            data['recentTransactions'] is List
+            data['recentTransactions']
+                    is List
                 ? List<dynamic>.from(
-                    data['recentTransactions'],
+                    data[
+                        'recentTransactions'],
                   )
                 : <dynamic>[];
 
@@ -284,7 +376,8 @@ class _AdminDashboardScreenState
       setState(() {
         isLoading = false;
         hasError = true;
-        errorMessage = cleanError(error);
+        errorMessage =
+            cleanError(error);
       });
     }
   }
@@ -293,31 +386,47 @@ class _AdminDashboardScreenState
     await loadDashboard();
   }
 
-  String formatMoney(double amount) {
-    final rounded = amount.toStringAsFixed(2);
-    final parts = rounded.split('.');
+  String formatMoney(
+    double amount,
+  ) {
+    final String rounded =
+        amount.toStringAsFixed(2);
 
-    final formattedWhole = parts[0].replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (match) => ',',
+    final List<String> parts =
+        rounded.split('.');
+
+    final String formattedWhole =
+        parts[0].replaceAllMapped(
+      RegExp(
+        r'\B(?=(\d{3})+(?!\d))',
+      ),
+      (Match match) => ',',
     );
 
     return '₦$formattedWhole.${parts[1]}';
   }
 
-  String formatDate(dynamic value) {
-    final date = DateTime.tryParse(value?.toString() ?? '');
+  String formatDate(
+    dynamic value,
+  ) {
+    final DateTime? date =
+        DateTime.tryParse(
+      value?.toString() ?? '',
+    );
 
     if (date == null) {
       return 'Unknown date';
     }
 
-    final localDate = date.toLocal();
+    final DateTime localDate =
+        date.toLocal();
 
     return '${localDate.day}/${localDate.month}/${localDate.year}';
   }
 
-  Color transactionStatusColor(String status) {
+  Color transactionStatusColor(
+    String status,
+  ) {
     switch (status.toUpperCase()) {
       case 'SUCCESSFUL':
       case 'SUCCESS':
@@ -338,7 +447,8 @@ class _AdminDashboardScreenState
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const AdminUsersScreen(),
+        builder: (_) =>
+            const AdminUsersScreen(),
       ),
     );
 
@@ -346,24 +456,27 @@ class _AdminDashboardScreenState
       await refreshDashboard();
     }
   }
-Future<void> openTransactions() async {
-  await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) =>
-          const AdminTransactionsScreen(),
-    ),
-  );
 
-  if (mounted) {
-    await refreshDashboard();
+  Future<void> openTransactions() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const AdminTransactionsScreen(),
+      ),
+    );
+
+    if (mounted) {
+      await refreshDashboard();
+    }
   }
-}
+
   Future<void> openNotifications() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const AdminNotificationsScreen(),
+        builder: (_) =>
+            const AdminNotificationsScreen(),
       ),
     );
 
@@ -380,7 +493,8 @@ Future<void> openTransactions() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AdminModuleScreen(
+        builder: (_) =>
+            AdminModuleScreen(
           title: title,
           description: description,
           icon: icon,
@@ -400,18 +514,27 @@ Future<void> openTransactions() async {
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(
+        14,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(
+          18,
+        ),
         border: Border.all(
-          color: Colors.grey.shade200,
+          color:
+              Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(
+              alpha: 0.04,
+            ),
             blurRadius: 12,
-            offset: const Offset(0, 5),
+            offset:
+                const Offset(0, 5),
           ),
         ],
       ),
@@ -421,37 +544,53 @@ Future<void> openTransactions() async {
             width: 45,
             height: 45,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(13),
+              color: color.withValues(
+                alpha: 0.12,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                13,
+              ),
             ),
             child: Icon(
               icon,
               color: color,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(
+            width: 10,
+          ),
           Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   value,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(
+                  height: 3,
+                ),
                 Text(
                   title,
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.grey.shade600,
+                    color:
+                        Colors.grey.shade600,
                   ),
                 ),
               ],
@@ -466,41 +605,60 @@ Future<void> openTransactions() async {
     return RefreshIndicator(
       onRefresh: refreshDashboard,
       child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.all(24),
         children: [
-          const SizedBox(height: 80),
+          const SizedBox(
+            height: 80,
+          ),
           Icon(
             Icons.cloud_off_rounded,
             size: 72,
             color: Colors.red.shade300,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 20,
+          ),
           const Text(
             'Unable to load dashboard',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 21,
-              fontWeight: FontWeight.w900,
+              fontWeight:
+                  FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(
+            height: 10,
+          ),
           Text(
             errorMessage,
-            textAlign: TextAlign.center,
+            textAlign:
+                TextAlign.center,
             style: TextStyle(
-              color: Colors.grey.shade700,
+              color:
+                  Colors.grey.shade700,
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(
+            height: 24,
+          ),
           Center(
             child: FilledButton.icon(
               onPressed: loadDashboard,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try Again'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.green,
+              icon: const Icon(
+                Icons.refresh,
+              ),
+              label: const Text(
+                'Try Again',
+              ),
+              style:
+                  FilledButton.styleFrom(
+                backgroundColor:
+                    Colors.green,
               ),
             ),
           ),
@@ -516,12 +674,18 @@ Future<void> openTransactions() async {
     required List<Widget> children,
   }) {
     return Container(
-      padding: const EdgeInsets.all(17),
+      padding: const EdgeInsets.all(
+        17,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(
+          18,
+        ),
         border: Border.all(
-          color: Colors.grey.shade200,
+          color:
+              Colors.grey.shade200,
         ),
       ),
       child: Column(
@@ -531,28 +695,36 @@ Future<void> openTransactions() async {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
               ),
               Text(
                 '$count shown',
                 style: TextStyle(
-                  color: Colors.grey.shade600,
+                  color:
+                      Colors.grey.shade600,
                   fontSize: 12,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
           if (children.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(
+              padding:
+                  const EdgeInsets.symmetric(
                 vertical: 20,
               ),
-              child: Text(emptyText),
+              child: Text(
+                emptyText,
+              ),
             )
           else
             ...children,
@@ -562,130 +734,186 @@ Future<void> openTransactions() async {
   }
 
   Widget buildRecentUsersSection() {
-    final userWidgets = recentUsers.map((rawUser) {
-      final user = toMap(rawUser);
+    final List<Widget> userWidgets =
+        recentUsers.map(
+      (dynamic rawUser) {
+        final Map<String, dynamic> user =
+            toMap(rawUser);
 
-      final name =
-          user['fullName']?.toString() ?? 'Unknown User';
+        final String name =
+            user['fullName']?.toString() ??
+                'Unknown User';
 
-      final role =
-          user['role']?.toString() ?? 'CUSTOMER';
+        final String role =
+            user['role']?.toString() ??
+                'CUSTOMER';
 
-      final status =
-          user['status']?.toString() ?? 'UNKNOWN';
+        final String status =
+            user['status']?.toString() ??
+                'UNKNOWN';
 
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: CircleAvatar(
-          backgroundColor: Colors.green.shade50,
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : 'U',
-            style: const TextStyle(
-              color: Colors.green,
-              fontWeight: FontWeight.w900,
+        return ListTile(
+          contentPadding:
+              EdgeInsets.zero,
+          leading: CircleAvatar(
+            backgroundColor:
+                Colors.green.shade50,
+            child: Text(
+              name.isNotEmpty
+                  ? name[0].toUpperCase()
+                  : 'U',
+              style:
+                  const TextStyle(
+                color: Colors.green,
+                fontWeight:
+                    FontWeight.w900,
+              ),
             ),
           ),
-        ),
-        title: Text(
-          name,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
+          title: Text(
+            name,
+            style:
+                const TextStyle(
+              fontWeight:
+                  FontWeight.w800,
+            ),
           ),
-        ),
-        subtitle: Text(
-          '${role.replaceAll('_', ' ')} • '
-          '${formatDate(user['createdAt'])}',
-        ),
-        trailing: Text(
-          status,
-          style: TextStyle(
-            color: status == 'ACTIVE'
-                ? Colors.green
-                : Colors.orange,
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
+          subtitle: Text(
+            '${role.replaceAll('_', ' ')} • '
+            '${formatDate(user['createdAt'])}',
           ),
-        ),
-      );
-    }).toList();
+          trailing: Text(
+            status,
+            style: TextStyle(
+              color:
+                  status == 'ACTIVE'
+                      ? Colors.green
+                      : Colors.orange,
+              fontSize: 10,
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+        );
+      },
+    ).toList();
 
     return buildSectionCard(
       title: 'Recent Users',
       count: recentUsers.length,
-      emptyText: 'No users found.',
+      emptyText:
+          'No users found.',
       children: userWidgets,
     );
   }
 
   Widget buildRecentTransactionsSection() {
-    final transactionWidgets =
-        recentTransactions.map((rawTransaction) {
-      final transaction = toMap(rawTransaction);
+    final List<Widget>
+        transactionWidgets =
+        recentTransactions.map(
+      (dynamic rawTransaction) {
+        final Map<String, dynamic>
+            transaction =
+            toMap(rawTransaction);
 
-      final customer = toMap(transaction['customerId']);
+        final Map<String, dynamic>
+            customer =
+            toMap(
+          transaction['customerId'],
+        );
 
-      final serviceType =
-          transaction['serviceType']?.toString() ??
-              'TRANSACTION';
+        final String serviceType =
+            transaction['serviceType']
+                    ?.toString() ??
+                'TRANSACTION';
 
-      final status =
-          transaction['status']?.toString() ?? 'UNKNOWN';
+        final String status =
+            transaction['status']
+                    ?.toString() ??
+                'UNKNOWN';
 
-      final amount = toDouble(transaction['amount']);
+        final double amount =
+            toDouble(
+          transaction['amount'],
+        );
 
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: Colors.purple.shade50,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: const Icon(
-            Icons.receipt_long_outlined,
-            color: Colors.purple,
-          ),
-        ),
-        title: Text(
-          serviceType.replaceAll('_', ' '),
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        subtitle: Text(
-          '${customer['fullName'] ?? 'Unknown User'} • '
-          '${formatDate(transaction['createdAt'])}',
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              formatMoney(amount),
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
+        return ListTile(
+          contentPadding:
+              EdgeInsets.zero,
+          leading: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color:
+                  Colors.purple.shade50,
+              borderRadius:
+                  BorderRadius.circular(
+                13,
               ),
             ),
-            const SizedBox(height: 3),
-            Text(
-              status,
-              style: TextStyle(
-                color: transactionStatusColor(status),
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-              ),
+            child: const Icon(
+              Icons.receipt_long_outlined,
+              color: Colors.purple,
             ),
-          ],
-        ),
-      );
-    }).toList();
+          ),
+          title: Text(
+            serviceType.replaceAll(
+              '_',
+              ' ',
+            ),
+            style:
+                const TextStyle(
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          subtitle: Text(
+            '${customer['fullName'] ?? 'Unknown User'} • '
+            '${formatDate(transaction['createdAt'])}',
+          ),
+          trailing: Column(
+            mainAxisAlignment:
+                MainAxisAlignment.center,
+            crossAxisAlignment:
+                CrossAxisAlignment.end,
+            children: [
+              Text(
+                formatMoney(amount),
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.w900,
+                ),
+              ),
+              const SizedBox(
+                height: 3,
+              ),
+              Text(
+                status,
+                style: TextStyle(
+                  color:
+                      transactionStatusColor(
+                    status,
+                  ),
+                  fontSize: 10,
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ).toList();
 
     return buildSectionCard(
       title: 'Recent Transactions',
-      count: recentTransactions.length,
-      emptyText: 'No transactions found.',
-      children: transactionWidgets,
+      count:
+          recentTransactions.length,
+      emptyText:
+          'No transactions found.',
+      children:
+          transactionWidgets,
     );
   }
 
@@ -696,17 +924,25 @@ Future<void> openTransactions() async {
     required VoidCallback onTap,
   }) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin:
+          const EdgeInsets.only(
+        bottom: 12,
+      ),
       elevation: 0,
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(
+          16,
+        ),
         side: BorderSide(
-          color: Colors.grey.shade200,
+          color:
+              Colors.grey.shade200,
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
+        contentPadding:
+            const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 8,
         ),
@@ -714,8 +950,14 @@ Future<void> openTransactions() async {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(14),
+            color:
+                Colors.green.withValues(
+              alpha: 0.10,
+            ),
+            borderRadius:
+                BorderRadius.circular(
+              14,
+            ),
           ),
           child: Icon(
             icon,
@@ -724,13 +966,20 @@ Future<void> openTransactions() async {
         ),
         title: Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(subtitle),
+          padding:
+              const EdgeInsets.only(
+            top: 4,
+          ),
+          child: Text(
+            subtitle,
+          ),
         ),
         trailing: const Icon(
           Icons.arrow_forward_ios,
@@ -744,22 +993,35 @@ Future<void> openTransactions() async {
   Widget buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding:
+          const EdgeInsets.all(
+        22,
+      ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient:
+            const LinearGradient(
           colors: [
             Color(0xFF1D7D32),
             Color(0xFF48A84F),
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius:
+            BorderRadius.circular(
+          22,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withValues(alpha: 0.24),
+            color:
+                Colors.green.withValues(
+              alpha: 0.24,
+            ),
             blurRadius: 18,
-            offset: const Offset(0, 8),
+            offset:
+                const Offset(0, 8),
           ),
         ],
       ),
@@ -767,142 +1029,255 @@ Future<void> openTransactions() async {
         children: [
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Welcome Back',
-                  style: TextStyle(
-                    color: Colors.white70,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.white70,
                     fontSize: 15,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(
+                  height: 6,
+                ),
                 Text(
                   adminName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style:
+                      const TextStyle(
+                    color:
+                        Colors.white,
                     fontSize: 26,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(
+                  height: 8,
+                ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding:
+                      const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 6,
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(20),
+                  decoration:
+                      BoxDecoration(
+                    color: Colors.white
+                        .withValues(
+                      alpha: 0.18,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      20,
+                    ),
                   ),
                   child: Text(
-                    adminRole.replaceAll('_', ' '),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    adminRole.replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                    style:
+                        const TextStyle(
+                      color:
+                          Colors.white,
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight:
+                          FontWeight.w600,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(
-            Icons.admin_panel_settings_rounded,
-            color: Colors.white,
-            size: 64,
+
+          /*
+           * Clickable account-management icon.
+           *
+           * HEAD OFFICE:
+           * Opens all managed users.
+           *
+           * ZONAL MANAGER:
+           * Opens users in the zone and allows
+           * creation of State Managers.
+           *
+           * STATE MANAGER:
+           * Opens users in the state and allows
+           * creation of Agents.
+           */
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: openUsers,
+              borderRadius:
+                  BorderRadius.circular(
+                40,
+              ),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration:
+                    BoxDecoration(
+                  color: Colors.white
+                      .withValues(
+                    alpha: 0.18,
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white
+                        .withValues(
+                      alpha: 0.25,
+                    ),
+                  ),
+                ),
+                child: const Icon(
+                  Icons
+                      .manage_accounts_rounded,
+                  color: Colors.white,
+                  size: 43,
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget buildOverviewGrid(BoxConstraints constraints) {
-    final crossAxisCount = constraints.maxWidth >= 900
-        ? 4
-        : constraints.maxWidth >= 600
-            ? 3
-            : 2;
+  Widget buildOverviewGrid(
+    BoxConstraints constraints,
+  ) {
+    final int crossAxisCount =
+        constraints.maxWidth >= 900
+            ? 4
+            : constraints.maxWidth >=
+                    600
+                ? 3
+                : 2;
 
     return GridView.count(
-      crossAxisCount: crossAxisCount,
+      crossAxisCount:
+          crossAxisCount,
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      physics:
+          const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 14,
       crossAxisSpacing: 14,
       childAspectRatio:
-          constraints.maxWidth < 600 ? 1.32 : 1.5,
+          constraints.maxWidth < 600
+              ? 1.32
+              : 1.5,
       children: [
         buildStatCard(
           title: 'Total Users',
-          value: totalUsers.toString(),
-          icon: Icons.groups_outlined,
+          value:
+              totalUsers.toString(),
+          icon:
+              Icons.groups_outlined,
           color: Colors.blue,
         ),
         buildStatCard(
           title: 'Active Users',
-          value: activeUsers.toString(),
-          icon: Icons.verified_user_outlined,
+          value:
+              activeUsers.toString(),
+          icon: Icons
+              .verified_user_outlined,
           color: Colors.green,
         ),
         buildStatCard(
           title: 'Customers',
-          value: totalCustomers.toString(),
-          icon: Icons.person_outline,
+          value:
+              totalCustomers.toString(),
+          icon:
+              Icons.person_outline,
           color: Colors.indigo,
         ),
         buildStatCard(
           title: 'Agents',
-          value: totalAgents.toString(),
-          icon: Icons.support_agent_outlined,
+          value:
+              totalAgents.toString(),
+          icon: Icons
+              .support_agent_outlined,
           color: Colors.teal,
         ),
         buildStatCard(
           title: 'Transactions',
-          value: totalTransactions.toString(),
-          icon: Icons.receipt_long_outlined,
+          value:
+              totalTransactions.toString(),
+          icon: Icons
+              .receipt_long_outlined,
           color: Colors.purple,
         ),
         buildStatCard(
-          title: 'Transaction Value',
-          value: formatMoney(totalTransactionValue),
-          icon: Icons.payments_outlined,
-          color: Colors.deepPurple,
+          title:
+              'Transaction Value',
+          value: formatMoney(
+            totalTransactionValue,
+          ),
+          icon:
+              Icons.payments_outlined,
+          color:
+              Colors.deepPurple,
         ),
         buildStatCard(
           title: 'Wallet Balance',
-          value: formatMoney(totalWalletBalance),
-          icon: Icons.account_balance_wallet_outlined,
+          value: formatMoney(
+            totalWalletBalance,
+          ),
+          icon: Icons
+              .account_balance_wallet_outlined,
           color: Colors.orange,
         ),
         buildStatCard(
           title: 'Pending KYC',
-          value: pendingVerifications.toString(),
-          icon: Icons.badge_outlined,
-          color: Colors.deepOrange,
+          value:
+              pendingVerifications
+                  .toString(),
+          icon:
+              Icons.badge_outlined,
+          color:
+              Colors.deepOrange,
         ),
         buildStatCard(
           title: 'Successful',
-          value: successfulTransactions.toString(),
-          icon: Icons.check_circle_outline,
+          value:
+              successfulTransactions
+                  .toString(),
+          icon: Icons
+              .check_circle_outline,
           color: Colors.green,
         ),
         buildStatCard(
-          title: 'Pending Transactions',
-          value: pendingTransactions.toString(),
-          icon: Icons.schedule_outlined,
+          title:
+              'Pending Transactions',
+          value:
+              pendingTransactions
+                  .toString(),
+          icon:
+              Icons.schedule_outlined,
           color: Colors.orange,
         ),
         buildStatCard(
-          title: 'Failed Transactions',
-          value: failedTransactions.toString(),
-          icon: Icons.error_outline,
+          title:
+              'Failed Transactions',
+          value:
+              failedTransactions
+                  .toString(),
+          icon:
+              Icons.error_outline,
           color: Colors.red,
         ),
         buildStatCard(
-          title: 'Servicepay Profit',
-          value: formatMoney(servicepayProfit),
-          icon: Icons.trending_up_outlined,
+          title:
+              'Servicepay Profit',
+          value: formatMoney(
+            servicepayProfit,
+          ),
+          icon: Icons
+              .trending_up_outlined,
           color: Colors.green,
         ),
       ],
@@ -915,27 +1290,34 @@ Future<void> openTransactions() async {
         buildAdminTool(
           title: 'Manage Users',
           subtitle:
-              'View, activate, suspend and manage Servicepay users.',
-          icon: Icons.manage_accounts_outlined,
+              'View, create, activate, suspend and manage ServicePay users.',
+          icon: Icons
+              .manage_accounts_outlined,
           onTap: openUsers,
         ),
-       buildAdminTool(
-  title: 'Transactions',
-  subtitle: 'Monitor all customer transactions.',
-  icon: Icons.receipt_long_outlined,
-  onTap: openTransactions,
-),
         buildAdminTool(
-          title: 'Delivery Management',
+          title: 'Transactions',
+          subtitle:
+              'Monitor all customer transactions.',
+          icon: Icons
+              .receipt_long_outlined,
+          onTap: openTransactions,
+        ),
+        buildAdminTool(
+          title:
+              'Delivery Management',
           subtitle:
               'Set delivery fees and update delivery status.',
-          icon: Icons.local_shipping_outlined,
+          icon: Icons
+              .local_shipping_outlined,
           onTap: () {
             openModule(
-              title: 'Delivery Management',
+              title:
+                  'Delivery Management',
               description:
                   'Manage delivery requests, fees, assigned riders and delivery status.',
-              icon: Icons.local_shipping_outlined,
+              icon: Icons
+                  .local_shipping_outlined,
             );
           },
         ),
@@ -943,34 +1325,43 @@ Future<void> openTransactions() async {
           title: 'ID Verification',
           subtitle:
               'Review and approve customer verification requests.',
-          icon: Icons.verified_user_outlined,
+          icon: Icons
+              .verified_user_outlined,
           onTap: () {
             openModule(
-              title: 'ID Verification',
+              title:
+                  'ID Verification',
               description:
                   'Review NIN, BVN and other customer verification requests.',
-              icon: Icons.verified_user_outlined,
+              icon: Icons
+                  .verified_user_outlined,
             );
           },
         ),
         buildAdminTool(
-          title: 'Send Notifications',
+          title:
+              'Send Notifications',
           subtitle:
               'Send direct or broadcast notifications to users.',
-          icon: Icons.notifications_active_outlined,
+          icon: Icons
+              .notifications_active_outlined,
           onTap: openNotifications,
         ),
         buildAdminTool(
-          title: 'Commission Management',
+          title:
+              'Commission Management',
           subtitle:
               'Manage agent and manager commissions.',
-          icon: Icons.percent_outlined,
+          icon:
+              Icons.percent_outlined,
           onTap: () {
             openModule(
-              title: 'Commission Management',
+              title:
+                  'Commission Management',
               description:
                   'Review and manage agent, state manager and zonal manager commissions.',
-              icon: Icons.percent_outlined,
+              icon:
+                  Icons.percent_outlined,
             );
           },
         ),
@@ -979,88 +1370,148 @@ Future<void> openTransactions() async {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor:
+          const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        backgroundColor:
+            Colors.green,
+        foregroundColor:
+            Colors.white,
         elevation: 0,
         title: const Text(
           'Admin Dashboard',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: isLoading ? null : refreshDashboard,
-            icon: const Icon(Icons.refresh),
+            onPressed:
+                isLoading
+                    ? null
+                    : refreshDashboard,
+            icon: const Icon(
+              Icons.refresh,
+            ),
           ),
           IconButton(
-            tooltip: 'Send Notifications',
-            onPressed: openNotifications,
+            tooltip:
+                'Send Notifications',
+            onPressed:
+                openNotifications,
             icon: const Icon(
-              Icons.notifications_active_outlined,
+              Icons
+                  .notifications_active_outlined,
             ),
           ),
         ],
       ),
       body: isLoading
           ? const Center(
-              child: CircularProgressIndicator(
-                color: Colors.green,
+              child:
+                  CircularProgressIndicator(
+                color:
+                    Colors.green,
               ),
             )
           : hasError
               ? buildErrorState()
               : RefreshIndicator(
-                  onRefresh: refreshDashboard,
+                  onRefresh:
+                      refreshDashboard,
                   child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final contentWidth =
-                          constraints.maxWidth > 1100
-                              ? 1050.0
-                              : double.infinity;
+                    builder: (
+                      BuildContext context,
+                      BoxConstraints
+                          constraints,
+                    ) {
+                      final double
+                          contentWidth =
+                          constraints
+                                      .maxWidth >
+                                  1100
+                              ? 1050
+                              : double
+                                  .infinity;
 
                       return ListView(
                         physics:
                             const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(18),
+                        padding:
+                            const EdgeInsets.all(
+                          18,
+                        ),
                         children: [
                           Align(
-                            alignment: Alignment.topCenter,
+                            alignment:
+                                Alignment
+                                    .topCenter,
                             child: SizedBox(
-                              width: contentWidth,
+                              width:
+                                  contentWidth,
                               child: Column(
                                 crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                    CrossAxisAlignment
+                                        .start,
                                 children: [
                                   buildHeader(),
-                                  const SizedBox(height: 26),
+                                  const SizedBox(
+                                    height:
+                                        26,
+                                  ),
                                   const Text(
                                     'Overview',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                                    style:
+                                        TextStyle(
+                                      fontSize:
+                                          20,
+                                      fontWeight:
+                                          FontWeight
+                                              .bold,
                                     ),
                                   ),
-                                  const SizedBox(height: 15),
-                                  buildOverviewGrid(constraints),
-                                  const SizedBox(height: 26),
+                                  const SizedBox(
+                                    height:
+                                        15,
+                                  ),
+                                  buildOverviewGrid(
+                                    constraints,
+                                  ),
+                                  const SizedBox(
+                                    height:
+                                        26,
+                                  ),
                                   buildRecentUsersSection(),
-                                  const SizedBox(height: 18),
+                                  const SizedBox(
+                                    height:
+                                        18,
+                                  ),
                                   buildRecentTransactionsSection(),
-                                  const SizedBox(height: 28),
+                                  const SizedBox(
+                                    height:
+                                        28,
+                                  ),
                                   const Text(
                                     'Admin Tools',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                                    style:
+                                        TextStyle(
+                                      fontSize:
+                                          20,
+                                      fontWeight:
+                                          FontWeight
+                                              .bold,
                                     ),
                                   ),
-                                  const SizedBox(height: 14),
+                                  const SizedBox(
+                                    height:
+                                        14,
+                                  ),
                                   buildAdminTools(),
                                 ],
                               ),
@@ -1075,7 +1526,8 @@ Future<void> openTransactions() async {
   }
 }
 
-class AdminModuleScreen extends StatelessWidget {
+class AdminModuleScreen
+    extends StatelessWidget {
   const AdminModuleScreen({
     super.key,
     required this.title,
@@ -1088,77 +1540,122 @@ class AdminModuleScreen extends StatelessWidget {
   final IconData icon;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor:
+          const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: Text(
           title,
           style: const TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        backgroundColor:
+            Colors.green,
+        foregroundColor:
+            Colors.white,
       ),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding:
+              const EdgeInsets.all(
+            24,
+          ),
           child: Container(
             width: 520,
-            padding: const EdgeInsets.all(28),
+            padding:
+                const EdgeInsets.all(
+              28,
+            ),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius:
+                  BorderRadius.circular(
+                22,
+              ),
               border: Border.all(
-                color: Colors.grey.shade200,
+                color:
+                    Colors.grey.shade200,
               ),
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               children: [
                 Container(
                   width: 82,
                   height: 82,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(24),
+                  decoration:
+                      BoxDecoration(
+                    color: Colors.green
+                        .withValues(
+                      alpha: 0.12,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      24,
+                    ),
                   ),
                   child: Icon(
                     icon,
-                    color: Colors.green,
+                    color:
+                        Colors.green,
                     size: 42,
                   ),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(
+                  height: 22,
+                ),
                 Text(
                   title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  textAlign:
+                      TextAlign.center,
+                  style:
+                      const TextStyle(
                     fontSize: 24,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 12,
+                ),
                 Text(
                   description,
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                   style: TextStyle(
-                    color: Colors.grey.shade700,
+                    color:
+                        Colors.grey.shade700,
                     fontSize: 15,
                     height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(
+                  height: 24,
+                ),
                 FilledButton.icon(
                   onPressed: () {
-                    Navigator.pop(context);
+                    Navigator.pop(
+                      context,
+                    );
                   },
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Back to Dashboard'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(
+                  icon: const Icon(
+                    Icons.arrow_back,
+                  ),
+                  label: const Text(
+                    'Back to Dashboard',
+                  ),
+                  style:
+                      FilledButton.styleFrom(
+                    backgroundColor:
+                        Colors.green,
+                    padding:
+                        const EdgeInsets.symmetric(
                       horizontal: 22,
                       vertical: 14,
                     ),

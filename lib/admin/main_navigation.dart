@@ -4,13 +4,18 @@ import 'admin_dashboard_screen.dart';
 import 'admin_delivery_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_settings_screen.dart';
 
-class AdminMainNavigation extends StatefulWidget {
-  const AdminMainNavigation({super.key});
+class AdminMainNavigation
+    extends StatefulWidget {
+  const AdminMainNavigation({
+    super.key,
+  });
 
   @override
-  State<AdminMainNavigation> createState() =>
-      _AdminMainNavigationState();
+  State<AdminMainNavigation>
+      createState() =>
+          _AdminMainNavigationState();
 }
 
 class _AdminMainNavigationState
@@ -22,27 +27,23 @@ class _AdminMainNavigationState
     AdminDeliveryScreen(),
     AdminManualFundingScreen(),
     AdminNotificationsScreen(),
-    Center(
-      child: Text(
-        'Admin Profile',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
+    AdminSettingsScreen(),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       body: IndexedStack(
         index: currentIndex,
         children: pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar:
+          BottomNavigationBar(
         currentIndex: currentIndex,
-        type: BottomNavigationBarType.fixed,
+        type:
+            BottomNavigationBarType.fixed,
         selectedItemColor:
             const Color(0xFF0F766E),
         unselectedItemColor:
@@ -51,13 +52,17 @@ class _AdminMainNavigationState
         elevation: 12,
         selectedFontSize: 10,
         unselectedFontSize: 10,
-        selectedLabelStyle: const TextStyle(
+        selectedLabelStyle:
+            const TextStyle(
           fontWeight: FontWeight.w700,
         ),
-        unselectedLabelStyle: const TextStyle(
+        unselectedLabelStyle:
+            const TextStyle(
           fontWeight: FontWeight.w600,
         ),
-        onTap: (int index) {
+        onTap: (
+          int index,
+        ) {
           setState(() {
             currentIndex = index;
           });
@@ -74,39 +79,45 @@ class _AdminMainNavigationState
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              Icons.local_shipping_outlined,
+              Icons
+                  .local_shipping_outlined,
             ),
             activeIcon: Icon(
-              Icons.local_shipping_rounded,
+              Icons
+                  .local_shipping_rounded,
             ),
             label: 'Deliveries',
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              Icons.account_balance_wallet_outlined,
+              Icons
+                  .account_balance_wallet_outlined,
             ),
             activeIcon: Icon(
-              Icons.account_balance_wallet_rounded,
+              Icons
+                  .account_balance_wallet_rounded,
             ),
             label: 'Funding',
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              Icons.notifications_outlined,
+              Icons
+                  .notifications_outlined,
             ),
             activeIcon: Icon(
-              Icons.notifications_rounded,
+              Icons
+                  .notifications_rounded,
             ),
             label: 'Alerts',
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              Icons.admin_panel_settings_outlined,
+              Icons.settings_outlined,
             ),
             activeIcon: Icon(
-              Icons.admin_panel_settings_rounded,
+              Icons.settings_rounded,
             ),
-            label: 'Profile',
+            label: 'Settings',
           ),
         ],
       ),

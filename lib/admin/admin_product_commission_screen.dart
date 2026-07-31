@@ -803,6 +803,7 @@ class _AdminProductCommissionScreenState
         'companyAmount': companyAmount,
         'companyProfit': companyAmount,
         'headOfficeAmount': companyAmount,
+        'headOfficeCommission': companyAmount,
 
         'zonalAmount': zonalAmount,
         'zonalManagerAmount': zonalAmount,

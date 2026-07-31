@@ -166,6 +166,7 @@ class _AdminProductCommissionScreenState
     Map<String, dynamic> responseData,
   ) {
     dynamic raw =
+        responseData['products'] ??
         responseData['data'] ??
         responseData['commissions'] ??
         responseData['items'] ??
@@ -173,6 +174,7 @@ class _AdminProductCommissionScreenState
 
     if (raw is Map) {
       raw =
+          raw['products'] ??
           raw['commissions'] ??
           raw['items'] ??
           raw['results'] ??

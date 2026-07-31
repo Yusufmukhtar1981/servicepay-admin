@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_notifications_screen.dart';
 import 'admin_transactions_screen.dart';
+import 'admin_product_commission_screen.dart';
 import 'users_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -1348,20 +1349,16 @@ class _AdminDashboardScreenState
           onTap: openNotifications,
         ),
         buildAdminTool(
-          title:
-              'Commission Management',
+          title: 'Commission Management',
           subtitle:
               'Manage agent and manager commissions.',
-          icon:
-              Icons.percent_outlined,
+          icon: Icons.percent_outlined,
           onTap: () {
-            openModule(
-              title:
-                  'Commission Management',
-              description:
-                  'Review and manage agent, state manager and zonal manager commissions.',
-              icon:
-                  Icons.percent_outlined,
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    const AdminProductCommissionScreen(),
+              ),
             );
           },
         ),

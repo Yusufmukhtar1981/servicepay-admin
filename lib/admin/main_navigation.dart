@@ -59,7 +59,7 @@ class _AdminMainNavigationState
 
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(
-          builder: (_) => const AdminLoginScreen(),
+          builder: (_) => const LoginScreen(),
         ),
         (route) => false,
       );

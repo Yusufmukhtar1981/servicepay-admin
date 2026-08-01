@@ -236,41 +236,16 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     await prefs.setString(
-        'user_role',
-        role,
-      );
+      'user_role',
+      user['role']?.toString() ?? 'CUSTOMER',
+    );
 
     await prefs.setString(
       'user_status',
       user['status']?.toString() ?? 'ACTIVE',
     );
-      /*
-       * ADMIN PORTAL SECURITY
-       * admin.servicepay.ng is reserved for HEAD_OFFICE only.
-       */
-      if (role != 'HEAD_OFFICE') {
-        await prefs.clear();
 
-        if (!mounted) {
-          return;
-        }
-
-        showMessage(
-          'Access denied. Head Office account required.',
-        );
-
-        return;
-      }
-
-
-        showMessage(
-          'Access denied. Head Office account required.',
-        );
-
-        return;
-      }
-
-final dynamic balanceValue =
+    final dynamic balanceValue =
         user['walletBalance'] ??
         user['wallet_balance'] ??
         user['balance'];
@@ -427,17 +402,10 @@ final dynamic balanceValue =
               .toUpperCase() ??
           'ACTIVE';
 
-      const Set<String> adminRoles = {
-        'ADMIN',
-        'SUPER_ADMIN',
-        'HEAD_OFFICE',
-        'HEAD_OFFICE_ADMIN',
-      };
-
-      if (adminRoles.contains(role)) {
+      // admin.servicepay.ng is reserved for Head Office only.
+      if (role != 'HEAD_OFFICE') {
         showMessage(
-          'Admin accounts must sign in through '
-          'admin.servicepay.ng.',
+          'Access denied. Head Office account required.',
         );
         return;
       }

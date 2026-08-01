@@ -236,16 +236,47 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     await prefs.setString(
-      'user_role',
-      user['role']?.toString() ?? 'CUSTOMER',
-    );
+        'user_role',
+        authenticatedRole,
+      );
 
     await prefs.setString(
       'user_status',
       user['status']?.toString() ?? 'ACTIVE',
     );
 
-    final dynamic balanceValue =
+    
+      /*
+       * ADMIN PORTAL SECURITY
+       * admin.servicepay.ng is reserved for HEAD_OFFICE only.
+       */
+      final String authenticatedRole = (
+        user['role'] ??
+        user['userRole'] ??
+        decoded['role'] ??
+        ''
+      )
+          .toString()
+          .trim()
+          .toUpperCase()
+          .replaceAll('-', '_')
+          .replaceAll(' ', '_');
+
+      if (authenticatedRole != 'HEAD_OFFICE') {
+        await prefs.clear();
+
+        if (!mounted) {
+          return;
+        }
+
+        showMessage(
+          'Access denied. Head Office account required.',
+        );
+
+        return;
+      }
+
+final dynamic balanceValue =
         user['walletBalance'] ??
         user['wallet_balance'] ??
         user['balance'];

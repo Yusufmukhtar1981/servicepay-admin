@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../login_screen.dart';
+
 import 'admin_dashboard_screen.dart';
 import 'admin_delivery_screen.dart';
 import 'admin_manual_funding_screen.dart';
@@ -48,6 +50,23 @@ class _AdminMainNavigationState
           prefs.getString('role'),
     );
 
+    if (role != 'HEAD_OFFICE') {
+      await prefs.clear();
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (_) => const AdminLoginScreen(),
+        ),
+        (route) => false,
+      );
+
+      return;
+    }
+
     if (!mounted) {
       return;
     }
@@ -61,82 +80,43 @@ class _AdminMainNavigationState
   }
 
   void configureNavigation() {
-    if (adminRole == 'HEAD_OFFICE') {
-      pages = const [
-        AdminDashboardScreen(),
-        AdminDeliveryScreen(),
-        AdminManualFundingScreen(),
-        AdminNotificationsScreen(),
-        AdminSettingsScreen(),
-      ];
-
-      items = const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.dashboard_outlined),
-          activeIcon: Icon(Icons.dashboard_rounded),
-          label: 'Dashboard',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.local_shipping_outlined),
-          activeIcon: Icon(Icons.local_shipping_rounded),
-          label: 'Deliveries',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(
-            Icons.account_balance_wallet_outlined,
-          ),
-          activeIcon: Icon(
-            Icons.account_balance_wallet_rounded,
-          ),
-          label: 'Funding',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.notifications_outlined),
-          activeIcon: Icon(Icons.notifications_rounded),
-          label: 'Alerts',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.settings_outlined),
-          activeIcon: Icon(Icons.settings_rounded),
-          label: 'Settings',
-        ),
-      ];
-
-      return;
-    }
-
-    if (adminRole == 'ZONAL_MANAGER' ||
-        adminRole == 'STATE_MANAGER') {
-      pages = const [
-        AdminDashboardScreen(),
-        AdminUsersScreen(),
-      ];
-
-      items = const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.dashboard_outlined),
-          activeIcon: Icon(Icons.dashboard_rounded),
-          label: 'Dashboard',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.manage_accounts_outlined),
-          activeIcon: Icon(Icons.manage_accounts_rounded),
-          label: 'Users',
-        ),
-      ];
-
-      return;
-    }
-
     pages = const [
-      _AccessDeniedScreen(),
+      AdminDashboardScreen(),
+      AdminDeliveryScreen(),
+      AdminManualFundingScreen(),
+      AdminNotificationsScreen(),
+      AdminSettingsScreen(),
     ];
 
     items = const [
       BottomNavigationBarItem(
-        icon: Icon(Icons.block_outlined),
-        activeIcon: Icon(Icons.block_rounded),
-        label: 'Access',
+        icon: Icon(Icons.dashboard_outlined),
+        activeIcon: Icon(Icons.dashboard_rounded),
+        label: 'Dashboard',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.local_shipping_outlined),
+        activeIcon: Icon(Icons.local_shipping_rounded),
+        label: 'Deliveries',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(
+          Icons.account_balance_wallet_outlined,
+        ),
+        activeIcon: Icon(
+          Icons.account_balance_wallet_rounded,
+        ),
+        label: 'Wallet',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.notifications_outlined),
+        activeIcon: Icon(Icons.notifications_rounded),
+        label: 'Notifications',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.settings_outlined),
+        activeIcon: Icon(Icons.settings_rounded),
+        label: 'Settings',
       ),
     ];
   }
@@ -180,45 +160,6 @@ class _AdminMainNavigationState
           });
         },
         items: items,
-      ),
-    );
-  }
-}
-
-class _AccessDeniedScreen
-    extends StatelessWidget {
-  const _AccessDeniedScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.block_rounded,
-                color: Colors.red,
-                size: 64,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Access denied',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'This account is not allowed to use the management application.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

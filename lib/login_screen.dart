@@ -237,37 +237,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await prefs.setString(
         'user_role',
-        authenticatedRole,
+        role,
       );
 
     await prefs.setString(
       'user_status',
       user['status']?.toString() ?? 'ACTIVE',
     );
-
-    
       /*
        * ADMIN PORTAL SECURITY
        * admin.servicepay.ng is reserved for HEAD_OFFICE only.
        */
-      final String authenticatedRole = (
-        user['role'] ??
-        user['userRole'] ??
-        decoded['role'] ??
-        ''
-      )
-          .toString()
-          .trim()
-          .toUpperCase()
-          .replaceAll('-', '_')
-          .replaceAll(' ', '_');
-
-      if (authenticatedRole != 'HEAD_OFFICE') {
+      if (role != 'HEAD_OFFICE') {
         await prefs.clear();
 
         if (!mounted) {
           return;
         }
+
+        showMessage(
+          'Access denied. Head Office account required.',
+        );
+
+        return;
+      }
+
 
         showMessage(
           'Access denied. Head Office account required.',

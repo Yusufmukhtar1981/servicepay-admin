@@ -262,7 +262,7 @@ class _StaffManagementScreenState
       }
 
       final http.Response response =
-          await http.patch(
+          await http.put(
         Uri.parse(
           '$baseUrl/staff-management/staff/'
           '$staffId/status',

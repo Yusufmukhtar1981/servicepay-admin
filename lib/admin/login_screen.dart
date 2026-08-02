@@ -375,17 +375,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           'ACTIVE';
 
       const Set<String> allowedAdminRoles = {
-        'ADMIN',
-        'SUPER_ADMIN',
         'HEAD_OFFICE',
-        'HEAD_OFFICE_ADMIN',
-        'ZONAL_MANAGER',
-        'STATE_MANAGER',
+        'STAFF',
       };
 
       if (!allowedAdminRoles.contains(role)) {
         showMessage(
-          'This account is not authorized to access the Admin Dashboard.',
+          'Only Head Office and authorized ServicePay staff can access this portal.',
         );
         return;
       }
@@ -400,6 +396,75 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       await saveAdminLoginData(
         token,
         user,
+      );
+
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+
+      final dynamic rawStaffRole =
+          user['staffRole'];
+
+      final Map<String, dynamic> staffRole =
+          rawStaffRole is Map
+              ? Map<String, dynamic>.from(
+                  rawStaffRole,
+                )
+              : <String, dynamic>{};
+
+      final dynamic rawPermissions =
+          user['permissions'] ??
+          staffRole['permissions'];
+
+      final List<String> permissions =
+          rawPermissions is List
+              ? rawPermissions
+                  .map(
+                    (dynamic item) =>
+                        item.toString().trim(),
+                  )
+                  .where(
+                    (String item) =>
+                        item.isNotEmpty,
+                  )
+                  .toSet()
+                  .toList()
+              : <String>[];
+
+      await preferences.setString(
+        'staff_id',
+        user['staffId']?.toString() ?? '',
+      );
+
+      await preferences.setString(
+        'staff_role_name',
+        staffRole['name']?.toString() ?? '',
+      );
+
+      await preferences.setString(
+        'staff_role_display_name',
+        staffRole['displayName']?.toString() ?? '',
+      );
+
+      await preferences.setString(
+        'staff_department',
+        user['department']?.toString() ??
+            staffRole['department']?.toString() ??
+            '',
+      );
+
+      await preferences.setStringList(
+        'staff_permissions',
+        permissions,
+      );
+
+      await preferences.setBool(
+        'must_change_password',
+        user['mustChangePassword'] == true,
+      );
+
+      await preferences.setBool(
+        'is_staff',
+        user['isStaff'] == true,
       );
 
       if (!mounted) return;

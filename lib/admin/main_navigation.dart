@@ -8,10 +8,12 @@ import 'admin_delivery_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_settings_screen.dart';
-import 'users_screen.dart';
+import 'staff_management_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
-  const AdminMainNavigation({super.key});
+  const AdminMainNavigation({
+    super.key,
+  });
 
   @override
   State<AdminMainNavigation> createState() =>
@@ -21,108 +23,306 @@ class AdminMainNavigation extends StatefulWidget {
 class _AdminMainNavigationState
     extends State<AdminMainNavigation> {
   int currentIndex = 0;
-  bool isLoading = true;
-  String adminRole = '';
 
-  List<Widget> pages = const [];
-  List<BottomNavigationBarItem> items = const [];
+  bool isLoading = true;
+
+  String adminRole = '';
+  String staffRoleName = '';
+  String staffRoleDisplayName = '';
+  String staffDepartment = '';
+
+  Set<String> permissions = <String>{};
+
+  List<Widget> pages = <Widget>[];
+  List<BottomNavigationBarItem> items =
+      <BottomNavigationBarItem>[];
 
   @override
   void initState() {
     super.initState();
-    loadRole();
+    loadAccessAndConfigureNavigation();
   }
 
-  String normalizeRole(String? value) {
+  String normalizeRole(
+    String? value,
+  ) {
     return (value ?? '')
         .trim()
         .toUpperCase()
-        .replaceAll(RegExp(r'[\s-]+'), '_');
+        .replaceAll(
+          RegExp(r'[\s-]+'),
+          '_',
+        );
   }
 
-  Future<void> loadRole() async {
-    final prefs =
-        await SharedPreferences.getInstance();
+  String normalizePermission(
+    String? value,
+  ) {
+    return (value ?? '')
+        .trim()
+        .toLowerCase();
+  }
 
-    final role = normalizeRole(
-      prefs.getString('user_role') ??
-          prefs.getString('admin_role') ??
-          prefs.getString('role'),
+  bool get isHeadOffice {
+    return adminRole == 'HEAD_OFFICE';
+  }
+
+  bool get isStaff {
+    return adminRole == 'STAFF';
+  }
+
+  bool hasPermission(
+    String permission,
+  ) {
+    if (isHeadOffice) {
+      return true;
+    }
+
+    return permissions.contains(
+      normalizePermission(permission),
+    );
+  }
+
+  bool hasAnyPermission(
+    List<String> requiredPermissions,
+  ) {
+    if (isHeadOffice) {
+      return true;
+    }
+
+    return requiredPermissions.any(
+      hasPermission,
+    );
+  }
+
+  void addNavigationPage({
+    required Widget page,
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+  }) {
+    pages.add(page);
+
+    items.add(
+      BottomNavigationBarItem(
+        icon: Icon(icon),
+        activeIcon: Icon(activeIcon),
+        label: label,
+      ),
+    );
+  }
+
+  void configureNavigation() {
+    pages = <Widget>[];
+    items = <BottomNavigationBarItem>[];
+
+    if (
+        isHeadOffice ||
+        hasPermission('dashboard.view')) {
+      addNavigationPage(
+        page: const AdminDashboardScreen(),
+        icon: Icons.dashboard_outlined,
+        activeIcon: Icons.dashboard_rounded,
+        label: 'Dashboard',
+      );
+    }
+
+    if (
+        isHeadOffice ||
+        hasPermission('delivery.view')) {
+      addNavigationPage(
+        page: const AdminDeliveryScreen(),
+        icon: Icons.local_shipping_outlined,
+        activeIcon: Icons.local_shipping_rounded,
+        label: 'Delivery',
+      );
+    }
+
+    if (
+        isHeadOffice ||
+        hasAnyPermission(
+          const <String>[
+            'wallets.view',
+            'wallets.fund',
+            'wallets.adjust',
+            'finance.view',
+            'finance.reconcile',
+          ],
+        )) {
+      addNavigationPage(
+        page: const AdminManualFundingScreen(),
+        icon: Icons.account_balance_wallet_outlined,
+        activeIcon: Icons.account_balance_wallet_rounded,
+        label: 'Wallet',
+      );
+    }
+
+    if (
+        isHeadOffice ||
+        hasAnyPermission(
+          const <String>[
+            'notifications.view',
+            'notifications.create',
+            'notifications.send',
+          ],
+        )) {
+      addNavigationPage(
+        page: const AdminNotificationsScreen(),
+        icon: Icons.notifications_outlined,
+        activeIcon: Icons.notifications_rounded,
+        label: 'Notifications',
+      );
+    }
+
+    if (
+        isHeadOffice ||
+        hasAnyPermission(
+          const <String>[
+            'staff.view',
+            'staff.create',
+            'staff.update',
+            'staff.suspend',
+            'roles.view',
+            'roles.create',
+            'roles.update',
+          ],
+        )) {
+      addNavigationPage(
+        page: const StaffManagementScreen(),
+        icon: Icons.groups_outlined,
+        activeIcon: Icons.groups_rounded,
+        label: 'Staff',
+      );
+    }
+
+    /*
+     * Settings is always shown so every authorized
+     * staff member can view account information and log out.
+     */
+    addNavigationPage(
+      page: const AdminSettingsScreen(),
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings_rounded,
+      label: 'Settings',
     );
 
-    if (role != 'HEAD_OFFICE') {
-      await prefs.clear();
+    if (currentIndex >= pages.length) {
+      currentIndex = 0;
+    }
+  }
+
+  Future<void> loadAccessAndConfigureNavigation() async {
+    try {
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
+
+      final String role = normalizeRole(
+        prefs.getString('user_role') ??
+            prefs.getString('admin_role') ??
+            prefs.getString('role'),
+      );
+
+      final List<String> savedPermissions =
+          prefs.getStringList(
+                'staff_permissions',
+              ) ??
+              <String>[];
+
+      final Set<String> normalizedPermissions =
+          savedPermissions
+              .map(normalizePermission)
+              .where(
+                (String value) =>
+                    value.isNotEmpty,
+              )
+              .toSet();
+
+      if (
+          role != 'HEAD_OFFICE' &&
+          role != 'STAFF') {
+        await prefs.clear();
+
+        if (!mounted) {
+          return;
+        }
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                const LoginScreen(),
+          ),
+          (Route<dynamic> route) => false,
+        );
+
+        return;
+      }
 
       if (!mounted) {
         return;
       }
 
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(
-          builder: (_) => const LoginScreen(),
-        ),
-        (route) => false,
-      );
+      setState(() {
+        adminRole = role;
 
-      return;
+        staffRoleName =
+            prefs.getString(
+                  'staff_role_name',
+                ) ??
+                '';
+
+        staffRoleDisplayName =
+            prefs.getString(
+                  'staff_role_display_name',
+                ) ??
+                '';
+
+        staffDepartment =
+            prefs.getString(
+                  'staff_department',
+                ) ??
+                '';
+
+        permissions =
+            normalizedPermissions;
+
+        currentIndex = 0;
+
+        configureNavigation();
+
+        isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoading = false;
+      });
     }
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      adminRole = role;
-      currentIndex = 0;
-      configureNavigation();
-      isLoading = false;
-    });
   }
 
-  void configureNavigation() {
-    pages = const [
-      AdminDashboardScreen(),
-      AdminDeliveryScreen(),
-      AdminManualFundingScreen(),
-      AdminNotificationsScreen(),
-      AdminSettingsScreen(),
-    ];
+  String get accountLabel {
+    if (isHeadOffice) {
+      return 'Head Office';
+    }
 
-    items = const [
-      BottomNavigationBarItem(
-        icon: Icon(Icons.dashboard_outlined),
-        activeIcon: Icon(Icons.dashboard_rounded),
-        label: 'Dashboard',
-      ),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.local_shipping_outlined),
-        activeIcon: Icon(Icons.local_shipping_rounded),
-        label: 'Deliveries',
-      ),
-      BottomNavigationBarItem(
-        icon: Icon(
-          Icons.account_balance_wallet_outlined,
-        ),
-        activeIcon: Icon(
-          Icons.account_balance_wallet_rounded,
-        ),
-        label: 'Wallet',
-      ),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.notifications_outlined),
-        activeIcon: Icon(Icons.notifications_rounded),
-        label: 'Notifications',
-      ),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.settings_outlined),
-        activeIcon: Icon(Icons.settings_rounded),
-        label: 'Settings',
-      ),
-    ];
+    if (staffRoleDisplayName.isNotEmpty) {
+      return staffRoleDisplayName;
+    }
+
+    if (staffRoleName.isNotEmpty) {
+      return staffRoleName
+          .replaceAll('_', ' ');
+    }
+
+    return 'ServicePay Staff';
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     if (isLoading) {
       return const Scaffold(
         body: Center(
@@ -131,12 +331,90 @@ class _AdminMainNavigationState
       );
     }
 
-    final safeIndex =
-        currentIndex < pages.length
-            ? currentIndex
-            : 0;
+    if (pages.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'ServicePay Admin',
+          ),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'No authorized admin pages are available for this account.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final int safeIndex =
+        currentIndex >= pages.length
+            ? 0
+            : currentIndex;
 
     return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          accountLabel,
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        actions: [
+          if (
+              isStaff &&
+              staffDepartment.isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets.only(
+                right: 12,
+              ),
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(
+                          0xFFE8F5EC,
+                        ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      20,
+                    ),
+                  ),
+                  child: Text(
+                    staffDepartment
+                        .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                    style:
+                        const TextStyle(
+                      color:
+                          Color(
+                            0xFF159447,
+                          ),
+                      fontSize: 11,
+                      fontWeight:
+                          FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
       body: IndexedStack(
         index: safeIndex,
         children: pages,
@@ -144,14 +422,19 @@ class _AdminMainNavigationState
       bottomNavigationBar:
           BottomNavigationBar(
         currentIndex: safeIndex,
-        type: BottomNavigationBarType.fixed,
+        type:
+            BottomNavigationBarType.fixed,
         selectedItemColor:
             const Color(0xFF0F766E),
         unselectedItemColor:
             const Color(0xFF94A3B8),
         backgroundColor: Colors.white,
-        onTap: (index) {
-          if (index >= pages.length) {
+        onTap: (
+          int index,
+        ) {
+          if (
+              index < 0 ||
+              index >= pages.length) {
             return;
           }
 

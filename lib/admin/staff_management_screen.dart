@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_staff_screen.dart';
+import 'roles_permissions_screen.dart';
 
 class StaffManagementScreen extends StatefulWidget {
   const StaffManagementScreen({
@@ -594,6 +595,29 @@ class _StaffManagementScreenState
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          const RolesPermissionsScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.admin_panel_settings_outlined,
+                ),
+                label: const Text(
+                  'Roles & Permissions',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             TextField(
               controller: searchController,
               textInputAction:

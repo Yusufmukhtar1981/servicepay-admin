@@ -8,8 +8,6 @@ import 'admin_delivery_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_settings_screen.dart';
-import 'staff_management_screen.dart';
-import 'admin_amana_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -17,10 +15,12 @@ class AdminMainNavigation extends StatefulWidget {
   });
 
   @override
-  State<AdminMainNavigation> createState() => _AdminMainNavigationState();
+  State<AdminMainNavigation> createState() =>
+      _AdminMainNavigationState();
 }
 
-class _AdminMainNavigationState extends State<AdminMainNavigation> {
+class _AdminMainNavigationState
+    extends State<AdminMainNavigation> {
   int currentIndex = 0;
 
   bool isLoading = true;
@@ -33,7 +33,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   Set<String> permissions = <String>{};
 
   List<Widget> pages = <Widget>[];
-  List<BottomNavigationBarItem> items = <BottomNavigationBarItem>[];
+  List<BottomNavigationBarItem> items =
+      <BottomNavigationBarItem>[];
 
   @override
   void initState() {
@@ -44,7 +45,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   String normalizeRole(
     String? value,
   ) {
-    return (value ?? '').trim().toUpperCase().replaceAll(
+    return (value ?? '')
+        .trim()
+        .toUpperCase()
+        .replaceAll(
           RegExp(r'[\s-]+'),
           '_',
         );
@@ -53,7 +57,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   String normalizePermission(
     String? value,
   ) {
-    return (value ?? '').trim().toLowerCase();
+    return (value ?? '')
+        .trim()
+        .toLowerCase();
   }
 
   bool get isHeadOffice {
@@ -109,7 +115,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     pages = <Widget>[];
     items = <BottomNavigationBarItem>[];
 
-    if (isHeadOffice || hasPermission('dashboard.view')) {
+    if (
+        isHeadOffice ||
+        hasPermission('dashboard.view')) {
       addNavigationPage(
         page: const AdminDashboardScreen(),
         icon: Icons.dashboard_outlined,
@@ -117,16 +125,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         label: 'Dashboard',
       );
     }
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminAmanaScreen(),
-        icon: Icons.volunteer_activism_outlined,
-        activeIcon: Icons.volunteer_activism_rounded,
-        label: 'Amana',
-      );
-    }
 
-    if (isHeadOffice || hasPermission('delivery.view')) {
+    if (
+        isHeadOffice ||
+        hasPermission('delivery.view')) {
       addNavigationPage(
         page: const AdminDeliveryScreen(),
         icon: Icons.local_shipping_outlined,
@@ -135,7 +137,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice ||
+    if (
+        isHeadOffice ||
         hasAnyPermission(
           const <String>[
             'wallets.view',
@@ -153,7 +156,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice ||
+    if (
+        isHeadOffice ||
         hasAnyPermission(
           const <String>[
             'notifications.view',
@@ -166,26 +170,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.notifications_outlined,
         activeIcon: Icons.notifications_rounded,
         label: 'Notifications',
-      );
-    }
-
-    if (isHeadOffice ||
-        hasAnyPermission(
-          const <String>[
-            'staff.view',
-            'staff.create',
-            'staff.update',
-            'staff.suspend',
-            'roles.view',
-            'roles.create',
-            'roles.update',
-          ],
-        )) {
-      addNavigationPage(
-        page: const StaffManagementScreen(),
-        icon: Icons.groups_outlined,
-        activeIcon: Icons.groups_rounded,
-        label: 'Staff',
       );
     }
 
@@ -207,7 +191,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
   Future<void> loadAccessAndConfigureNavigation() async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final SharedPreferences prefs =
+          await SharedPreferences.getInstance();
 
       final String role = normalizeRole(
         prefs.getString('user_role') ??
@@ -215,19 +200,24 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             prefs.getString('role'),
       );
 
-      final List<String> savedPermissions = prefs.getStringList(
-            'staff_permissions',
-          ) ??
-          <String>[];
+      final List<String> savedPermissions =
+          prefs.getStringList(
+                'staff_permissions',
+              ) ??
+              <String>[];
 
-      final Set<String> normalizedPermissions = savedPermissions
-          .map(normalizePermission)
-          .where(
-            (String value) => value.isNotEmpty,
-          )
-          .toSet();
+      final Set<String> normalizedPermissions =
+          savedPermissions
+              .map(normalizePermission)
+              .where(
+                (String value) =>
+                    value.isNotEmpty,
+              )
+              .toSet();
 
-      if (role != 'HEAD_OFFICE' && role != 'STAFF') {
+      if (
+          role != 'HEAD_OFFICE' &&
+          role != 'STAFF') {
         await prefs.clear();
 
         if (!mounted) {
@@ -236,7 +226,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute<void>(
-            builder: (_) => const LoginScreen(),
+            builder: (_) =>
+                const LoginScreen(),
           ),
           (Route<dynamic> route) => false,
         );
@@ -251,22 +242,26 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       setState(() {
         adminRole = role;
 
-        staffRoleName = prefs.getString(
-              'staff_role_name',
-            ) ??
-            '';
+        staffRoleName =
+            prefs.getString(
+                  'staff_role_name',
+                ) ??
+                '';
 
-        staffRoleDisplayName = prefs.getString(
-              'staff_role_display_name',
-            ) ??
-            '';
+        staffRoleDisplayName =
+            prefs.getString(
+                  'staff_role_display_name',
+                ) ??
+                '';
 
-        staffDepartment = prefs.getString(
-              'staff_department',
-            ) ??
-            '';
+        staffDepartment =
+            prefs.getString(
+                  'staff_department',
+                ) ??
+                '';
 
-        permissions = normalizedPermissions;
+        permissions =
+            normalizedPermissions;
 
         currentIndex = 0;
 
@@ -295,7 +290,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     if (staffRoleName.isNotEmpty) {
-      return staffRoleName.replaceAll('_', ' ');
+      return staffRoleName
+          .replaceAll('_', ' ');
     }
 
     return 'ServicePay Staff';
@@ -336,7 +332,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    final int safeIndex = currentIndex >= pages.length ? 0 : currentIndex;
+    final int safeIndex =
+        currentIndex >= pages.length
+            ? 0
+            : currentIndex;
 
     return Scaffold(
       appBar: AppBar(
@@ -347,36 +346,46 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           ),
         ),
         actions: [
-          if (isStaff && staffDepartment.isNotEmpty)
+          if (
+              isStaff &&
+              staffDepartment.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(
+              padding:
+                  const EdgeInsets.only(
                 right: 12,
               ),
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding:
+                      const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFE8F5EC,
-                    ),
-                    borderRadius: BorderRadius.circular(
+                    color:
+                        const Color(
+                          0xFFE8F5EC,
+                        ),
+                    borderRadius:
+                        BorderRadius.circular(
                       20,
                     ),
                   ),
                   child: Text(
-                    staffDepartment.replaceAll(
+                    staffDepartment
+                        .replaceAll(
                       '_',
                       ' ',
                     ),
-                    style: const TextStyle(
-                      color: Color(
-                        0xFF159447,
-                      ),
+                    style:
+                        const TextStyle(
+                      color:
+                          Color(
+                            0xFF159447,
+                          ),
                       fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                 ),
@@ -388,16 +397,22 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         index: safeIndex,
         children: pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar:
+          BottomNavigationBar(
         currentIndex: safeIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF0F766E),
-        unselectedItemColor: const Color(0xFF94A3B8),
+        type:
+            BottomNavigationBarType.fixed,
+        selectedItemColor:
+            const Color(0xFF0F766E),
+        unselectedItemColor:
+            const Color(0xFF94A3B8),
         backgroundColor: Colors.white,
         onTap: (
           int index,
         ) {
-          if (index < 0 || index >= pages.length) {
+          if (
+              index < 0 ||
+              index >= pages.length) {
             return;
           }
 

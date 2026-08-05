@@ -24,8 +24,7 @@ class _AdminDeliveryScreenState
   static const Color primaryColor =
       Color(0xFF0F766E);
 
-  final TextEditingController
-      searchController =
+  final TextEditingController searchController =
       TextEditingController();
 
   List<Map<String, dynamic>> deliveries =
@@ -49,7 +48,14 @@ class _AdminDeliveryScreenState
   int cancelledDeliveries = 0;
   int failedDeliveries = 0;
 
+  int pendingCommissions = 0;
+  int creditedCommissions = 0;
+  int settledCommissions = 0;
+
   double totalRevenue = 0;
+  double totalQuotedPrice = 0;
+  double totalRiderCommission = 0;
+  double servicepayProfit = 0;
 
   @override
   void initState() {
@@ -131,12 +137,12 @@ class _AdminDeliveryScreenState
     dynamic value, {
     String fallback = '',
   }) {
-    final String result =
+    final String text =
         value?.toString().trim() ?? '';
 
-    return result.isEmpty
+    return text.isEmpty
         ? fallback
-        : result;
+        : text;
   }
 
   String cleanError(
@@ -245,8 +251,7 @@ class _AdminDeliveryScreenState
         );
       }
 
-      final Map<String, String>
-          queryParameters =
+      final Map<String, String> queryParameters =
           <String, String>{
         'page': '1',
         'limit': '100',
@@ -314,8 +319,7 @@ class _AdminDeliveryScreenState
         data['deliveries'],
       );
 
-      final Map<String, dynamic>
-          summary =
+      final Map<String, dynamic> summary =
           mapFromDynamic(
         data['summary'],
       );
@@ -364,8 +368,32 @@ class _AdminDeliveryScreenState
           summary['failed'],
         );
 
+        pendingCommissions = toInt(
+          summary['pendingCommissions'],
+        );
+
+        creditedCommissions = toInt(
+          summary['creditedCommissions'],
+        );
+
+        settledCommissions = toInt(
+          summary['settledCommissions'],
+        );
+
         totalRevenue = toDouble(
           summary['totalRevenue'],
+        );
+
+        totalQuotedPrice = toDouble(
+          summary['totalQuotedPrice'],
+        );
+
+        totalRiderCommission = toDouble(
+          summary['totalRiderCommission'],
+        );
+
+        servicepayProfit = toDouble(
+          summary['servicepayProfit'],
         );
 
         isLoading = false;
@@ -413,8 +441,7 @@ class _AdminDeliveryScreenState
   }
 
   Future<bool> updateDeliveryStatus({
-    required Map<String, dynamic>
-        delivery,
+    required Map<String, dynamic> delivery,
     required String status,
   }) async {
     final String deliveryId =
@@ -518,10 +545,11 @@ class _AdminDeliveryScreenState
   }
 
   Future<bool> updateDeliveryPrice({
-    required Map<String, dynamic>
-        delivery,
+    required Map<String, dynamic> delivery,
     required double deliveryFee,
     required String paymentStatus,
+    required String riderCommissionType,
+    required double riderCommissionValue,
   }) async {
     final String deliveryId =
         textFromDynamic(
@@ -540,6 +568,35 @@ class _AdminDeliveryScreenState
     if (deliveryFee < 0) {
       showMessage(
         'Enter a valid delivery price.',
+        isError: true,
+      );
+
+      return false;
+    }
+
+    if (riderCommissionValue < 0) {
+      showMessage(
+        'Enter a valid Rider commission value.',
+        isError: true,
+      );
+
+      return false;
+    }
+
+    if (riderCommissionType == 'PERCENTAGE' &&
+        riderCommissionValue > 100) {
+      showMessage(
+        'Percentage commission cannot exceed 100%.',
+        isError: true,
+      );
+
+      return false;
+    }
+
+    if (riderCommissionType == 'FIXED' &&
+        riderCommissionValue > deliveryFee) {
+      showMessage(
+        'Fixed Rider commission cannot exceed the delivery price.',
         isError: true,
       );
 
@@ -576,6 +633,10 @@ class _AdminDeliveryScreenState
                       deliveryFee,
                   'paymentStatus':
                       paymentStatus,
+                  'riderCommissionType':
+                      riderCommissionType,
+                  'riderCommissionValue':
+                      riderCommissionValue,
                 }),
               )
               .timeout(
@@ -593,7 +654,7 @@ class _AdminDeliveryScreenState
           textFromDynamic(
             result['message'],
             fallback:
-                'Failed to update delivery price.',
+                'Failed to update delivery price and commission.',
           ),
         );
       }
@@ -602,7 +663,7 @@ class _AdminDeliveryScreenState
         textFromDynamic(
           result['message'],
           fallback:
-              'Delivery price updated successfully.',
+              'Delivery price and Rider commission updated successfully.',
         ),
       );
 
@@ -704,8 +765,7 @@ class _AdminDeliveryScreenState
   }
 
   Future<bool> assignRider({
-    required Map<String, dynamic>
-        delivery,
+    required Map<String, dynamic> delivery,
     required Map<String, dynamic> rider,
   }) async {
     final String deliveryId =
@@ -721,7 +781,7 @@ class _AdminDeliveryScreenState
     if (deliveryId.isEmpty ||
         riderId.isEmpty) {
       showMessage(
-        'Invalid delivery or rider information.',
+        'Invalid delivery or Rider information.',
         isError: true,
       );
 
@@ -772,7 +832,7 @@ class _AdminDeliveryScreenState
           textFromDynamic(
             result['message'],
             fallback:
-                'Failed to assign rider.',
+                'Failed to assign Rider.',
           ),
         );
       }
@@ -876,7 +936,7 @@ class _AdminDeliveryScreenState
           textFromDynamic(
             result['message'],
             fallback:
-                'Failed to remove rider.',
+                'Failed to remove Rider.',
           ),
         );
       }
@@ -970,7 +1030,8 @@ class _AdminDeliveryScreenState
 
     return textFromDynamic(
       delivery['senderPhone'],
-      fallback: 'Not available',
+      fallback:
+          'Not available',
     );
   }
 
@@ -999,7 +1060,8 @@ class _AdminDeliveryScreenState
 
     return textFromDynamic(
       delivery['packageDescription'],
-      fallback: 'Package',
+      fallback:
+          'Package',
     );
   }
 
@@ -1030,6 +1092,8 @@ class _AdminDeliveryScreenState
 
     return textFromDynamic(
       delivery['riderName'],
+      fallback:
+          'Delivery Rider',
     );
   }
 
@@ -1052,6 +1116,8 @@ class _AdminDeliveryScreenState
 
     return textFromDynamic(
       delivery['riderPhone'],
+      fallback:
+          'Not available',
     );
   }
 
@@ -1065,8 +1131,12 @@ class _AdminDeliveryScreenState
 
     return textFromDynamic(
       rider['vehicleType'],
-      fallback: 'Not available',
-    ).replaceAll('_', ' ');
+      fallback:
+          'Not available',
+    ).replaceAll(
+      '_',
+      ' ',
+    );
   }
 
   String getAssignedRiderAvailability(
@@ -1098,6 +1168,86 @@ class _AdminDeliveryScreenState
     return textFromDynamic(
       assignedRiderId,
     ).isNotEmpty;
+  }
+
+  String getCommissionType(
+    Map<String, dynamic> delivery,
+  ) {
+    final String type =
+        textFromDynamic(
+      delivery['riderCommissionType'],
+      fallback: 'PERCENTAGE',
+    ).toUpperCase();
+
+    if (type == 'FIXED') {
+      return 'FIXED';
+    }
+
+    return 'PERCENTAGE';
+  }
+
+  double getCommissionValue(
+    Map<String, dynamic> delivery,
+  ) {
+    final dynamic rawValue =
+        delivery['riderCommissionValue'];
+
+    if (rawValue == null) {
+      return 80;
+    }
+
+    return toDouble(rawValue);
+  }
+
+  double calculateRiderCommission({
+    required double deliveryFee,
+    required String commissionType,
+    required double commissionValue,
+  }) {
+    if (deliveryFee <= 0) {
+      return 0;
+    }
+
+    double commission = 0;
+
+    if (commissionType == 'FIXED') {
+      commission =
+          commissionValue;
+    } else {
+      commission =
+          deliveryFee *
+              (commissionValue / 100);
+    }
+
+    if (commission < 0) {
+      commission = 0;
+    }
+
+    if (commission > deliveryFee) {
+      commission =
+          deliveryFee;
+    }
+
+    return double.parse(
+      commission.toStringAsFixed(2),
+    );
+  }
+
+  double calculateServicePayProfit({
+    required double deliveryFee,
+    required double riderCommission,
+  }) {
+    final double profit =
+        deliveryFee -
+            riderCommission;
+
+    if (profit < 0) {
+      return 0;
+    }
+
+    return double.parse(
+      profit.toStringAsFixed(2),
+    );
   }
 
   String formatDate(
@@ -1242,6 +1392,25 @@ class _AdminDeliveryScreenState
     }
   }
 
+  Color getCommissionStatusColor(
+    String commissionStatus,
+  ) {
+    switch (
+        commissionStatus.toUpperCase()) {
+      case 'CREDITED':
+        return Colors.blue;
+
+      case 'SETTLED':
+        return Colors.green;
+
+      case 'CANCELLED':
+        return Colors.red;
+
+      default:
+        return Colors.orange;
+    }
+  }
+
   Color getAvailabilityColor(
     String availabilityStatus,
   ) {
@@ -1278,8 +1447,9 @@ class _AdminDeliveryScreenState
         return StatefulBuilder(
           builder: (
             BuildContext dialogContext,
-            void Function(void Function())
-                setDialogState,
+            void Function(
+              void Function(),
+            ) setDialogState,
           ) {
             Future<void> loadRiders() async {
               setDialogState(() {
@@ -1302,24 +1472,22 @@ class _AdminDeliveryScreenState
                   riders = loadedRiders;
                   isLoadingRiders = false;
 
-                  if (riders.isNotEmpty) {
-                    final String currentRiderId =
-                        textFromDynamic(
-                      getAssignedRider(
-                        delivery,
-                      )['_id'],
-                    );
+                  final String currentRiderId =
+                      textFromDynamic(
+                    getAssignedRider(
+                      delivery,
+                    )['_id'],
+                  );
 
-                    if (currentRiderId.isNotEmpty) {
-                      for (final Map<String, dynamic>
-                          rider in riders) {
-                        if (textFromDynamic(
-                              rider['_id'],
-                            ) ==
-                            currentRiderId) {
-                          selectedRider = rider;
-                          break;
-                        }
+                  if (currentRiderId.isNotEmpty) {
+                    for (final Map<String, dynamic>
+                        rider in riders) {
+                      if (textFromDynamic(
+                            rider['_id'],
+                          ) ==
+                          currentRiderId) {
+                        selectedRider = rider;
+                        break;
                       }
                     }
                   }
@@ -1331,9 +1499,8 @@ class _AdminDeliveryScreenState
 
                 setDialogState(() {
                   isLoadingRiders = false;
-                  loadError = cleanError(
-                    error,
-                  );
+                  loadError =
+                      cleanError(error);
                 });
               }
             }
@@ -1415,8 +1582,7 @@ class _AdminDeliveryScreenState
                         : riders.isEmpty
                             ? const Padding(
                                 padding:
-                                    EdgeInsets
-                                        .symmetric(
+                                    EdgeInsets.symmetric(
                                   vertical: 30,
                                 ),
                                 child: Column(
@@ -1434,14 +1600,12 @@ class _AdminDeliveryScreenState
                                       height: 12,
                                     ),
                                     Text(
-                                      'No verified riders available',
+                                      'No verified Riders available',
                                       style:
                                           TextStyle(
-                                        fontSize:
-                                            17,
+                                        fontSize: 17,
                                         fontWeight:
-                                            FontWeight
-                                                .bold,
+                                            FontWeight.bold,
                                       ),
                                     ),
                                     SizedBox(
@@ -1450,8 +1614,7 @@ class _AdminDeliveryScreenState
                                     Text(
                                       'Create and verify a Delivery Rider before assigning this order.',
                                       textAlign:
-                                          TextAlign
-                                              .center,
+                                          TextAlign.center,
                                     ),
                                   ],
                                 ),
@@ -1461,14 +1624,12 @@ class _AdminDeliveryScreenState
                                     const BoxConstraints(
                                   maxHeight: 460,
                                 ),
-                                child: ListView
-                                    .separated(
+                                child: ListView.separated(
                                   shrinkWrap: true,
                                   itemCount:
                                       riders.length,
                                   separatorBuilder: (
-                                    BuildContext
-                                        context,
+                                    BuildContext context,
                                     int index,
                                   ) {
                                     return const SizedBox(
@@ -1476,46 +1637,37 @@ class _AdminDeliveryScreenState
                                     );
                                   },
                                   itemBuilder: (
-                                    BuildContext
-                                        context,
+                                    BuildContext context,
                                     int index,
                                   ) {
-                                    final Map<String,
-                                            dynamic>
+                                    final Map<String, dynamic>
                                         rider =
                                         riders[index];
 
-                                    final String
-                                        fullName =
+                                    final String fullName =
                                         textFromDynamic(
-                                      rider[
-                                          'fullName'],
+                                      rider['fullName'],
                                       fallback:
                                           'Delivery Rider',
                                     );
 
-                                    final String
-                                        riderCode =
+                                    final String riderCode =
                                         textFromDynamic(
-                                      rider[
-                                          'riderId'],
+                                      rider['riderId'],
                                       fallback:
                                           'No Rider ID',
                                     );
 
-                                    final String
-                                        phone =
+                                    final String phone =
                                         textFromDynamic(
                                       rider['phone'],
                                       fallback:
                                           'No phone',
                                     );
 
-                                    final String
-                                        vehicle =
+                                    final String vehicle =
                                         textFromDynamic(
-                                      rider[
-                                          'vehicleType'],
+                                      rider['vehicleType'],
                                       fallback:
                                           'Not set',
                                     ).replaceAll(
@@ -1523,17 +1675,14 @@ class _AdminDeliveryScreenState
                                       ' ',
                                     );
 
-                                    final String
-                                        state =
+                                    final String state =
                                         textFromDynamic(
-                                      rider[
-                                          'riderState'],
+                                      rider['riderState'],
                                       fallback:
                                           'State not set',
                                     );
 
-                                    final String
-                                        availability =
+                                    final String availability =
                                         textFromDynamic(
                                       rider[
                                           'availabilityStatus'],
@@ -1549,44 +1698,38 @@ class _AdminDeliveryScreenState
                                                       '_id'],
                                                 ) ==
                                                 textFromDynamic(
-                                                  rider[
-                                                      '_id'],
+                                                  rider['_id'],
                                                 );
 
                                     return Material(
                                       color: selected
                                           ? primaryColor
                                               .withValues(
-                                              alpha:
-                                                  0.08,
+                                              alpha: 0.08,
                                             )
                                           : Colors.white,
                                       borderRadius:
-                                          BorderRadius
-                                              .circular(
+                                          BorderRadius.circular(
                                         14,
                                       ),
                                       child: InkWell(
                                         borderRadius:
-                                            BorderRadius
-                                                .circular(
+                                            BorderRadius.circular(
                                           14,
                                         ),
-                                        onTap:
-                                            isAssigning
-                                                ? null
-                                                : () {
-                                                    setDialogState(
-                                                      () {
-                                                        selectedRider =
-                                                            rider;
-                                                      },
-                                                    );
+                                        onTap: isAssigning
+                                            ? null
+                                            : () {
+                                                setDialogState(
+                                                  () {
+                                                    selectedRider =
+                                                        rider;
                                                   },
+                                                );
+                                              },
                                         child: Container(
                                           padding:
-                                              const EdgeInsets
-                                                  .all(
+                                              const EdgeInsets.all(
                                             14,
                                           ),
                                           decoration:
@@ -1596,8 +1739,7 @@ class _AdminDeliveryScreenState
                                                     .circular(
                                               14,
                                             ),
-                                            border:
-                                                Border.all(
+                                            border: Border.all(
                                               color: selected
                                                   ? primaryColor
                                                   : const Color(
@@ -1614,13 +1756,11 @@ class _AdminDeliveryScreenState
                                                     .start,
                                             children: [
                                               CircleAvatar(
-                                                radius:
-                                                    24,
+                                                radius: 24,
                                                 backgroundColor:
                                                     primaryColor
                                                         .withValues(
-                                                  alpha:
-                                                      0.10,
+                                                  alpha: 0.10,
                                                 ),
                                                 child:
                                                     const Icon(
@@ -1631,12 +1771,10 @@ class _AdminDeliveryScreenState
                                                 ),
                                               ),
                                               const SizedBox(
-                                                width:
-                                                    12,
+                                                width: 12,
                                               ),
                                               Expanded(
-                                                child:
-                                                    Column(
+                                                child: Column(
                                                   crossAxisAlignment:
                                                       CrossAxisAlignment
                                                           .start,
@@ -1665,8 +1803,7 @@ class _AdminDeliveryScreenState
                                                       ],
                                                     ),
                                                     const SizedBox(
-                                                      height:
-                                                          4,
+                                                      height: 4,
                                                     ),
                                                     Text(
                                                       riderCode,
@@ -1674,35 +1811,31 @@ class _AdminDeliveryScreenState
                                                           const TextStyle(
                                                         color:
                                                             Colors.black54,
-                                                        fontSize:
-                                                            12,
+                                                        fontSize: 12,
                                                       ),
                                                     ),
                                                     const SizedBox(
-                                                      height:
-                                                          8,
+                                                      height: 8,
                                                     ),
                                                     Wrap(
-                                                      spacing:
-                                                          10,
-                                                      runSpacing:
-                                                          6,
+                                                      spacing: 10,
+                                                      runSpacing: 6,
                                                       children: [
                                                         _MiniInfo(
-                                                          icon:
-                                                              Icons.phone_outlined,
+                                                          icon: Icons
+                                                              .phone_outlined,
                                                           text:
                                                               phone,
                                                         ),
                                                         _MiniInfo(
-                                                          icon:
-                                                              Icons.two_wheeler_outlined,
+                                                          icon: Icons
+                                                              .two_wheeler_outlined,
                                                           text:
                                                               vehicle,
                                                         ),
                                                         _MiniInfo(
-                                                          icon:
-                                                              Icons.location_on_outlined,
+                                                          icon: Icons
+                                                              .location_on_outlined,
                                                           text:
                                                               state,
                                                         ),
@@ -1712,14 +1845,12 @@ class _AdminDeliveryScreenState
                                                 ),
                                               ),
                                               const SizedBox(
-                                                width:
-                                                    8,
+                                                width: 8,
                                               ),
                                               Radio<String>(
                                                 value:
                                                     textFromDynamic(
-                                                  rider[
-                                                      '_id'],
+                                                  rider['_id'],
                                                 ),
                                                 groupValue:
                                                     selectedRider ==
@@ -1764,49 +1895,36 @@ class _AdminDeliveryScreenState
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed:
-                      isAssigning ||
-                              selectedRider ==
-                                  null
-                          ? null
-                          : () async {
-                              setDialogState(
-                                () {
-                                  isAssigning =
-                                      true;
-                                },
-                              );
+                  onPressed: isAssigning ||
+                          selectedRider == null
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isAssigning = true;
+                          });
 
-                              final bool
-                                  success =
-                                  await assignRider(
-                                delivery:
-                                    delivery,
-                                rider:
-                                    selectedRider!,
-                              );
+                          final bool success =
+                              await assignRider(
+                            delivery: delivery,
+                            rider: selectedRider!,
+                          );
 
-                              if (!dialogContext
-                                  .mounted) {
-                                return;
-                              }
+                          if (!dialogContext.mounted) {
+                            return;
+                          }
 
-                              if (success) {
-                                Navigator.of(
-                                  dialogContext,
-                                ).pop();
-                                return;
-                              }
+                          if (success) {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop();
+                            return;
+                          }
 
-                              setDialogState(
-                                () {
-                                  isAssigning =
-                                      false;
-                                },
-                              );
-                            },
-                  style:
-                      ElevatedButton.styleFrom(
+                          setDialogState(() {
+                            isAssigning = false;
+                          });
+                        },
+                  style: ElevatedButton.styleFrom(
                     backgroundColor:
                         primaryColor,
                     foregroundColor:
@@ -1851,8 +1969,7 @@ class _AdminDeliveryScreenState
         await showDialog<bool>(
               context: context,
               builder: (
-                BuildContext
-                    dialogContext,
+                BuildContext dialogContext,
               ) {
                 return AlertDialog(
                   title: const Text(
@@ -1878,9 +1995,7 @@ class _AdminDeliveryScreenState
                           dialogContext,
                         ).pop(true);
                       },
-                      style:
-                          ElevatedButton
-                              .styleFrom(
+                      style: ElevatedButton.styleFrom(
                         backgroundColor:
                             Colors.red,
                         foregroundColor:
@@ -1920,6 +2035,57 @@ class _AdminDeliveryScreenState
       fallback: 'UNPAID',
     ).toUpperCase();
 
+    final String commissionType =
+        getCommissionType(
+      delivery,
+    );
+
+    final double commissionValue =
+        getCommissionValue(
+      delivery,
+    );
+
+    final double deliveryFee =
+        toDouble(
+      delivery['deliveryFee'],
+    );
+
+    final double riderCommission =
+        toDouble(
+      delivery['riderCommissionAmount'],
+    );
+
+    final double currentRiderCommission =
+        riderCommission > 0
+            ? riderCommission
+            : calculateRiderCommission(
+                deliveryFee: deliveryFee,
+                commissionType:
+                    commissionType,
+                commissionValue:
+                    commissionValue,
+              );
+
+    final double currentServicePayProfit =
+        toDouble(
+              delivery['servicepayProfit'],
+            ) >
+                0
+            ? toDouble(
+                delivery['servicepayProfit'],
+              )
+            : calculateServicePayProfit(
+                deliveryFee: deliveryFee,
+                riderCommission:
+                    currentRiderCommission,
+              );
+
+    final String commissionStatus =
+        textFromDynamic(
+      delivery['riderCommissionStatus'],
+      fallback: 'PENDING',
+    ).toUpperCase();
+
     final bool assigned =
         hasAssignedRider(
       delivery,
@@ -1931,8 +2097,7 @@ class _AdminDeliveryScreenState
       backgroundColor:
           Colors.transparent,
       builder: (
-        BuildContext
-            bottomSheetContext,
+        BuildContext bottomSheetContext,
       ) {
         return Container(
           constraints: BoxConstraints(
@@ -1956,8 +2121,7 @@ class _AdminDeliveryScreenState
             child:
                 SingleChildScrollView(
               padding:
-                  const EdgeInsets
-                      .fromLTRB(
+                  const EdgeInsets.fromLTRB(
                 20,
                 12,
                 20,
@@ -1965,25 +2129,22 @@ class _AdminDeliveryScreenState
               ),
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                    CrossAxisAlignment.start,
                 children: [
                   Center(
                     child: Container(
                       width: 45,
                       height: 5,
                       margin:
-                          const EdgeInsets
-                              .only(
+                          const EdgeInsets.only(
                         bottom: 20,
                       ),
                       decoration:
                           BoxDecoration(
-                        color: Colors
-                            .grey.shade300,
+                        color:
+                            Colors.grey.shade300,
                         borderRadius:
-                            BorderRadius
-                                .circular(
+                            BorderRadius.circular(
                           10,
                         ),
                       ),
@@ -1996,14 +2157,12 @@ class _AdminDeliveryScreenState
                         height: 48,
                         decoration:
                             BoxDecoration(
-                          color:
-                              primaryColor
-                                  .withValues(
+                          color: primaryColor
+                              .withValues(
                             alpha: 0.10,
                           ),
                           borderRadius:
-                              BorderRadius
-                                  .circular(
+                              BorderRadius.circular(
                             14,
                           ),
                         ),
@@ -2020,8 +2179,7 @@ class _AdminDeliveryScreenState
                       Expanded(
                         child: Column(
                           crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                              CrossAxisAlignment.start,
                           children: [
                             Text(
                               getTrackingNumber(
@@ -2031,8 +2189,7 @@ class _AdminDeliveryScreenState
                                   const TextStyle(
                                 fontSize: 18,
                                 fontWeight:
-                                    FontWeight
-                                        .w800,
+                                    FontWeight.w800,
                               ),
                             ),
                             const SizedBox(
@@ -2040,14 +2197,12 @@ class _AdminDeliveryScreenState
                             ),
                             Text(
                               formatDate(
-                                delivery[
-                                    'createdAt'],
+                                delivery['createdAt'],
                               ),
                               style:
                                   TextStyle(
                                 color: Colors
-                                    .grey
-                                    .shade600,
+                                    .grey.shade600,
                               ),
                             ),
                           ],
@@ -2055,13 +2210,9 @@ class _AdminDeliveryScreenState
                       ),
                       _StatusBadge(
                         text:
-                            formatStatus(
-                          status,
-                        ),
+                            formatStatus(status),
                         color:
-                            getStatusColor(
-                          status,
-                        ),
+                            getStatusColor(status),
                       ),
                     ],
                   ),
@@ -2075,8 +2226,7 @@ class _AdminDeliveryScreenState
                       _DetailRow(
                         icon: Icons
                             .person_outline,
-                        label:
-                            'Customer',
+                        label: 'Customer',
                         value:
                             getCustomerName(
                           delivery,
@@ -2085,8 +2235,7 @@ class _AdminDeliveryScreenState
                       _DetailRow(
                         icon:
                             Icons.phone_outlined,
-                        label:
-                            'Phone',
+                        label: 'Phone',
                         value:
                             getCustomerPhone(
                           delivery,
@@ -2104,8 +2253,7 @@ class _AdminDeliveryScreenState
                       _DetailRow(
                         icon: Icons
                             .location_on_outlined,
-                        label:
-                            'Pickup',
+                        label: 'Pickup',
                         value:
                             textFromDynamic(
                           delivery[
@@ -2130,8 +2278,7 @@ class _AdminDeliveryScreenState
                       _DetailRow(
                         icon: Icons
                             .inventory_2_outlined,
-                        label:
-                            'Package',
+                        label: 'Package',
                         value:
                             getPackageName(
                           delivery,
@@ -2140,8 +2287,7 @@ class _AdminDeliveryScreenState
                       _DetailRow(
                         icon:
                             Icons.scale_outlined,
-                        label:
-                            'Weight',
+                        label: 'Weight',
                         value:
                             '${toDouble(delivery['packageWeight']).toStringAsFixed(2)} kg',
                       ),
@@ -2152,8 +2298,7 @@ class _AdminDeliveryScreenState
                             'Delivery Fee',
                         value:
                             formatMoney(
-                          delivery[
-                              'deliveryFee'],
+                          deliveryFee,
                         ),
                       ),
                       _DetailRow(
@@ -2173,13 +2318,73 @@ class _AdminDeliveryScreenState
                   ),
                   _DetailSection(
                     title:
+                        'Rider Commission',
+                    children: [
+                      _DetailRow(
+                        icon: Icons
+                            .percent_rounded,
+                        label:
+                            'Commission Type',
+                        value:
+                            formatStatus(
+                          commissionType,
+                        ),
+                      ),
+                      _DetailRow(
+                        icon: Icons
+                            .calculate_outlined,
+                        label:
+                            'Commission Value',
+                        value: commissionType ==
+                                'PERCENTAGE'
+                            ? '${commissionValue.toStringAsFixed(2)}%'
+                            : formatMoney(
+                                commissionValue,
+                              ),
+                      ),
+                      _DetailRow(
+                        icon: Icons
+                            .account_balance_wallet_outlined,
+                        label:
+                            'Rider Commission',
+                        value:
+                            formatMoney(
+                          currentRiderCommission,
+                        ),
+                      ),
+                      _DetailRow(
+                        icon: Icons
+                            .business_center_outlined,
+                        label:
+                            'ServicePay Profit',
+                        value:
+                            formatMoney(
+                          currentServicePayProfit,
+                        ),
+                      ),
+                      _DetailRow(
+                        icon: Icons
+                            .verified_outlined,
+                        label:
+                            'Commission Status',
+                        value:
+                            formatStatus(
+                          commissionStatus,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(
+                    height: 16,
+                  ),
+                  _DetailSection(
+                    title:
                         'Receiver Information',
                     children: [
                       _DetailRow(
                         icon: Icons
                             .person_outline,
-                        label:
-                            'Receiver',
+                        label: 'Receiver',
                         value:
                             textFromDynamic(
                           delivery[
@@ -2214,8 +2419,7 @@ class _AdminDeliveryScreenState
                             _DetailRow(
                               icon: Icons
                                   .delivery_dining_rounded,
-                              label:
-                                  'Rider',
+                              label: 'Rider',
                               value:
                                   getAssignedRiderName(
                                 delivery,
@@ -2256,10 +2460,9 @@ class _AdminDeliveryScreenState
                             _DetailRow(
                               icon: Icons
                                   .person_off_outlined,
-                              label:
-                                  'Rider',
+                              label: 'Rider',
                               value:
-                                  'No rider has been assigned.',
+                                  'No Rider has been assigned.',
                             ),
                           ],
                   ),
@@ -2282,8 +2485,7 @@ class _AdminDeliveryScreenState
                         );
                       },
                       style:
-                          ElevatedButton
-                              .styleFrom(
+                          ElevatedButton.styleFrom(
                         backgroundColor:
                             Colors.indigo,
                         foregroundColor:
@@ -2291,8 +2493,7 @@ class _AdminDeliveryScreenState
                         shape:
                             RoundedRectangleBorder(
                           borderRadius:
-                              BorderRadius
-                                  .circular(
+                              BorderRadius.circular(
                             14,
                           ),
                         ),
@@ -2311,8 +2512,7 @@ class _AdminDeliveryScreenState
                         style:
                             const TextStyle(
                           fontWeight:
-                              FontWeight
-                                  .w700,
+                              FontWeight.w700,
                         ),
                       ),
                     ),
@@ -2322,8 +2522,8 @@ class _AdminDeliveryScreenState
                       height: 12,
                     ),
                     SizedBox(
-                      width: double
-                          .infinity,
+                      width:
+                          double.infinity,
                       height: 52,
                       child:
                           OutlinedButton.icon(
@@ -2337,8 +2537,7 @@ class _AdminDeliveryScreenState
                           );
                         },
                         style:
-                            OutlinedButton
-                                .styleFrom(
+                            OutlinedButton.styleFrom(
                           foregroundColor:
                               Colors.red,
                           side:
@@ -2349,8 +2548,7 @@ class _AdminDeliveryScreenState
                           shape:
                               RoundedRectangleBorder(
                             borderRadius:
-                                BorderRadius
-                                    .circular(
+                                BorderRadius.circular(
                               14,
                             ),
                           ),
@@ -2365,8 +2563,7 @@ class _AdminDeliveryScreenState
                           style:
                               TextStyle(
                             fontWeight:
-                                FontWeight
-                                    .w700,
+                                FontWeight.w700,
                           ),
                         ),
                       ),
@@ -2376,7 +2573,8 @@ class _AdminDeliveryScreenState
                     height: 12,
                   ),
                   SizedBox(
-                    width: double.infinity,
+                    width:
+                        double.infinity,
                     height: 52,
                     child:
                         ElevatedButton.icon(
@@ -2390,8 +2588,7 @@ class _AdminDeliveryScreenState
                         );
                       },
                       style:
-                          ElevatedButton
-                              .styleFrom(
+                          ElevatedButton.styleFrom(
                         backgroundColor:
                             const Color(
                           0xFFB45309,
@@ -2401,8 +2598,7 @@ class _AdminDeliveryScreenState
                         shape:
                             RoundedRectangleBorder(
                           borderRadius:
-                              BorderRadius
-                                  .circular(
+                              BorderRadius.circular(
                             14,
                           ),
                         ),
@@ -2412,18 +2608,13 @@ class _AdminDeliveryScreenState
                             .price_change_rounded,
                       ),
                       label: Text(
-                        toDouble(
-                                  delivery[
-                                      'deliveryFee'],
-                                ) >
-                                0
-                            ? 'Update Delivery Price'
-                            : 'Set Delivery Price',
+                        deliveryFee > 0
+                            ? 'Update Price & Commission'
+                            : 'Set Price & Commission',
                         style:
                             const TextStyle(
                           fontWeight:
-                              FontWeight
-                                  .w700,
+                              FontWeight.w700,
                         ),
                       ),
                     ),
@@ -2432,7 +2623,8 @@ class _AdminDeliveryScreenState
                     height: 12,
                   ),
                   SizedBox(
-                    width: double.infinity,
+                    width:
+                        double.infinity,
                     height: 52,
                     child:
                         ElevatedButton.icon(
@@ -2446,8 +2638,7 @@ class _AdminDeliveryScreenState
                         );
                       },
                       style:
-                          ElevatedButton
-                              .styleFrom(
+                          ElevatedButton.styleFrom(
                         backgroundColor:
                             primaryColor,
                         foregroundColor:
@@ -2455,8 +2646,7 @@ class _AdminDeliveryScreenState
                         shape:
                             RoundedRectangleBorder(
                           borderRadius:
-                              BorderRadius
-                                  .circular(
+                              BorderRadius.circular(
                             14,
                           ),
                         ),
@@ -2469,8 +2659,7 @@ class _AdminDeliveryScreenState
                         style:
                             TextStyle(
                           fontWeight:
-                              FontWeight
-                                  .w700,
+                              FontWeight.w700,
                         ),
                       ),
                     ),
@@ -2483,7 +2672,6 @@ class _AdminDeliveryScreenState
       },
     );
   }
-
   void showPriceDialog(
     Map<String, dynamic> delivery,
   ) {
@@ -2496,8 +2684,7 @@ class _AdminDeliveryScreenState
         priceController =
         TextEditingController(
       text: currentFee > 0
-          ? currentFee
-              .toStringAsFixed(2)
+          ? currentFee.toStringAsFixed(2)
           : '',
     );
 
@@ -2507,17 +2694,41 @@ class _AdminDeliveryScreenState
       fallback: 'UNPAID',
     ).toUpperCase();
 
-    const List<String>
-        paymentStatuses = [
+    String commissionType =
+        getCommissionType(
+      delivery,
+    );
+
+    final TextEditingController
+        commissionController =
+        TextEditingController(
+      text: getCommissionValue(
+        delivery,
+      ).toStringAsFixed(2),
+    );
+
+    const List<String> paymentStatuses = [
       'UNPAID',
       'PAID',
       'REFUNDED',
+    ];
+
+    const List<String> commissionTypes = [
+      'PERCENTAGE',
+      'FIXED',
     ];
 
     if (!paymentStatuses.contains(
       paymentStatus,
     )) {
       paymentStatus = 'UNPAID';
+    }
+
+    if (!commissionTypes.contains(
+      commissionType,
+    )) {
+      commissionType =
+          'PERCENTAGE';
     }
 
     bool isSaving = false;
@@ -2535,6 +2746,40 @@ class _AdminDeliveryScreenState
               void Function(),
             ) setDialogState,
           ) {
+            final double enteredPrice =
+                double.tryParse(
+                      priceController.text
+                          .trim()
+                          .replaceAll(',', ''),
+                    ) ??
+                    0;
+
+            final double enteredCommission =
+                double.tryParse(
+                      commissionController.text
+                          .trim()
+                          .replaceAll(',', ''),
+                    ) ??
+                    0;
+
+            final double calculatedRiderCommission =
+                calculateRiderCommission(
+              deliveryFee:
+                  enteredPrice,
+              commissionType:
+                  commissionType,
+              commissionValue:
+                  enteredCommission,
+            );
+
+            final double calculatedProfit =
+                calculateServicePayProfit(
+              deliveryFee:
+                  enteredPrice,
+              riderCommission:
+                  calculatedRiderCommission,
+            );
+
             return AlertDialog(
               shape:
                   RoundedRectangleBorder(
@@ -2544,7 +2789,7 @@ class _AdminDeliveryScreenState
                 ),
               ),
               title: const Text(
-                'Set Delivery Price',
+                'Set Price & Rider Commission',
                 style: TextStyle(
                   fontWeight:
                       FontWeight.w800,
@@ -2552,238 +2797,560 @@ class _AdminDeliveryScreenState
               ),
               content:
                   SingleChildScrollView(
-                child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
-                  children: [
-                    Text(
-                      getTrackingNumber(
-                        delivery,
-                      ),
-                      style: TextStyle(
-                        color: Colors
-                            .grey.shade600,
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(
-                      height: 18,
-                    ),
-                    TextField(
-                      controller:
-                          priceController,
-                      enabled:
-                          !isSaving,
-                      keyboardType:
-                          const TextInputType
-                              .numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter
-                            .allow(
-                          RegExp(
-                            r'^\d*\.?\d{0,2}',
-                          ),
+                child: SizedBox(
+                  width: 520,
+                  child: Column(
+                    mainAxisSize:
+                        MainAxisSize.min,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        getTrackingNumber(
+                          delivery,
                         ),
-                      ],
-                      decoration:
-                          InputDecoration(
-                        labelText:
-                            'Delivery Price',
-                        hintText:
-                            'Example: 2500',
-                        prefixText: '₦ ',
-                        prefixIcon:
-                            const Icon(
-                          Icons
-                              .payments_outlined,
-                        ),
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            12,
-                          ),
+                        style: TextStyle(
+                          color: Colors
+                              .grey.shade600,
+                          fontWeight:
+                              FontWeight.w600,
                         ),
                       ),
-                    ),
-                    const SizedBox(
-                      height: 16,
-                    ),
-                    DropdownButtonFormField<
-                        String>(
-                      initialValue:
-                          paymentStatus,
-                      decoration:
-                          InputDecoration(
-                        labelText:
-                            'Payment Status',
-                        prefixIcon:
-                            const Icon(
-                          Icons
-                              .account_balance_wallet_outlined,
-                        ),
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            12,
-                          ),
-                        ),
+                      const SizedBox(
+                        height: 18,
                       ),
-                      items: paymentStatuses
-                          .map(
-                        (
-                          String status,
-                        ) {
-                          return DropdownMenuItem<
-                              String>(
-                            value: status,
-                            child: Text(
-                              formatStatus(
-                                status,
-                              ),
+                      TextField(
+                        controller:
+                            priceController,
+                        enabled:
+                            !isSaving,
+                        keyboardType:
+                            const TextInputType
+                                .numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter
+                              .allow(
+                            RegExp(
+                              r'^\d*\.?\d{0,2}',
                             ),
+                          ),
+                        ],
+                        onChanged: (_) {
+                          setDialogState(
+                            () {},
                           );
                         },
-                      ).toList(),
-                      onChanged: isSaving
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              'Delivery Price',
+                          hintText:
+                              'Example: 2500',
+                          prefixText:
+                              '₦ ',
+                          prefixIcon:
+                              const Icon(
+                            Icons
+                                .payments_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 16,
+                      ),
+                      DropdownButtonFormField<
+                          String>(
+                        initialValue:
+                            commissionType,
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              'Rider Commission Type',
+                          prefixIcon:
+                              const Icon(
+                            Icons
+                                .calculate_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                          ),
+                        ),
+                        items: const [
+                          DropdownMenuItem<
+                              String>(
+                            value:
+                                'PERCENTAGE',
+                            child: Text(
+                              'Percentage',
+                            ),
+                          ),
+                          DropdownMenuItem<
+                              String>(
+                            value:
+                                'FIXED',
+                            child: Text(
+                              'Fixed Amount',
+                            ),
+                          ),
+                        ],
+                        onChanged:
+                            isSaving
+                                ? null
+                                : (
+                                    String?
+                                        value,
+                                  ) {
+                                    if (value ==
+                                        null) {
+                                      return;
+                                    }
+
+                                    setDialogState(
+                                      () {
+                                        commissionType =
+                                            value;
+
+                                        if (value ==
+                                                'PERCENTAGE' &&
+                                            commissionController
+                                                .text
+                                                .trim()
+                                                .isEmpty) {
+                                          commissionController
+                                                  .text =
+                                              '80.00';
+                                        }
+                                      },
+                                    );
+                                  },
+                      ),
+                      const SizedBox(
+                        height: 16,
+                      ),
+                      TextField(
+                        controller:
+                            commissionController,
+                        enabled:
+                            !isSaving,
+                        keyboardType:
+                            const TextInputType
+                                .numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter
+                              .allow(
+                            RegExp(
+                              r'^\d*\.?\d{0,2}',
+                            ),
+                          ),
+                        ],
+                        onChanged: (_) {
+                          setDialogState(
+                            () {},
+                          );
+                        },
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              commissionType ==
+                                      'PERCENTAGE'
+                                  ? 'Rider Commission Percentage'
+                                  : 'Fixed Rider Commission',
+                          hintText:
+                              commissionType ==
+                                      'PERCENTAGE'
+                                  ? 'Example: 80'
+                                  : 'Example: 1500',
+                          prefixText:
+                              commissionType ==
+                                      'FIXED'
+                                  ? '₦ '
+                                  : null,
+                          suffixText:
+                              commissionType ==
+                                      'PERCENTAGE'
+                                  ? '%'
+                                  : null,
+                          prefixIcon:
+                              const Icon(
+                            Icons
+                                .account_balance_wallet_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 16,
+                      ),
+                      DropdownButtonFormField<
+                          String>(
+                        initialValue:
+                            paymentStatus,
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              'Payment Status',
+                          prefixIcon:
+                              const Icon(
+                            Icons
+                                .verified_user_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                          ),
+                        ),
+                        items: paymentStatuses
+                            .map(
+                          (
+                            String status,
+                          ) {
+                            return DropdownMenuItem<
+                                String>(
+                              value:
+                                  status,
+                              child:
+                                  Text(
+                                formatStatus(
+                                  status,
+                                ),
+                              ),
+                            );
+                          },
+                        ).toList(),
+                        onChanged:
+                            isSaving
+                                ? null
+                                : (
+                                    String?
+                                        value,
+                                  ) {
+                                    if (value ==
+                                        null) {
+                                      return;
+                                    }
+
+                                    setDialogState(
+                                      () {
+                                        paymentStatus =
+                                            value;
+                                      },
+                                    );
+                                  },
+                      ),
+                      const SizedBox(
+                        height: 18,
+                      ),
+                      Container(
+                        width:
+                            double.infinity,
+                        padding:
+                            const EdgeInsets
+                                .all(
+                          14,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              const Color(
+                            0xFFF1F5F9,
+                          ),
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            14,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
+                          children: [
+                            const Text(
+                              'Commission Preview',
+                              style:
+                                  TextStyle(
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
+                              ),
+                            ),
+                            const SizedBox(
+                              height: 12,
+                            ),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child:
+                                      Text(
+                                    'Delivery Fee',
+                                  ),
+                                ),
+                                Text(
+                                  formatMoney(
+                                    enteredPrice,
+                                  ),
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(
+                              height: 8,
+                            ),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child:
+                                      Text(
+                                    'Rider Commission',
+                                  ),
+                                ),
+                                Text(
+                                  formatMoney(
+                                    calculatedRiderCommission,
+                                  ),
+                                  style:
+                                      const TextStyle(
+                                    color:
+                                        primaryColor,
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(
+                              height: 8,
+                            ),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child:
+                                      Text(
+                                    'ServicePay Profit',
+                                  ),
+                                ),
+                                Text(
+                                  formatMoney(
+                                    calculatedProfit,
+                                  ),
+                                  style:
+                                      const TextStyle(
+                                    color:
+                                        Colors.blue,
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 12,
+                      ),
+                      Container(
+                        width:
+                            double.infinity,
+                        padding:
+                            const EdgeInsets
+                                .all(
+                          12,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color: Colors
+                              .orange
+                              .withValues(
+                            alpha: 0.08,
+                          ),
+                          borderRadius:
+                              BorderRadius
+                                  .circular(
+                            12,
+                          ),
+                        ),
+                        child: const Text(
+                          'Rider commission will enter the Rider pending settlement automatically only after the delivery is marked Delivered and payment status is Paid.',
+                          style:
+                              TextStyle(
+                            fontSize: 12,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      isSaving
                           ? null
-                          : (
-                              String? value,
-                            ) {
-                              if (value ==
-                                  null) {
+                          : () {
+                              Navigator.of(
+                                dialogContext,
+                              ).pop();
+                            },
+                  child:
+                      const Text(
+                    'Cancel',
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed:
+                      isSaving
+                          ? null
+                          : () async {
+                              final double?
+                                  price =
+                                  double.tryParse(
+                                priceController
+                                    .text
+                                    .trim()
+                                    .replaceAll(
+                                      ',',
+                                      '',
+                                    ),
+                              );
+
+                              final double?
+                                  commissionValue =
+                                  double.tryParse(
+                                commissionController
+                                    .text
+                                    .trim()
+                                    .replaceAll(
+                                      ',',
+                                      '',
+                                    ),
+                              );
+
+                              if (price ==
+                                      null ||
+                                  price <
+                                      0) {
+                                showMessage(
+                                  'Enter a valid delivery price.',
+                                  isError:
+                                      true,
+                                );
+                                return;
+                              }
+
+                              if (commissionValue ==
+                                      null ||
+                                  commissionValue <
+                                      0) {
+                                showMessage(
+                                  'Enter a valid Rider commission value.',
+                                  isError:
+                                      true,
+                                );
+                                return;
+                              }
+
+                              if (commissionType ==
+                                      'PERCENTAGE' &&
+                                  commissionValue >
+                                      100) {
+                                showMessage(
+                                  'Percentage commission cannot exceed 100%.',
+                                  isError:
+                                      true,
+                                );
+                                return;
+                              }
+
+                              if (commissionType ==
+                                      'FIXED' &&
+                                  commissionValue >
+                                      price) {
+                                showMessage(
+                                  'Fixed Rider commission cannot exceed the delivery price.',
+                                  isError:
+                                      true,
+                                );
                                 return;
                               }
 
                               setDialogState(
                                 () {
-                                  paymentStatus =
-                                      value;
+                                  isSaving =
+                                      true;
+                                },
+                              );
+
+                              final bool
+                                  success =
+                                  await updateDeliveryPrice(
+                                delivery:
+                                    delivery,
+                                deliveryFee:
+                                    price,
+                                paymentStatus:
+                                    paymentStatus,
+                                riderCommissionType:
+                                    commissionType,
+                                riderCommissionValue:
+                                    commissionValue,
+                              );
+
+                              if (!dialogContext
+                                  .mounted) {
+                                return;
+                              }
+
+                              if (success) {
+                                Navigator.of(
+                                  dialogContext,
+                                ).pop();
+                                return;
+                              }
+
+                              setDialogState(
+                                () {
+                                  isSaving =
+                                      false;
                                 },
                               );
                             },
-                    ),
-                    const SizedBox(
-                      height: 12,
-                    ),
-                    Container(
-                      width:
-                          double.infinity,
-                      padding:
-                          const EdgeInsets
-                              .all(
-                        12,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            const Color(
-                          0xFFF1F5F9,
-                        ),
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          12,
-                        ),
-                      ),
-                      child: const Text(
-                        'Set the agreed delivery fee. Keep payment status as Unpaid until payment has been confirmed.',
-                        style:
-                            TextStyle(
-                          fontSize: 12,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving
-                      ? null
-                      : () {
-                          Navigator.of(
-                            dialogContext,
-                          ).pop();
-                        },
-                  child: const Text(
-                    'Cancel',
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final double?
-                              price =
-                              double.tryParse(
-                            priceController
-                                .text
-                                .trim()
-                                .replaceAll(
-                                  ',',
-                                  '',
-                                ),
-                          );
-
-                          if (price ==
-                                  null ||
-                              price < 0) {
-                            showMessage(
-                              'Enter a valid delivery price.',
-                              isError:
-                                  true,
-                            );
-                            return;
-                          }
-
-                          setDialogState(
-                            () {
-                              isSaving =
-                                  true;
-                            },
-                          );
-
-                          final bool
-                              success =
-                              await updateDeliveryPrice(
-                            delivery:
-                                delivery,
-                            deliveryFee:
-                                price,
-                            paymentStatus:
-                                paymentStatus,
-                          );
-
-                          if (!dialogContext
-                              .mounted) {
-                            return;
-                          }
-
-                          if (success) {
-                            Navigator.of(
-                              dialogContext,
-                            ).pop();
-                            return;
-                          }
-
-                          setDialogState(
-                            () {
-                              isSaving =
-                                  false;
-                            },
-                          );
-                        },
                   style:
                       ElevatedButton
                           .styleFrom(
@@ -2813,7 +3380,7 @@ class _AdminDeliveryScreenState
                   label: Text(
                     isSaving
                         ? 'Saving...'
-                        : 'Save Price',
+                        : 'Save Price & Commission',
                   ),
                 ),
               ],
@@ -2822,7 +3389,10 @@ class _AdminDeliveryScreenState
         );
       },
     ).whenComplete(
-      priceController.dispose,
+      () {
+        priceController.dispose();
+        commissionController.dispose();
+      },
     );
   }
 
@@ -2849,7 +3419,8 @@ class _AdminDeliveryScreenState
     if (!statuses.contains(
       newStatus,
     )) {
-      newStatus = 'PENDING';
+      newStatus =
+          'PENDING';
     }
 
     bool isUpdating = false;
@@ -2906,8 +3477,10 @@ class _AdminDeliveryScreenState
                   ) {
                     return DropdownMenuItem<
                         String>(
-                      value: status,
-                      child: Text(
+                      value:
+                          status,
+                      child:
+                          Text(
                         formatStatus(
                           status,
                         ),
@@ -2915,89 +3488,94 @@ class _AdminDeliveryScreenState
                     );
                   },
                 ).toList(),
-                onChanged: isUpdating
-                    ? null
-                    : (
-                        String? value,
-                      ) {
-                        if (value ==
-                            null) {
-                          return;
-                        }
+                onChanged:
+                    isUpdating
+                        ? null
+                        : (
+                            String?
+                                value,
+                          ) {
+                            if (value ==
+                                null) {
+                              return;
+                            }
 
-                        setDialogState(
-                          () {
-                            newStatus =
-                                value;
+                            setDialogState(
+                              () {
+                                newStatus =
+                                    value;
+                              },
+                            );
                           },
-                        );
-                      },
               ),
               actions: [
                 TextButton(
-                  onPressed: isUpdating
-                      ? null
-                      : () {
-                          Navigator.of(
-                            dialogContext,
-                          ).pop();
-                        },
-                  child: const Text(
+                  onPressed:
+                      isUpdating
+                          ? null
+                          : () {
+                              Navigator.of(
+                                dialogContext,
+                              ).pop();
+                            },
+                  child:
+                      const Text(
                     'Cancel',
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: isUpdating
-                      ? null
-                      : () async {
-                          if (newStatus ==
-                                  'ASSIGNED' &&
-                              !hasAssignedRider(
-                                delivery,
-                              )) {
-                            showMessage(
-                              'Assign a rider before selecting Assigned status.',
-                              isError:
-                                  true,
-                            );
-                            return;
-                          }
+                  onPressed:
+                      isUpdating
+                          ? null
+                          : () async {
+                              if (newStatus ==
+                                      'ASSIGNED' &&
+                                  !hasAssignedRider(
+                                    delivery,
+                                  )) {
+                                showMessage(
+                                  'Assign a Rider before selecting Assigned status.',
+                                  isError:
+                                      true,
+                                );
+                                return;
+                              }
 
-                          setDialogState(
-                            () {
-                              isUpdating =
-                                  true;
+                              setDialogState(
+                                () {
+                                  isUpdating =
+                                      true;
+                                },
+                              );
+
+                              final bool
+                                  success =
+                                  await updateDeliveryStatus(
+                                delivery:
+                                    delivery,
+                                status:
+                                    newStatus,
+                              );
+
+                              if (!dialogContext
+                                  .mounted) {
+                                return;
+                              }
+
+                              if (success) {
+                                Navigator.of(
+                                  dialogContext,
+                                ).pop();
+                                return;
+                              }
+
+                              setDialogState(
+                                () {
+                                  isUpdating =
+                                      false;
+                                },
+                              );
                             },
-                          );
-
-                          final bool
-                              success =
-                              await updateDeliveryStatus(
-                            delivery:
-                                delivery,
-                            status:
-                                newStatus,
-                          );
-
-                          if (!dialogContext
-                              .mounted) {
-                            return;
-                          }
-
-                          if (success) {
-                            Navigator.of(
-                              dialogContext,
-                            ).pop();
-                            return;
-                          }
-
-                          setDialogState(
-                            () {
-                              isUpdating =
-                                  false;
-                            },
-                          );
-                        },
                   style:
                       ElevatedButton
                           .styleFrom(
@@ -3034,7 +3612,11 @@ class _AdminDeliveryScreenState
     required String title,
     required String value,
     required IconData icon,
+    Color? color,
   }) {
+    final Color cardColor =
+        color ?? primaryColor;
+
     return Container(
       padding:
           const EdgeInsets.all(
@@ -3069,7 +3651,7 @@ class _AdminDeliveryScreenState
             height: 44,
             decoration:
                 BoxDecoration(
-              color: primaryColor
+              color: cardColor
                   .withValues(
                 alpha: 0.10,
               ),
@@ -3082,7 +3664,7 @@ class _AdminDeliveryScreenState
             child: Icon(
               icon,
               color:
-                  primaryColor,
+                  cardColor,
               size: 22,
             ),
           ),
@@ -3103,7 +3685,7 @@ class _AdminDeliveryScreenState
                           .ellipsis,
                   style:
                       const TextStyle(
-                    fontSize: 19,
+                    fontSize: 18,
                     fontWeight:
                         FontWeight
                             .w800,
@@ -3118,7 +3700,8 @@ class _AdminDeliveryScreenState
                   overflow:
                       TextOverflow
                           .ellipsis,
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 11,
                     color: Colors
                         .grey.shade600,
@@ -3169,7 +3752,8 @@ class _AdminDeliveryScreenState
               'Unable to load deliveries',
               textAlign:
                   TextAlign.center,
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontSize: 20,
                 fontWeight:
                     FontWeight.w800,
@@ -3182,7 +3766,8 @@ class _AdminDeliveryScreenState
               errorMessage,
               textAlign:
                   TextAlign.center,
-              style: TextStyle(
+              style:
+                  TextStyle(
                 color: Colors
                     .grey.shade600,
               ),
@@ -3201,11 +3786,13 @@ class _AdminDeliveryScreenState
                 foregroundColor:
                     Colors.white,
               ),
-              icon: const Icon(
+              icon:
+                  const Icon(
                 Icons
                     .refresh_rounded,
               ),
-              label: const Text(
+              label:
+                  const Text(
                 'Try Again',
               ),
             ),
@@ -3215,6 +3802,16 @@ class _AdminDeliveryScreenState
     );
   }
   Widget buildDeliveryContent() {
+    final double screenWidth =
+        MediaQuery.sizeOf(context).width;
+
+    final int summaryColumns =
+        screenWidth > 1100
+            ? 4
+            : screenWidth > 700
+                ? 3
+                : 2;
+
     return RefreshIndicator(
       onRefresh: () {
         return loadDeliveries(
@@ -3222,98 +3819,243 @@ class _AdminDeliveryScreenState
         );
       },
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(
+          16,
+        ),
         children: [
           GridView.count(
             crossAxisCount:
-                MediaQuery.sizeOf(context).width > 700
-                    ? 5
-                    : 2,
+                summaryColumns,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             childAspectRatio:
-                MediaQuery.sizeOf(context).width > 700
-                    ? 2.0
-                    : 1.75,
+                screenWidth > 700
+                    ? 2.05
+                    : 1.55,
             shrinkWrap: true,
             physics:
                 const NeverScrollableScrollPhysics(),
             children: [
               buildSummaryCard(
-                title: 'Total Deliveries',
-                value: totalDeliveries.toString(),
-                icon: Icons.local_shipping_outlined,
+                title:
+                    'Total Deliveries',
+                value:
+                    totalDeliveries.toString(),
+                icon: Icons
+                    .local_shipping_outlined,
               ),
               buildSummaryCard(
                 title: 'Pending',
-                value: pendingDeliveries.toString(),
-                icon: Icons.schedule_rounded,
+                value:
+                    pendingDeliveries.toString(),
+                icon:
+                    Icons.schedule_rounded,
+                color:
+                    Colors.orange,
               ),
               buildSummaryCard(
                 title: 'Assigned',
-                value: assignedDeliveries.toString(),
-                icon: Icons.assignment_ind_outlined,
+                value:
+                    assignedDeliveries.toString(),
+                icon: Icons
+                    .assignment_ind_outlined,
+                color:
+                    Colors.indigo,
               ),
               buildSummaryCard(
                 title: 'Delivered',
-                value: deliveredDeliveries.toString(),
-                icon: Icons.check_circle_outline_rounded,
+                value:
+                    deliveredDeliveries.toString(),
+                icon: Icons
+                    .check_circle_outline_rounded,
+                color:
+                    Colors.green,
               ),
               buildSummaryCard(
-                title: 'Revenue',
-                value: formatMoney(totalRevenue),
-                icon: Icons.payments_outlined,
+                title:
+                    'Paid Revenue',
+                value:
+                    formatMoney(
+                  totalRevenue,
+                ),
+                icon:
+                    Icons.payments_outlined,
+                color:
+                    Colors.green,
+              ),
+              buildSummaryCard(
+                title:
+                    'Quoted Delivery Value',
+                value:
+                    formatMoney(
+                  totalQuotedPrice,
+                ),
+                icon:
+                    Icons.receipt_long_outlined,
+                color:
+                    Colors.blueGrey,
+              ),
+              buildSummaryCard(
+                title:
+                    'Rider Commission',
+                value:
+                    formatMoney(
+                  totalRiderCommission,
+                ),
+                icon: Icons
+                    .delivery_dining_outlined,
+                color:
+                    Colors.deepPurple,
+              ),
+              buildSummaryCard(
+                title:
+                    'ServicePay Profit',
+                value:
+                    formatMoney(
+                  servicepayProfit,
+                ),
+                icon: Icons
+                    .business_center_outlined,
+                color:
+                    primaryColor,
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 16,
+          ),
+          Container(
+            width:
+                double.infinity,
+            padding:
+                const EdgeInsets.all(
+              14,
+            ),
+            decoration:
+                BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(
+                16,
+              ),
+              border: Border.all(
+                color: Colors
+                    .grey.shade200,
+              ),
+            ),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _CommissionSummaryChip(
+                  label:
+                      'Pending',
+                  value:
+                      pendingCommissions,
+                  color:
+                      Colors.orange,
+                ),
+                _CommissionSummaryChip(
+                  label:
+                      'Credited',
+                  value:
+                      creditedCommissions,
+                  color:
+                      Colors.blue,
+                ),
+                _CommissionSummaryChip(
+                  label:
+                      'Settled',
+                  value:
+                      settledCommissions,
+                  color:
+                      Colors.green,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(
+            height: 20,
+          ),
           TextField(
-            controller: searchController,
-            textInputAction: TextInputAction.search,
+            controller:
+                searchController,
+            textInputAction:
+                TextInputAction.search,
             onChanged: (_) {
               setState(() {});
             },
             onSubmitted: (_) {
               loadDeliveries();
             },
-            decoration: InputDecoration(
+            decoration:
+                InputDecoration(
               hintText:
-                  'Search tracking ID, customer, rider or phone',
-              prefixIcon: const Icon(
+                  'Search tracking ID, customer, Rider or phone',
+              prefixIcon:
+                  const Icon(
                 Icons.search_rounded,
               ),
               suffixIcon:
-                  searchController.text.isNotEmpty
+                  searchController
+                          .text
+                          .isNotEmpty
                       ? IconButton(
-                          onPressed: () {
-                            searchController.clear();
-                            setState(() {});
+                          onPressed:
+                              () {
+                            searchController
+                                .clear();
+
+                            setState(
+                              () {},
+                            );
+
                             loadDeliveries();
                           },
-                          icon: const Icon(
-                            Icons.close_rounded,
+                          icon:
+                              const Icon(
+                            Icons
+                                .close_rounded,
                           ),
                         )
                       : null,
               filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide.none,
+              fillColor:
+                  Colors.white,
+              border:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius
+                        .circular(
+                  15,
+                ),
+                borderSide:
+                    BorderSide.none,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(
-                  color: Colors.grey.shade200,
+              enabledBorder:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius
+                        .circular(
+                  15,
+                ),
+                borderSide:
+                    BorderSide(
+                  color: Colors
+                      .grey.shade200,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
           SizedBox(
             height: 42,
             child: ListView(
-              scrollDirection: Axis.horizontal,
+              scrollDirection:
+                  Axis.horizontal,
               children: [
                 'ALL',
                 'PENDING',
@@ -3325,37 +4067,63 @@ class _AdminDeliveryScreenState
                 'CANCELLED',
                 'FAILED',
               ].map(
-                (String status) {
+                (
+                  String status,
+                ) {
                   final bool selected =
-                      selectedStatus == status;
+                      selectedStatus ==
+                          status;
 
                   return Padding(
-                    padding: const EdgeInsets.only(
+                    padding:
+                        const EdgeInsets
+                            .only(
                       right: 8,
                     ),
-                    child: ChoiceChip(
-                      selected: selected,
-                      label: Text(
-                        formatStatus(status),
+                    child:
+                        ChoiceChip(
+                      selected:
+                          selected,
+                      label:
+                          Text(
+                        formatStatus(
+                          status,
+                        ),
                       ),
-                      selectedColor: primaryColor,
-                      backgroundColor: Colors.white,
-                      labelStyle: TextStyle(
+                      selectedColor:
+                          primaryColor,
+                      backgroundColor:
+                          Colors.white,
+                      labelStyle:
+                          TextStyle(
                         color: selected
-                            ? Colors.white
-                            : Colors.grey.shade700,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
+                            ? Colors
+                                .white
+                            : Colors
+                                .grey
+                                .shade700,
+                        fontWeight:
+                            FontWeight
+                                .w700,
+                        fontSize:
+                            12,
                       ),
-                      side: BorderSide(
+                      side:
+                          BorderSide(
                         color: selected
                             ? primaryColor
-                            : Colors.grey.shade300,
+                            : Colors
+                                .grey
+                                .shade300,
                       ),
-                      onSelected: (_) {
-                        setState(() {
-                          selectedStatus = status;
-                        });
+                      onSelected:
+                          (_) {
+                        setState(
+                          () {
+                            selectedStatus =
+                                status;
+                          },
+                        );
 
                         loadDeliveries();
                       },
@@ -3365,59 +4133,91 @@ class _AdminDeliveryScreenState
               ).toList(),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(
+            height: 18,
+          ),
           Row(
             children: [
               const Expanded(
                 child: Text(
                   'Recent Deliveries',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                  style:
+                      TextStyle(
+                    fontSize:
+                        18,
+                    fontWeight:
+                        FontWeight
+                            .w800,
                   ),
                 ),
               ),
               Text(
                 '${deliveries.length} records',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.w600,
+                style:
+                    TextStyle(
+                  color: Colors
+                      .grey.shade600,
+                  fontWeight:
+                      FontWeight
+                          .w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
           if (deliveries.isEmpty)
             Container(
-              padding: const EdgeInsets.symmetric(
+              padding:
+                  const EdgeInsets
+                      .symmetric(
                 vertical: 50,
                 horizontal: 20,
               ),
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius:
+                    BorderRadius
+                        .circular(
+                  18,
+                ),
               ),
               child: Column(
                 children: [
                   Icon(
-                    Icons.local_shipping_outlined,
+                    Icons
+                        .local_shipping_outlined,
                     size: 60,
-                    color: Colors.grey.shade400,
+                    color: Colors
+                        .grey.shade400,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(
+                    height: 14,
+                  ),
                   const Text(
                     'No deliveries found',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
+                    style:
+                        TextStyle(
+                      fontSize:
+                          17,
+                      fontWeight:
+                          FontWeight
+                              .w800,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(
+                    height: 6,
+                  ),
                   Text(
                     'New customer delivery requests will appear here.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
+                    textAlign:
+                        TextAlign.center,
+                    style:
+                        TextStyle(
+                      color: Colors
+                          .grey.shade600,
                     ),
                   ),
                 ],
@@ -3426,24 +4226,90 @@ class _AdminDeliveryScreenState
           else
             ...deliveries.map(
               (
-                Map<String, dynamic> delivery,
+                Map<String, dynamic>
+                    delivery,
               ) {
                 final String status =
                     textFromDynamic(
                   delivery['status'],
-                  fallback: 'PENDING',
+                  fallback:
+                      'PENDING',
                 ).toUpperCase();
 
-                final String paymentStatus =
+                final String
+                    paymentStatus =
                     textFromDynamic(
-                  delivery['paymentStatus'],
-                  fallback: 'UNPAID',
+                  delivery[
+                      'paymentStatus'],
+                  fallback:
+                      'UNPAID',
                 ).toUpperCase();
 
-                final double deliveryFee =
+                final String
+                    commissionStatus =
+                    textFromDynamic(
+                  delivery[
+                      'riderCommissionStatus'],
+                  fallback:
+                      'PENDING',
+                ).toUpperCase();
+
+                final double
+                    deliveryFee =
                     toDouble(
-                  delivery['deliveryFee'],
+                  delivery[
+                      'deliveryFee'],
                 );
+
+                final String
+                    commissionType =
+                    getCommissionType(
+                  delivery,
+                );
+
+                final double
+                    commissionValue =
+                    getCommissionValue(
+                  delivery,
+                );
+
+                final double
+                    savedRiderCommission =
+                    toDouble(
+                  delivery[
+                      'riderCommissionAmount'],
+                );
+
+                final double
+                    riderCommission =
+                    savedRiderCommission >
+                            0
+                        ? savedRiderCommission
+                        : calculateRiderCommission(
+                            deliveryFee:
+                                deliveryFee,
+                            commissionType:
+                                commissionType,
+                            commissionValue:
+                                commissionValue,
+                          );
+
+                final double
+                    savedProfit =
+                    toDouble(
+                  delivery[
+                      'servicepayProfit'],
+                );
+
+                final double profit =
+                    savedProfit > 0
+                        ? savedProfit
+                        : calculateServicePayProfit(
+                            deliveryFee:
+                                deliveryFee,
+                            riderCommission:
+                                riderCommission,
+                          );
 
                 final bool assigned =
                     hasAssignedRider(
@@ -3451,150 +4317,223 @@ class _AdminDeliveryScreenState
                 );
 
                 return Container(
-                  margin: const EdgeInsets.only(
+                  margin:
+                      const EdgeInsets
+                          .only(
                     bottom: 12,
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.grey.shade200,
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        Colors.white,
+                    borderRadius:
+                        BorderRadius
+                            .circular(
+                      18,
+                    ),
+                    border:
+                        Border.all(
+                      color: Colors
+                          .grey.shade200,
                     ),
                   ),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius:
+                        BorderRadius
+                            .circular(
+                      18,
+                    ),
                     onTap: () {
                       showDeliveryDetails(
                         delivery,
                       );
                     },
                     child: Padding(
-                      padding: const EdgeInsets.all(15),
+                      padding:
+                          const EdgeInsets
+                              .all(
+                        15,
+                      ),
                       child: Row(
                         crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                            CrossAxisAlignment
+                                .start,
                         children: [
                           Container(
                             width: 48,
                             height: 48,
-                            decoration: BoxDecoration(
-                              color: primaryColor.withValues(
-                                alpha: 0.10,
+                            decoration:
+                                BoxDecoration(
+                              color:
+                                  primaryColor
+                                      .withValues(
+                                alpha:
+                                    0.10,
                               ),
                               borderRadius:
-                                  BorderRadius.circular(14),
+                                  BorderRadius
+                                      .circular(
+                                14,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.local_shipping_rounded,
-                              color: primaryColor,
+                            child:
+                                const Icon(
+                              Icons
+                                  .local_shipping_rounded,
+                              color:
+                                  primaryColor,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(
+                            width: 12,
+                          ),
                           Expanded(
-                            child: Column(
+                            child:
+                                Column(
                               crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                                  CrossAxisAlignment
+                                      .start,
                               children: [
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
+                                      child:
+                                          Text(
                                         getTrackingNumber(
                                           delivery,
                                         ),
-                                        style: const TextStyle(
-                                          fontSize: 15,
+                                        style:
+                                            const TextStyle(
+                                          fontSize:
+                                              15,
                                           fontWeight:
                                               FontWeight.w800,
                                         ),
                                       ),
                                     ),
                                     _StatusBadge(
-                                      text: formatStatus(
+                                      text:
+                                          formatStatus(
                                         status,
                                       ),
-                                      color: getStatusColor(
+                                      color:
+                                          getStatusColor(
                                         status,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 7),
+                                const SizedBox(
+                                  height: 7,
+                                ),
                                 Text(
                                   getCustomerName(
                                     delivery,
                                   ),
-                                  style: const TextStyle(
+                                  style:
+                                      const TextStyle(
                                     fontWeight:
                                         FontWeight.w700,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(
+                                  height: 6,
+                                ),
                                 Row(
                                   children: [
                                     Icon(
-                                      Icons.location_on_outlined,
-                                      size: 16,
+                                      Icons
+                                          .location_on_outlined,
+                                      size:
+                                          16,
                                       color:
                                           Colors.grey.shade500,
                                     ),
-                                    const SizedBox(width: 5),
+                                    const SizedBox(
+                                      width:
+                                          5,
+                                    ),
                                     Expanded(
-                                      child: Text(
+                                      child:
+                                          Text(
                                         textFromDynamic(
                                           delivery[
                                               'deliveryAddress'],
                                           fallback:
                                               'Not available',
                                         ),
-                                        maxLines: 1,
+                                        maxLines:
+                                            1,
                                         overflow:
                                             TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors
-                                              .grey.shade600,
-                                          fontSize: 12,
+                                        style:
+                                            TextStyle(
+                                          color:
+                                              Colors.grey.shade600,
+                                          fontSize:
+                                              12,
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
                                 if (assigned) ...[
-                                  const SizedBox(height: 8),
+                                  const SizedBox(
+                                    height:
+                                        8,
+                                  ),
                                   Container(
                                     padding:
-                                        const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 7,
+                                        const EdgeInsets
+                                            .symmetric(
+                                      horizontal:
+                                          10,
+                                      vertical:
+                                          7,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.indigo
-                                          .withValues(
-                                        alpha: 0.08,
+                                    decoration:
+                                        BoxDecoration(
+                                      color:
+                                          Colors.indigo.withValues(
+                                        alpha:
+                                            0.08,
                                       ),
                                       borderRadius:
-                                          BorderRadius.circular(10),
+                                          BorderRadius.circular(
+                                        10,
+                                      ),
                                     ),
-                                    child: Row(
+                                    child:
+                                        Row(
                                       children: [
                                         const Icon(
                                           Icons
                                               .delivery_dining_rounded,
-                                          size: 17,
-                                          color: Colors.indigo,
+                                          size:
+                                              17,
+                                          color:
+                                              Colors.indigo,
                                         ),
-                                        const SizedBox(width: 7),
+                                        const SizedBox(
+                                          width:
+                                              7,
+                                        ),
                                         Expanded(
-                                          child: Text(
+                                          child:
+                                              Text(
                                             getAssignedRiderName(
                                               delivery,
                                             ),
-                                            maxLines: 1,
+                                            maxLines:
+                                                1,
                                             overflow:
                                                 TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.indigo,
-                                              fontSize: 12,
+                                            style:
+                                                const TextStyle(
+                                              color:
+                                                  Colors.indigo,
+                                              fontSize:
+                                                  12,
                                               fontWeight:
                                                   FontWeight.w700,
                                             ),
@@ -3616,27 +4555,35 @@ class _AdminDeliveryScreenState
                                     ),
                                   ),
                                 ],
-                                const SizedBox(height: 10),
+                                const SizedBox(
+                                  height: 10,
+                                ),
                                 Wrap(
                                   spacing: 8,
-                                  runSpacing: 6,
+                                  runSpacing:
+                                      7,
                                   crossAxisAlignment:
-                                      WrapCrossAlignment.center,
+                                      WrapCrossAlignment
+                                          .center,
                                   children: [
                                     Text(
                                       formatMoney(
                                         deliveryFee,
                                       ),
-                                      style: TextStyle(
-                                        color: deliveryFee > 0
+                                      style:
+                                          TextStyle(
+                                        color: deliveryFee >
+                                                0
                                             ? primaryColor
-                                            : Colors.red.shade700,
+                                            : Colors
+                                                .red.shade700,
                                         fontWeight:
                                             FontWeight.w800,
                                       ),
                                     ),
                                     _StatusBadge(
-                                      text: formatStatus(
+                                      text:
+                                          formatStatus(
                                         paymentStatus,
                                       ),
                                       color:
@@ -3644,64 +4591,145 @@ class _AdminDeliveryScreenState
                                         paymentStatus,
                                       ),
                                     ),
+                                    _StatusBadge(
+                                      text:
+                                          'Commission ${formatStatus(commissionStatus)}',
+                                      color:
+                                          getCommissionStatusColor(
+                                        commissionStatus,
+                                      ),
+                                    ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(
+                                  height: 10,
+                                ),
+                                Container(
+                                  width:
+                                      double.infinity,
+                                  padding:
+                                      const EdgeInsets
+                                          .all(
+                                    10,
+                                  ),
+                                  decoration:
+                                      BoxDecoration(
+                                    color:
+                                        const Color(
+                                      0xFFF8FAFC,
+                                    ),
+                                    borderRadius:
+                                        BorderRadius
+                                            .circular(
+                                      11,
+                                    ),
+                                  ),
+                                  child:
+                                      Wrap(
+                                    spacing:
+                                        14,
+                                    runSpacing:
+                                        8,
+                                    children: [
+                                      _MiniInfo(
+                                        icon:
+                                            Icons.delivery_dining_outlined,
+                                        text:
+                                            'Rider ${formatMoney(riderCommission)}',
+                                      ),
+                                      _MiniInfo(
+                                        icon:
+                                            Icons.business_center_outlined,
+                                        text:
+                                            'Profit ${formatMoney(profit)}',
+                                      ),
+                                      _MiniInfo(
+                                        icon: commissionType ==
+                                                'PERCENTAGE'
+                                            ? Icons.percent_rounded
+                                            : Icons.payments_outlined,
+                                        text: commissionType ==
+                                                'PERCENTAGE'
+                                            ? '${commissionValue.toStringAsFixed(2)}%'
+                                            : 'Fixed ${formatMoney(commissionValue)}',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(
+                                  height: 8,
+                                ),
                                 Row(
                                   children: [
                                     TextButton.icon(
-                                      onPressed: () {
+                                      onPressed:
+                                          () {
                                         showAssignRiderDialog(
                                           delivery,
                                         );
                                       },
-                                      style: TextButton.styleFrom(
-                                        padding: EdgeInsets.zero,
+                                      style:
+                                          TextButton.styleFrom(
+                                        padding:
+                                            EdgeInsets.zero,
                                         foregroundColor:
                                             Colors.indigo,
                                       ),
-                                      icon: Icon(
+                                      icon:
+                                          Icon(
                                         assigned
-                                            ? Icons
-                                                .swap_horiz_rounded
-                                            : Icons
-                                                .assignment_ind_rounded,
-                                        size: 17,
+                                            ? Icons.swap_horiz_rounded
+                                            : Icons.assignment_ind_rounded,
+                                        size:
+                                            17,
                                       ),
-                                      label: Text(
+                                      label:
+                                          Text(
                                         assigned
                                             ? 'Change Rider'
                                             : 'Assign Rider',
-                                        style: const TextStyle(
+                                        style:
+                                            const TextStyle(
                                           fontWeight:
                                               FontWeight.w800,
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(
+                                      width:
+                                          12,
+                                    ),
                                     TextButton.icon(
-                                      onPressed: () {
+                                      onPressed:
+                                          () {
                                         showPriceDialog(
                                           delivery,
                                         );
                                       },
-                                      style: TextButton.styleFrom(
-                                        padding: EdgeInsets.zero,
+                                      style:
+                                          TextButton.styleFrom(
+                                        padding:
+                                            EdgeInsets.zero,
                                         foregroundColor:
                                             const Color(
                                           0xFFB45309,
                                         ),
                                       ),
-                                      icon: const Icon(
+                                      icon:
+                                          const Icon(
                                         Icons
                                             .price_change_rounded,
-                                        size: 17,
+                                        size:
+                                            17,
                                       ),
-                                      label: Text(
-                                        deliveryFee > 0
-                                            ? 'Edit Price'
+                                      label:
+                                          Text(
+                                        deliveryFee >
+                                                0
+                                            ? 'Price & Commission'
                                             : 'Set Price',
-                                        style: const TextStyle(
+                                        style:
+                                            const TextStyle(
                                           fontWeight:
                                               FontWeight.w800,
                                         ),
@@ -3710,12 +4738,15 @@ class _AdminDeliveryScreenState
                                     const Spacer(),
                                     Text(
                                       formatDate(
-                                        delivery['createdAt'],
+                                        delivery[
+                                            'createdAt'],
                                       ),
-                                      style: TextStyle(
+                                      style:
+                                          TextStyle(
                                         color:
                                             Colors.grey.shade500,
-                                        fontSize: 11,
+                                        fontSize:
+                                            11,
                                       ),
                                     ),
                                   ],
@@ -3730,7 +4761,9 @@ class _AdminDeliveryScreenState
                 );
               },
             ),
-          const SizedBox(height: 40),
+          const SizedBox(
+            height: 40,
+          ),
         ],
       ),
     );
@@ -3742,39 +4775,51 @@ class _AdminDeliveryScreenState
   ) {
     return Scaffold(
       backgroundColor:
-          const Color(0xFFF7F9FC),
+          const Color(
+        0xFFF7F9FC,
+      ),
       appBar: AppBar(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor:
+            primaryColor,
+        foregroundColor:
+            Colors.white,
         elevation: 0,
         title: const Text(
           'Delivery Management',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
+          style:
+              TextStyle(
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
-            onPressed: isRefreshing
-                ? null
-                : () {
-                    loadDeliveries(
-                      showLoading: false,
-                    );
-                  },
+            tooltip:
+                'Refresh',
+            onPressed:
+                isRefreshing
+                    ? null
+                    : () {
+                        loadDeliveries(
+                          showLoading:
+                              false,
+                        );
+                      },
             icon: isRefreshing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child:
                         CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+                      strokeWidth:
+                          2,
+                      color:
+                          Colors.white,
                     ),
                   )
                 : const Icon(
-                    Icons.refresh_rounded,
+                    Icons
+                        .refresh_rounded,
                   ),
           ),
         ],
@@ -3788,7 +4833,8 @@ class _AdminDeliveryScreenState
   }
 }
 
-class _StatusBadge extends StatelessWidget {
+class _StatusBadge
+    extends StatelessWidget {
   const _StatusBadge({
     required this.text,
     required this.color,
@@ -3802,29 +4848,104 @@ class _StatusBadge extends StatelessWidget {
     BuildContext context,
   ) {
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 9,
         vertical: 5,
       ),
-      decoration: BoxDecoration(
-        color: color.withValues(
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
           alpha: 0.12,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(
+          20,
+        ),
       ),
       child: Text(
         text,
-        style: TextStyle(
+        style:
+            TextStyle(
           color: color,
           fontSize: 10,
-          fontWeight: FontWeight.w800,
+          fontWeight:
+              FontWeight.w800,
         ),
       ),
     );
   }
 }
 
-class _MiniInfo extends StatelessWidget {
+class _CommissionSummaryChip
+    extends StatelessWidget {
+  const _CommissionSummaryChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
+          alpha: 0.10,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          20,
+        ),
+      ),
+      child: Row(
+        mainAxisSize:
+            MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration:
+                BoxDecoration(
+              color: color,
+              shape:
+                  BoxShape.circle,
+            ),
+          ),
+          const SizedBox(
+            width: 7,
+          ),
+          Text(
+            '$label: $value',
+            style:
+                TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniInfo
+    extends StatelessWidget {
   const _MiniInfo({
     required this.icon,
     required this.text,
@@ -3838,28 +4959,42 @@ class _MiniInfo extends StatelessWidget {
     BuildContext context,
   ) {
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 8,
         vertical: 5,
       ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(20),
+      decoration:
+          BoxDecoration(
+        color:
+            const Color(
+          0xFFF1F5F9,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          20,
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize:
+            MainAxisSize.min,
         children: [
           Icon(
             icon,
             size: 14,
-            color: Colors.black54,
+            color:
+                Colors.black54,
           ),
-          const SizedBox(width: 5),
+          const SizedBox(
+            width: 5,
+          ),
           Text(
             text,
-            style: const TextStyle(
+            style:
+                const TextStyle(
               fontSize: 11,
-              color: Colors.black54,
+              color:
+                  Colors.black54,
             ),
           ),
         ],
@@ -3868,7 +5003,8 @@ class _MiniInfo extends StatelessWidget {
   }
 }
 
-class _DetailSection extends StatelessWidget {
+class _DetailSection
+    extends StatelessWidget {
   const _DetailSection({
     required this.title,
     required this.children,
@@ -3882,11 +5018,22 @@ class _DetailSection extends StatelessWidget {
     BuildContext context,
   ) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.all(
+        16,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            const Color(
+          0xFFF8FAFC,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          16,
+        ),
       ),
       child: Column(
         crossAxisAlignment:
@@ -3894,12 +5041,16 @@ class _DetailSection extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style:
+                const TextStyle(
               fontSize: 15,
-              fontWeight: FontWeight.w800,
+              fontWeight:
+                  FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
           ...children,
         ],
       ),
@@ -3907,7 +5058,8 @@ class _DetailSection extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
+class _DetailRow
+    extends StatelessWidget {
   const _DetailRow({
     required this.icon,
     required this.label,
@@ -3923,7 +5075,8 @@ class _DetailRow extends StatelessWidget {
     BuildContext context,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(
+      padding:
+          const EdgeInsets.only(
         bottom: 12,
       ),
       child: Row(
@@ -3933,27 +5086,41 @@ class _DetailRow extends StatelessWidget {
           Icon(
             icon,
             size: 19,
-            color: const Color(0xFF0F766E),
+            color:
+                const Color(
+              0xFF0F766E,
+            ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(
+            width: 10,
+          ),
           Expanded(
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                  style:
+                      TextStyle(
+                    color: Colors
+                        .grey.shade600,
+                    fontSize:
+                        11,
+                    fontWeight:
+                        FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(
+                  height: 3,
+                ),
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
               ],

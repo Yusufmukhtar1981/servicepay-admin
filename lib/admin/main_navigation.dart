@@ -10,6 +10,7 @@ import 'admin_notifications_screen.dart';
 import 'admin_settings_screen.dart';
 import 'staff_management_screen.dart';
 import 'admin_amana_screen.dart';
+import 'admin_riders_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -134,6 +135,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         label: 'Delivery',
       );
     }
+
+if (isHeadOffice) {
+  addNavigationPage(
+    page: const AdminRidersScreen(),
+    icon: Icons.delivery_dining_outlined,
+    activeIcon: Icons.delivery_dining_rounded,
+    label: 'Riders',
+  );
+}
 
     if (isHeadOffice ||
         hasAnyPermission(

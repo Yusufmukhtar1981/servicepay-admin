@@ -3,14 +3,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../login_screen.dart';
 
+import 'admin_amana_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_delivery_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_rider_withdrawals_screen.dart';
+import 'admin_riders_screen.dart';
 import 'admin_settings_screen.dart';
 import 'staff_management_screen.dart';
-import 'admin_amana_screen.dart';
-import 'admin_riders_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -34,11 +35,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   Set<String> permissions = <String>{};
 
   List<Widget> pages = <Widget>[];
+
   List<BottomNavigationBarItem> items = <BottomNavigationBarItem>[];
 
   @override
   void initState() {
     super.initState();
+
     loadAccessAndConfigureNavigation();
   }
 
@@ -73,7 +76,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     return permissions.contains(
-      normalizePermission(permission),
+      normalizePermission(
+        permission,
+      ),
     );
   }
 
@@ -99,8 +104,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
     items.add(
       BottomNavigationBarItem(
-        icon: Icon(icon),
-        activeIcon: Icon(activeIcon),
+        icon: Icon(
+          icon,
+        ),
+        activeIcon: Icon(
+          activeIcon,
+        ),
         label: label,
       ),
     );
@@ -110,7 +119,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     pages = <Widget>[];
     items = <BottomNavigationBarItem>[];
 
-    if (isHeadOffice || hasPermission('dashboard.view')) {
+    if (isHeadOffice ||
+        hasPermission(
+          'dashboard.view',
+        )) {
       addNavigationPage(
         page: const AdminDashboardScreen(),
         icon: Icons.dashboard_outlined,
@@ -118,6 +130,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         label: 'Dashboard',
       );
     }
+
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminAmanaScreen(),
@@ -127,7 +140,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice || hasPermission('delivery.view')) {
+    if (isHeadOffice ||
+        hasPermission(
+          'delivery.view',
+        )) {
       addNavigationPage(
         page: const AdminDeliveryScreen(),
         icon: Icons.local_shipping_outlined,
@@ -136,14 +152,27 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-if (isHeadOffice) {
-  addNavigationPage(
-    page: const AdminRidersScreen(),
-    icon: Icons.delivery_dining_outlined,
-    activeIcon: Icons.delivery_dining_rounded,
-    label: 'Riders',
-  );
-}
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminRidersScreen(),
+        icon: Icons.delivery_dining_outlined,
+        activeIcon: Icons.delivery_dining_rounded,
+        label: 'Riders',
+      );
+    }
+
+    /*
+     * Rider commission withdrawal management
+     * is restricted to Head Office.
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminRiderWithdrawalsScreen(),
+        icon: Icons.payments_outlined,
+        activeIcon: Icons.payments_rounded,
+        label: 'Withdrawals',
+      );
+    }
 
     if (isHeadOffice ||
         hasAnyPermission(
@@ -201,7 +230,8 @@ if (isHeadOffice) {
 
     /*
      * Settings is always shown so every authorized
-     * staff member can view account information and log out.
+     * staff member can view account information
+     * and log out.
      */
     addNavigationPage(
       page: const AdminSettingsScreen(),
@@ -220,9 +250,15 @@ if (isHeadOffice) {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
       final String role = normalizeRole(
-        prefs.getString('user_role') ??
-            prefs.getString('admin_role') ??
-            prefs.getString('role'),
+        prefs.getString(
+              'user_role',
+            ) ??
+            prefs.getString(
+              'admin_role',
+            ) ??
+            prefs.getString(
+              'role',
+            ),
       );
 
       final List<String> savedPermissions = prefs.getStringList(
@@ -231,9 +267,14 @@ if (isHeadOffice) {
           <String>[];
 
       final Set<String> normalizedPermissions = savedPermissions
-          .map(normalizePermission)
+          .map(
+            normalizePermission,
+          )
           .where(
-            (String value) => value.isNotEmpty,
+            (
+              String value,
+            ) =>
+                value.isNotEmpty,
           )
           .toSet();
 
@@ -244,11 +285,16 @@ if (isHeadOffice) {
           return;
         }
 
-        Navigator.of(context).pushAndRemoveUntil(
+        Navigator.of(
+          context,
+        ).pushAndRemoveUntil(
           MaterialPageRoute<void>(
             builder: (_) => const LoginScreen(),
           ),
-          (Route<dynamic> route) => false,
+          (
+            Route<dynamic> route,
+          ) =>
+              false,
         );
 
         return;
@@ -305,7 +351,10 @@ if (isHeadOffice) {
     }
 
     if (staffRoleName.isNotEmpty) {
-      return staffRoleName.replaceAll('_', ' ');
+      return staffRoleName.replaceAll(
+        '_',
+        ' ',
+      );
     }
 
     return 'ServicePay Staff';
@@ -332,7 +381,9 @@ if (isHeadOffice) {
         ),
         body: const Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: EdgeInsets.all(
+              24,
+            ),
             child: Text(
               'No authorized admin pages are available for this account.',
               textAlign: TextAlign.center,
@@ -401,9 +452,15 @@ if (isHeadOffice) {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: safeIndex,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF0F766E),
-        unselectedItemColor: const Color(0xFF94A3B8),
+        selectedItemColor: const Color(
+          0xFF0F766E,
+        ),
+        unselectedItemColor: const Color(
+          0xFF94A3B8,
+        ),
         backgroundColor: Colors.white,
+        selectedFontSize: 10,
+        unselectedFontSize: 9,
         onTap: (
           int index,
         ) {

@@ -6,6 +6,7 @@ import '../login_screen.dart';
 import 'admin_amana_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'admin_delivery_screen.dart';
+import 'admin_keke_fare_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
@@ -19,10 +20,12 @@ class AdminMainNavigation extends StatefulWidget {
   });
 
   @override
-  State<AdminMainNavigation> createState() => _AdminMainNavigationState();
+  State<AdminMainNavigation> createState() =>
+      _AdminMainNavigationState();
 }
 
-class _AdminMainNavigationState extends State<AdminMainNavigation> {
+class _AdminMainNavigationState
+    extends State<AdminMainNavigation> {
   int currentIndex = 0;
 
   bool isLoading = true;
@@ -36,7 +39,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
   List<Widget> pages = <Widget>[];
 
-  List<BottomNavigationBarItem> items = <BottomNavigationBarItem>[];
+  List<BottomNavigationBarItem> items =
+      <BottomNavigationBarItem>[];
 
   @override
   void initState() {
@@ -48,7 +52,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   String normalizeRole(
     String? value,
   ) {
-    return (value ?? '').trim().toUpperCase().replaceAll(
+    return (value ?? '')
+        .trim()
+        .toUpperCase()
+        .replaceAll(
           RegExp(r'[\s-]+'),
           '_',
         );
@@ -57,7 +64,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   String normalizePermission(
     String? value,
   ) {
-    return (value ?? '').trim().toLowerCase();
+    return (value ?? '')
+        .trim()
+        .toLowerCase();
   }
 
   bool get isHeadOffice {
@@ -100,7 +109,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     required IconData activeIcon,
     required String label,
   }) {
-    pages.add(page);
+    pages.add(
+      page,
+    );
 
     items.add(
       BottomNavigationBarItem(
@@ -119,61 +130,137 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     pages = <Widget>[];
     items = <BottomNavigationBarItem>[];
 
+    /*
+     * =====================================================
+     * DASHBOARD
+     * =====================================================
+     */
     if (isHeadOffice ||
         hasPermission(
           'dashboard.view',
         )) {
       addNavigationPage(
-        page: const AdminDashboardScreen(),
-        icon: Icons.dashboard_outlined,
-        activeIcon: Icons.dashboard_rounded,
-        label: 'Dashboard',
+        page:
+            const AdminDashboardScreen(),
+        icon:
+            Icons.dashboard_outlined,
+        activeIcon:
+            Icons.dashboard_rounded,
+        label:
+            'Dashboard',
       );
     }
 
+    /*
+     * =====================================================
+     * AMANA
+     * =====================================================
+     */
     if (isHeadOffice) {
       addNavigationPage(
-        page: const AdminAmanaScreen(),
-        icon: Icons.volunteer_activism_outlined,
-        activeIcon: Icons.volunteer_activism_rounded,
-        label: 'Amana',
+        page:
+            const AdminAmanaScreen(),
+        icon:
+            Icons
+                .volunteer_activism_outlined,
+        activeIcon:
+            Icons
+                .volunteer_activism_rounded,
+        label:
+            'Amana',
       );
     }
 
+    /*
+     * =====================================================
+     * DELIVERY
+     * =====================================================
+     */
     if (isHeadOffice ||
         hasPermission(
           'delivery.view',
         )) {
       addNavigationPage(
-        page: const AdminDeliveryScreen(),
-        icon: Icons.local_shipping_outlined,
-        activeIcon: Icons.local_shipping_rounded,
-        label: 'Delivery',
-      );
-    }
-
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminRidersScreen(),
-        icon: Icons.delivery_dining_outlined,
-        activeIcon: Icons.delivery_dining_rounded,
-        label: 'Riders',
+        page:
+            const AdminDeliveryScreen(),
+        icon:
+            Icons
+                .local_shipping_outlined,
+        activeIcon:
+            Icons
+                .local_shipping_rounded,
+        label:
+            'Delivery',
       );
     }
 
     /*
-     * Rider commission withdrawal management
-     * is restricted to Head Office.
+     * =====================================================
+     * RIDERS
+     * =====================================================
      */
     if (isHeadOffice) {
       addNavigationPage(
-        page: const AdminRiderWithdrawalsScreen(),
-        icon: Icons.payments_outlined,
-        activeIcon: Icons.payments_rounded,
-        label: 'Withdrawals',
+        page:
+            const AdminRidersScreen(),
+        icon:
+            Icons
+                .delivery_dining_outlined,
+        activeIcon:
+            Icons
+                .delivery_dining_rounded,
+        label:
+            'Riders',
       );
     }
 
+    /*
+     * =====================================================
+     * KEKE FARE
+     * =====================================================
+     *
+     * Restricted to Head Office.
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page:
+            const AdminKekeFareScreen(),
+        icon:
+            Icons
+                .electric_rickshaw_outlined,
+        activeIcon:
+            Icons
+                .electric_rickshaw_rounded,
+        label:
+            'Keke Fare',
+      );
+    }
+
+    /*
+     * =====================================================
+     * RIDER WITHDRAWALS
+     * =====================================================
+     *
+     * Restricted to Head Office.
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page:
+            const AdminRiderWithdrawalsScreen(),
+        icon:
+            Icons.payments_outlined,
+        activeIcon:
+            Icons.payments_rounded,
+        label:
+            'Withdrawals',
+      );
+    }
+
+    /*
+     * =====================================================
+     * WALLET / FINANCE
+     * =====================================================
+     */
     if (isHeadOffice ||
         hasAnyPermission(
           const <String>[
@@ -185,13 +272,24 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           ],
         )) {
       addNavigationPage(
-        page: const AdminManualFundingScreen(),
-        icon: Icons.account_balance_wallet_outlined,
-        activeIcon: Icons.account_balance_wallet_rounded,
-        label: 'Wallet',
+        page:
+            const AdminManualFundingScreen(),
+        icon:
+            Icons
+                .account_balance_wallet_outlined,
+        activeIcon:
+            Icons
+                .account_balance_wallet_rounded,
+        label:
+            'Wallet',
       );
     }
 
+    /*
+     * =====================================================
+     * NOTIFICATIONS
+     * =====================================================
+     */
     if (isHeadOffice ||
         hasAnyPermission(
           const <String>[
@@ -201,13 +299,24 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           ],
         )) {
       addNavigationPage(
-        page: const AdminNotificationsScreen(),
-        icon: Icons.notifications_outlined,
-        activeIcon: Icons.notifications_rounded,
-        label: 'Notifications',
+        page:
+            const AdminNotificationsScreen(),
+        icon:
+            Icons
+                .notifications_outlined,
+        activeIcon:
+            Icons
+                .notifications_rounded,
+        label:
+            'Notifications',
       );
     }
 
+    /*
+     * =====================================================
+     * STAFF
+     * =====================================================
+     */
     if (isHeadOffice ||
         hasAnyPermission(
           const <String>[
@@ -221,35 +330,52 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           ],
         )) {
       addNavigationPage(
-        page: const StaffManagementScreen(),
-        icon: Icons.groups_outlined,
-        activeIcon: Icons.groups_rounded,
-        label: 'Staff',
+        page:
+            const StaffManagementScreen(),
+        icon:
+            Icons.groups_outlined,
+        activeIcon:
+            Icons.groups_rounded,
+        label:
+            'Staff',
       );
     }
 
     /*
-     * Settings is always shown so every authorized
-     * staff member can view account information
-     * and log out.
+     * =====================================================
+     * SETTINGS
+     * =====================================================
+     *
+     * Always shown to authorized admin/staff
+     * for profile/account/logout access.
      */
     addNavigationPage(
-      page: const AdminSettingsScreen(),
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings_rounded,
-      label: 'Settings',
+      page:
+          const AdminSettingsScreen(),
+      icon:
+          Icons.settings_outlined,
+      activeIcon:
+          Icons.settings_rounded,
+      label:
+          'Settings',
     );
 
-    if (currentIndex >= pages.length) {
+    if (currentIndex >=
+        pages.length) {
       currentIndex = 0;
     }
   }
 
-  Future<void> loadAccessAndConfigureNavigation() async {
+  Future<void>
+      loadAccessAndConfigureNavigation()
+      async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final SharedPreferences prefs =
+          await SharedPreferences
+              .getInstance();
 
-      final String role = normalizeRole(
+      final String role =
+          normalizeRole(
         prefs.getString(
               'user_role',
             ) ??
@@ -261,24 +387,29 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             ),
       );
 
-      final List<String> savedPermissions = prefs.getStringList(
-            'staff_permissions',
-          ) ??
-          <String>[];
+      final List<String>
+          savedPermissions =
+          prefs.getStringList(
+                'staff_permissions',
+              ) ??
+              <String>[];
 
-      final Set<String> normalizedPermissions = savedPermissions
-          .map(
-            normalizePermission,
-          )
-          .where(
-            (
-              String value,
-            ) =>
-                value.isNotEmpty,
-          )
-          .toSet();
+      final Set<String>
+          normalizedPermissions =
+          savedPermissions
+              .map(
+                normalizePermission,
+              )
+              .where(
+                (
+                  String value,
+                ) =>
+                    value.isNotEmpty,
+              )
+              .toSet();
 
-      if (role != 'HEAD_OFFICE' && role != 'STAFF') {
+      if (role != 'HEAD_OFFICE' &&
+          role != 'STAFF') {
         await prefs.clear();
 
         if (!mounted) {
@@ -289,7 +420,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           context,
         ).pushAndRemoveUntil(
           MaterialPageRoute<void>(
-            builder: (_) => const LoginScreen(),
+            builder:
+                (_) =>
+                    const LoginScreen(),
           ),
           (
             Route<dynamic> route,
@@ -305,30 +438,37 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       }
 
       setState(() {
-        adminRole = role;
+        adminRole =
+            role;
 
-        staffRoleName = prefs.getString(
-              'staff_role_name',
-            ) ??
-            '';
+        staffRoleName =
+            prefs.getString(
+                  'staff_role_name',
+                ) ??
+                '';
 
-        staffRoleDisplayName = prefs.getString(
-              'staff_role_display_name',
-            ) ??
-            '';
+        staffRoleDisplayName =
+            prefs.getString(
+                  'staff_role_display_name',
+                ) ??
+                '';
 
-        staffDepartment = prefs.getString(
-              'staff_department',
-            ) ??
-            '';
+        staffDepartment =
+            prefs.getString(
+                  'staff_department',
+                ) ??
+                '';
 
-        permissions = normalizedPermissions;
+        permissions =
+            normalizedPermissions;
 
-        currentIndex = 0;
+        currentIndex =
+            0;
 
         configureNavigation();
 
-        isLoading = false;
+        isLoading =
+            false;
       });
     } catch (_) {
       if (!mounted) {
@@ -336,7 +476,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       }
 
       setState(() {
-        isLoading = false;
+        isLoading =
+            false;
       });
     }
   }
@@ -346,12 +487,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       return 'Head Office';
     }
 
-    if (staffRoleDisplayName.isNotEmpty) {
+    if (staffRoleDisplayName
+        .isNotEmpty) {
       return staffRoleDisplayName;
     }
 
-    if (staffRoleName.isNotEmpty) {
-      return staffRoleName.replaceAll(
+    if (staffRoleName
+        .isNotEmpty) {
+      return staffRoleName
+          .replaceAll(
         '_',
         ' ',
       );
@@ -366,30 +510,42 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   ) {
     if (isLoading) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
+        body:
+            Center(
+          child:
+              CircularProgressIndicator(),
         ),
       );
     }
 
     if (pages.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text(
+        appBar:
+            AppBar(
+          title:
+              const Text(
             'ServicePay Admin',
           ),
         ),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(
+        body:
+            const Center(
+          child:
+              Padding(
+            padding:
+                EdgeInsets.all(
               24,
             ),
-            child: Text(
+            child:
+                Text(
               'No authorized admin pages are available for this account.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                fontSize:
+                    16,
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
           ),
@@ -397,47 +553,73 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    final int safeIndex = currentIndex >= pages.length ? 0 : currentIndex;
+    final int safeIndex =
+        currentIndex >= pages.length
+            ? 0
+            : currentIndex;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
+      appBar:
+          AppBar(
+        title:
+            Text(
           accountLabel,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
-        actions: [
-          if (isStaff && staffDepartment.isNotEmpty)
+        actions:
+            <Widget>[
+          if (isStaff &&
+              staffDepartment
+                  .isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(
-                right: 12,
+              padding:
+                  const EdgeInsets.only(
+                right:
+                    12,
               ),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+              child:
+                  Center(
+                child:
+                    Container(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal:
+                        10,
+                    vertical:
+                        6,
                   ),
-                  decoration: BoxDecoration(
-                    color: const Color(
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        const Color(
                       0xFFE8F5EC,
                     ),
-                    borderRadius: BorderRadius.circular(
+                    borderRadius:
+                        BorderRadius.circular(
                       20,
                     ),
                   ),
-                  child: Text(
-                    staffDepartment.replaceAll(
+                  child:
+                      Text(
+                    staffDepartment
+                        .replaceAll(
                       '_',
                       ' ',
                     ),
-                    style: const TextStyle(
-                      color: Color(
+                    style:
+                        const TextStyle(
+                      color:
+                          Color(
                         0xFF159447,
                       ),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                      fontSize:
+                          11,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                 ),
@@ -445,34 +627,49 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             ),
         ],
       ),
-      body: IndexedStack(
-        index: safeIndex,
-        children: pages,
+      body:
+          IndexedStack(
+        index:
+            safeIndex,
+        children:
+            pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: safeIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(
+      bottomNavigationBar:
+          BottomNavigationBar(
+        currentIndex:
+            safeIndex,
+        type:
+            BottomNavigationBarType.fixed,
+        selectedItemColor:
+            const Color(
           0xFF0F766E,
         ),
-        unselectedItemColor: const Color(
+        unselectedItemColor:
+            const Color(
           0xFF94A3B8,
         ),
-        backgroundColor: Colors.white,
-        selectedFontSize: 10,
-        unselectedFontSize: 9,
-        onTap: (
+        backgroundColor:
+            Colors.white,
+        selectedFontSize:
+            10,
+        unselectedFontSize:
+            9,
+        onTap:
+            (
           int index,
         ) {
-          if (index < 0 || index >= pages.length) {
+          if (index < 0 ||
+              index >= pages.length) {
             return;
           }
 
           setState(() {
-            currentIndex = index;
+            currentIndex =
+                index;
           });
         },
-        items: items,
+        items:
+            items,
       ),
     );
   }

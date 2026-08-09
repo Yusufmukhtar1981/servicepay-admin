@@ -34,8 +34,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> loadUserDetails() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final savedName =
-        prefs.getString('user_name') ??
+    final savedName = prefs.getString('user_name') ??
         prefs.getString('full_name') ??
         prefs.getString('name');
 
@@ -44,9 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
 
     setState(() {
-      name = savedName?.trim().isNotEmpty == true
-          ? savedName!.trim()
-          : 'User';
+      name = savedName?.trim().isNotEmpty == true ? savedName!.trim() : 'User';
 
       balance = savedBalance ?? 0;
       isLoading = false;
@@ -129,7 +126,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(22),
@@ -183,9 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 28),
-
                     const Text(
                       'Services',
                       style: TextStyle(
@@ -193,14 +187,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     GridView.count(
                       crossAxisCount: 3,
                       shrinkWrap: true,
-                      physics:
-                          const NeverScrollableScrollPhysics(),
+                      physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 16,
                       crossAxisSpacing: 16,
                       childAspectRatio: 1.05,
@@ -256,8 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         serviceCard(
-                          icon:
-                              Icons.account_balance_wallet_outlined,
+                          icon: Icons.account_balance_wallet_outlined,
                           title: 'Wallet',
                           onTap: () {
                             openPage(
@@ -298,9 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 28),
-
                     const Text(
                       'Recent Transactions',
                       style: TextStyle(
@@ -308,9 +296,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 15),
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),

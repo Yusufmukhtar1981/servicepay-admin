@@ -14,6 +14,7 @@ import 'admin_riders_screen.dart';
 import 'admin_settings_screen.dart';
 import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
+import 'admin_data_pricing_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -306,6 +307,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       icon: Icons.admin_panel_settings_outlined,
       activeIcon: Icons.admin_panel_settings_rounded,
       label: 'Controls',
+    );
+
+    addNavigationPage(
+      page: const AdminDataPricingScreen(),
+      icon: Icons.sell_outlined,
+      activeIcon: Icons.sell_rounded,
+      label: 'Data Pricing',
     );
 
     if (currentIndex >= pages.length) {

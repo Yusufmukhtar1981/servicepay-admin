@@ -16,6 +16,8 @@ import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
 import 'admin_data_pricing_screen.dart';
 
+import 'admin_airtime_to_cash_screen.dart';
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
     super.key,
@@ -156,6 +158,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     /*
+   * ============================================================
+   * AIRTIME TO CASH
+   * ============================================================
+   */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminAirtimeToCashScreen(),
+        icon: Icons.currency_exchange_outlined,
+        activeIcon: Icons.currency_exchange_rounded,
+        label: 'Airtime Cash',
+      );
+    }
+
+/*
      * =====================================================
      * DELIVERY
      * =====================================================

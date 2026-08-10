@@ -316,6 +316,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       label: 'Data Pricing',
     );
 
+    addNavigationPage(
+      page: const AdminDataPricingScreen(),
+      icon: Icons.sell_outlined,
+      activeIcon: Icons.sell_rounded,
+      label: 'Data Pricing',
+    );
+
     if (currentIndex >= pages.length) {
       currentIndex = 0;
     }

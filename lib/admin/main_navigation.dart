@@ -18,6 +18,8 @@ import 'admin_data_pricing_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
+import 'admin_business_withdrawals_screen.dart';
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
     super.key,
@@ -311,6 +313,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * Always shown to authorized admin/staff
      * for profile/account/logout access.
      */
+    addNavigationPage(
+      page: const AdminBusinessWithdrawalsScreen(),
+      icon: Icons.account_balance_wallet_outlined,
+      activeIcon: Icons.account_balance_wallet_rounded,
+      label: 'Business Withdrawals',
+    );
+
     addNavigationPage(
       page: const AdminSettingsScreen(),
       icon: Icons.settings_outlined,

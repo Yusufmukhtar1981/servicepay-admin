@@ -19,6 +19,7 @@ import 'admin_data_pricing_screen.dart';
 import 'admin_airtime_to_cash_screen.dart';
 
 import 'admin_business_withdrawals_screen.dart';
+import 'admin_kyc_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -281,6 +282,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     /*
+     * ============================================================
+     * KYC REVIEW - HEAD OFFICE ONLY
+     * ============================================================
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminKycScreen(),
+        icon: Icons.verified_user_outlined,
+        activeIcon: Icons.verified_user_rounded,
+        label: 'KYC',
+      );
+    }
+
+/*
      * =====================================================
      * STAFF
      * =====================================================

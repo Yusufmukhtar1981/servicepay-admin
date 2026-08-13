@@ -1315,6 +1315,9 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
       if (!mounted) return;
 
+      String selectedOrganizationId = '';
+      String selectedOrganizationName = '';
+
       Map<String, dynamic>? selectedOrganization;
 
       await showDialog<void>(

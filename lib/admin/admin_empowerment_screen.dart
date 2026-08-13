@@ -1294,6 +1294,352 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
   }
 
+  Future<void> _openCreateProgramDialog() async {
+    final nameController = TextEditingController();
+    final amountController = TextEditingController();
+    final targetController = TextEditingController();
+    final stateController = TextEditingController();
+    final lgaController = TextEditingController();
+    final wardController = TextEditingController();
+
+    String programType = 'CASH_GRANT';
+    String targetGroup = 'GENERAL';
+    bool publicApplicationEnabled = true;
+    bool isSubmitting = false;
+
+    try {
+      final organizations = await _loadEmpowermentList(
+        '/empowerment/organizations',
+        'organizations',
+      );
+
+      if (!mounted) return;
+
+      Map<String, dynamic>? selectedOrganization;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text('Create Empowerment Program'),
+                content: SizedBox(
+                  width: 620,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DropdownButtonFormField<Map<String, dynamic>>(
+                          value: selectedOrganization,
+                          decoration: const InputDecoration(
+                            labelText: 'Organization *',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: organizations.map((raw) {
+                            final item = raw is Map
+                                ? Map<String, dynamic>.from(raw)
+                                : <String, dynamic>{};
+
+                            return DropdownMenuItem<Map<String, dynamic>>(
+                              value: item,
+                              child: Text(
+                                (item['name'] ?? 'Organization').toString(),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              selectedOrganization = value;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Program Name *',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          value: programType,
+                          decoration: const InputDecoration(
+                            labelText: 'Program Type',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'CASH_GRANT',
+                              child: Text('Cash Grant'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'CONTROLLED_GRANT',
+                              child: Text('Controlled Grant'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() {
+                              programType = value;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          value: targetGroup,
+                          decoration: const InputDecoration(
+                            labelText: 'Target Group',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            'YOUTH',
+                            'WOMEN',
+                            'FARMERS',
+                            'STUDENTS',
+                            'TRADERS',
+                            'ARTISANS',
+                            'GENERAL',
+                            'OTHER',
+                          ].map((value) {
+                            return DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() {
+                              targetGroup = value;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: amountController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Amount Per Beneficiary *',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: targetController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Target Beneficiaries *',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: stateController,
+                          decoration: const InputDecoration(
+                            labelText: 'State',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: lgaController,
+                          decoration: const InputDecoration(
+                            labelText: 'LGA',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: wardController,
+                          decoration: const InputDecoration(
+                            labelText: 'Ward',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Public Application'),
+                          value: publicApplicationEnabled,
+                          onChanged: (value) {
+                            setDialogState(() {
+                              publicApplicationEnabled = value;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final name = nameController.text.trim();
+                            final amount =
+                                double.tryParse(amountController.text.trim()) ??
+                                    0;
+                            final target =
+                                int.tryParse(targetController.text.trim()) ?? 0;
+
+                            if (selectedOrganization == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Please select an organization.'),
+                                ),
+                              );
+                              return;
+                            }
+
+                            if (name.isEmpty || amount <= 0 || target <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Program name, amount and target beneficiaries are required.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
+                            final organizationId =
+                                (selectedOrganization!['_id'] ??
+                                        selectedOrganization!['id'] ??
+                                        '')
+                                    .toString();
+
+                            if (organizationId.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Selected organization ID is missing.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
+                            setDialogState(() {
+                              isSubmitting = true;
+                            });
+
+                            try {
+                              final prefs =
+                                  await SharedPreferences.getInstance();
+                              final token = prefs.getString('auth_token') ?? '';
+
+                              final response = await http.post(
+                                Uri.parse('$baseUrl/empowerment/programs'),
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': 'Bearer $token',
+                                },
+                                body: jsonEncode({
+                                  'organizationId': organizationId,
+                                  'name': name,
+                                  'programType': programType,
+                                  'targetGroup': targetGroup,
+                                  'amountPerBeneficiary': amount,
+                                  'targetBeneficiaries': target,
+                                  'state': stateController.text.trim(),
+                                  'lga': lgaController.text.trim(),
+                                  'ward': wardController.text.trim(),
+                                  'publicApplicationEnabled':
+                                      publicApplicationEnabled,
+                                  'status': 'DRAFT',
+                                }),
+                              );
+
+                              dynamic data;
+                              try {
+                                data = jsonDecode(response.body);
+                              } catch (_) {
+                                data = null;
+                              }
+
+                              if (response.statusCode < 200 ||
+                                  response.statusCode >= 300) {
+                                String message =
+                                    'Unable to create empowerment program.';
+
+                                if (data is Map && data['message'] != null) {
+                                  message = data['message'].toString();
+                                }
+
+                                throw Exception(message);
+                              }
+
+                              if (!mounted) return;
+
+                              Navigator.of(dialogContext).pop();
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Empowerment program created successfully.',
+                                  ),
+                                ),
+                              );
+
+                              await loadDashboard();
+                            } catch (e) {
+                              if (!mounted) return;
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceFirst(
+                                          'Exception: ',
+                                          '',
+                                        ),
+                                  ),
+                                ),
+                              );
+                            } finally {
+                              setDialogState(() {
+                                isSubmitting = false;
+                              });
+                            }
+                          },
+                    icon: isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.add_circle_outline),
+                    label: Text(
+                      isSubmitting ? 'Creating...' : 'Create Program',
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      nameController.dispose();
+      amountController.dispose();
+      targetController.dispose();
+      stateController.dispose();
+      lgaController.dispose();
+      wardController.dispose();
+    }
+  }
+
   Future<void> _openProgramsManager() async {
     try {
       final programs = await _loadEmpowermentList(
@@ -1301,102 +1647,124 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         'programs',
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       await showDialog<void>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text(
-              'Empowerment Programs',
-            ),
+            title: const Text('Empowerment Programs'),
             content: SizedBox(
-              width: 620,
-              height: 480,
-              child: programs.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No programs found.',
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: programs.length,
-                      separatorBuilder: (_, __) => const Divider(
-                        height: 1,
-                      ),
-                      itemBuilder: (context, index) {
-                        final raw = programs[index];
+              width: 680,
+              height: 500,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        Navigator.of(dialogContext).pop();
 
-                        final item = raw is Map
-                            ? Map<String, dynamic>.from(
-                                raw,
-                              )
-                            : <String, dynamic>{};
+                        await _openCreateProgramDialog();
 
-                        final id = (item['_id'] ?? item['id'] ?? '').toString();
-
-                        final name = (item['name'] ?? 'Program').toString();
-
-                        final status = (item['status'] ?? 'DRAFT')
-                            .toString()
-                            .toUpperCase();
-
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(
-                              Icons.volunteer_activism_outlined,
-                            ),
-                          ),
-                          title: Text(name),
-                          subtitle: Text(
-                            'Status: $status',
-                          ),
-                          trailing: const Icon(
-                            Icons.manage_accounts_outlined,
-                          ),
-                          onTap: id.isEmpty
-                              ? null
-                              : () async {
-                                  Navigator.of(
-                                    dialogContext,
-                                  ).pop();
-
-                                  await _showStatusPicker(
-                                    title: name,
-                                    currentStatus: status,
-                                    statuses: const [
-                                      'DRAFT',
-                                      'OPEN',
-                                      'UNDER_REVIEW',
-                                      'APPROVED',
-                                      'DISBURSING',
-                                      'COMPLETED',
-                                      'SUSPENDED',
-                                      'CANCELLED',
-                                    ],
-                                    onSelected: (
-                                      newStatus,
-                                    ) async {
-                                      await _updateProgramStatus(
-                                        id,
-                                        newStatus,
-                                      );
-                                    },
-                                  );
-                                },
-                        );
+                        if (!mounted) return;
+                        await _openProgramsManager();
                       },
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('Create Program'),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: programs.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No programs found.',
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: programs.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (_, index) {
+                              final raw = programs[index];
+
+                              final item = raw is Map
+                                  ? Map<String, dynamic>.from(raw)
+                                  : <String, dynamic>{};
+
+                              final id =
+                                  (item['_id'] ?? item['id'] ?? '').toString();
+
+                              final name =
+                                  (item['name'] ?? 'Program').toString();
+
+                              final status = (item['status'] ?? 'DRAFT')
+                                  .toString()
+                                  .toUpperCase();
+
+                              final targetGroup =
+                                  (item['targetGroup'] ?? 'GENERAL').toString();
+
+                              final amount = item['amountPerBeneficiary'];
+
+                              return ListTile(
+                                leading: const CircleAvatar(
+                                  child: Icon(
+                                    Icons.volunteer_activism_outlined,
+                                  ),
+                                ),
+                                title: Text(name),
+                                subtitle: Text(
+                                  'Status: $status'
+                                  '${targetGroup.isNotEmpty ? ' • $targetGroup' : ''}'
+                                  '${amount != null ? ' • ₦$amount per beneficiary' : ''}',
+                                ),
+                                trailing: const Icon(
+                                  Icons.manage_accounts_outlined,
+                                ),
+                                onTap: id.isEmpty
+                                    ? null
+                                    : () async {
+                                        Navigator.of(
+                                          dialogContext,
+                                        ).pop();
+
+                                        await _showStatusPicker(
+                                          title: name,
+                                          currentStatus: status,
+                                          statuses: const [
+                                            'DRAFT',
+                                            'OPEN',
+                                            'UNDER_REVIEW',
+                                            'APPROVED',
+                                            'DISBURSING',
+                                            'COMPLETED',
+                                            'SUSPENDED',
+                                            'CANCELLED',
+                                          ],
+                                          onSelected: (newStatus) async {
+                                            await _updateProgramStatus(
+                                              id,
+                                              newStatus,
+                                            );
+                                          },
+                                        );
+
+                                        if (!mounted) return;
+                                        await _openProgramsManager();
+                                      },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
-                onPressed: () {
-                  Navigator.of(
-                    dialogContext,
-                  ).pop();
-                },
+                onPressed: () => Navigator.of(dialogContext).pop(),
                 child: const Text('Close'),
               ),
             ],
@@ -1404,9 +1772,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         },
       );
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

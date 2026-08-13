@@ -625,6 +625,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             Icons.payments_outlined,
             'Disbursements',
             'Preview and manage payment batches',
+            onTap: _openDisbursementsManager,
           ),
           _actionRow(
             Icons.history_rounded,
@@ -1086,6 +1087,72 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
   }
 
+  Future<void> _openDisbursementsManager() async {
+    try {
+      final items = await _loadEmpowermentList(
+        '/empowerment/dashboard-summary',
+        'disbursementBatches',
+      );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Disbursements'),
+            content: SizedBox(
+              width: 760,
+              child: items.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'No disbursement records available yet.',
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, index) {
+                        final item = items[index];
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.payments_outlined),
+                          ),
+                          title: Text(
+                            item['batchReference']?.toString() ??
+                                item['reference']?.toString() ??
+                                'Disbursement',
+                          ),
+                          subtitle: Text(
+                            item['status']?.toString() ?? 'Prepared',
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to load disbursements: $e',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _openBeneficiariesManager() async {
     try {
       final programs = await _loadEmpowermentList(
@@ -1297,8 +1364,9 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   Widget _actionRow(
     IconData icon,
     String title,
-    String subtitle,
-  ) {
+    String subtitle, {
+    VoidCallback? onTap,
+  }) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(

@@ -837,6 +837,280 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     await loadDashboard();
   }
 
+  Future<void> _openCreateOrganizationDialog() async {
+    final nameController = TextEditingController();
+    final contactController = TextEditingController();
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final stateController = TextEditingController();
+    final lgaController = TextEditingController();
+
+    String organizationType = 'COMPANY';
+    bool isSubmitting = false;
+
+    const organizationTypes = <String>[
+      'STATE_GOVERNMENT',
+      'LOCAL_GOVERNMENT',
+      'POLITICIAN',
+      'NGO',
+      'FOUNDATION',
+      'COMPANY',
+      'COOPERATIVE',
+      'INDIVIDUAL',
+      'OTHER',
+    ];
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text(
+                  'Create Empowerment Organization',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                content: SizedBox(
+                  width: 560,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Organization Name *',
+                            hintText: 'e.g. Kano State Empowerment Agency',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          value: organizationType,
+                          decoration: const InputDecoration(
+                            labelText: 'Organization Type *',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: organizationTypes
+                              .map(
+                                (type) => DropdownMenuItem<String>(
+                                  value: type,
+                                  child: Text(
+                                    type.replaceAll('_', ' '),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: isSubmitting
+                              ? null
+                              : (value) {
+                                  if (value == null) return;
+                                  setDialogState(() {
+                                    organizationType = value;
+                                  });
+                                },
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: contactController,
+                          decoration: const InputDecoration(
+                            labelText: 'Contact Person',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone Number',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email Address',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: stateController,
+                          decoration: const InputDecoration(
+                            labelText: 'State',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: lgaController,
+                          decoration: const InputDecoration(
+                            labelText: 'LGA',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF7F0),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'New organizations are created with PENDING status and can be activated after review.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF08783E),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final name = nameController.text.trim();
+
+                            if (name.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Organization name is required.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
+                            setDialogState(() {
+                              isSubmitting = true;
+                            });
+
+                            try {
+                              final headers = await _empowermentHeaders();
+
+                              final response = await http
+                                  .post(
+                                    Uri.parse(
+                                      '$baseUrl/empowerment/organizations',
+                                    ),
+                                    headers: headers,
+                                    body: jsonEncode({
+                                      'name': name,
+                                      'organizationType': organizationType,
+                                      'contactName':
+                                          contactController.text.trim(),
+                                      'phone': phoneController.text.trim(),
+                                      'email': emailController.text.trim(),
+                                      'state': stateController.text.trim(),
+                                      'lga': lgaController.text.trim(),
+                                    }),
+                                  )
+                                  .timeout(
+                                    const Duration(seconds: 45),
+                                  );
+
+                              dynamic data;
+                              try {
+                                data = jsonDecode(response.body);
+                              } catch (_) {
+                                data = null;
+                              }
+
+                              if (response.statusCode < 200 ||
+                                  response.statusCode >= 300) {
+                                String message =
+                                    'Unable to create organization.';
+
+                                if (data is Map && data['message'] != null) {
+                                  message = data['message'].toString();
+                                }
+
+                                throw Exception(message);
+                              }
+
+                              if (!mounted) return;
+
+                              Navigator.of(dialogContext).pop();
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    data is Map && data['message'] != null
+                                        ? data['message'].toString()
+                                        : 'Empowerment organization created successfully.',
+                                  ),
+                                ),
+                              );
+
+                              await loadDashboard();
+                            } catch (e) {
+                              if (!mounted) return;
+
+                              setDialogState(() {
+                                isSubmitting = false;
+                              });
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceFirst(
+                                          'Exception: ',
+                                          '',
+                                        ),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                    icon: isSubmitting
+                        ? const SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.add_business_rounded),
+                    label: Text(
+                      isSubmitting ? 'Creating...' : 'Create Organization',
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      nameController.dispose();
+      contactController.dispose();
+      phoneController.dispose();
+      emailController.dispose();
+      stateController.dispose();
+      lgaController.dispose();
+    }
+  }
+
   Future<void> _openOrganizationsManager() async {
     try {
       final organizations = await _loadEmpowermentList(

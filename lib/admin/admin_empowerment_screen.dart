@@ -631,6 +631,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             Icons.history_rounded,
             'Audit Trail',
             'Review empowerment activities',
+            onTap: _openAuditTrailManager,
           ),
         ],
       ),
@@ -1347,6 +1348,91 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       if (!mounted) {
         return;
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openAuditTrailManager() async {
+    try {
+      final activities = await _loadEmpowermentList(
+        '/empowerment/audit-trail',
+        'activities',
+      );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Empowerment Audit Trail'),
+            content: SizedBox(
+              width: 760,
+              height: 520,
+              child: activities.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No empowerment audit activity found.',
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: activities.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = Map<String, dynamic>.from(
+                          activities[index],
+                        );
+
+                        final action = item['action']?.toString() ??
+                            item['type']?.toString() ??
+                            'Empowerment activity';
+
+                        final description = item['description']?.toString() ??
+                            item['message']?.toString() ??
+                            '';
+
+                        final createdAt = item['createdAt']?.toString() ??
+                            item['date']?.toString() ??
+                            '';
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(
+                              Icons.history_rounded,
+                            ),
+                          ),
+                          title: Text(action),
+                          subtitle: Text(
+                            [
+                              if (description.isNotEmpty) description,
+                              if (createdAt.isNotEmpty) createdAt,
+                            ].join('\n'),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

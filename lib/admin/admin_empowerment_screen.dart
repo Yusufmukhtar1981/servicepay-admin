@@ -675,41 +675,100 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
   Future<List<dynamic>> _loadEmpowermentList(
     String path,
-    String key,
+    String preferredKey,
   ) async {
-    final headers = await _empowermentHeaders();
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token') ?? '';
 
-    final response = await http
-        .get(
-          Uri.parse('$baseUrl$path'),
-          headers: headers,
-        )
-        .timeout(
-          const Duration(seconds: 45),
-        );
+    if (token.trim().isEmpty) {
+      throw Exception('Authentication token not found.');
+    }
 
-    dynamic body;
+    final response = await http.get(
+      Uri.parse('$baseUrl$path'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      },
+    );
+
+    dynamic decoded;
 
     try {
-      body = jsonDecode(response.body);
+      decoded = jsonDecode(response.body);
     } catch (_) {
-      body = null;
+      throw Exception(
+        'Invalid server response (${response.statusCode}).',
+      );
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      String message = 'Unable to load $key.';
+      String message = 'Unable to load empowerment information.';
 
-      if (body is Map && body['message'] != null) {
-        message = body['message'].toString();
+      if (decoded is Map && decoded['message'] != null) {
+        message = decoded['message'].toString();
       }
 
       throw Exception(message);
     }
 
-    return _extractList(
-      body,
-      key,
-    );
+    if (decoded is List) {
+      return List<dynamic>.from(decoded);
+    }
+
+    if (decoded is Map) {
+      final direct = decoded[preferredKey];
+
+      if (direct is List) {
+        return List<dynamic>.from(direct);
+      }
+
+      final data = decoded['data'];
+
+      if (data is List) {
+        return List<dynamic>.from(data);
+      }
+
+      if (data is Map) {
+        final nestedPreferred = data[preferredKey];
+
+        if (nestedPreferred is List) {
+          return List<dynamic>.from(nestedPreferred);
+        }
+
+        for (final key in const [
+          'organizations',
+          'programs',
+          'beneficiaries',
+          'items',
+          'results',
+          'records',
+        ]) {
+          final value = data[key];
+
+          if (value is List) {
+            return List<dynamic>.from(value);
+          }
+        }
+      }
+
+      for (final key in const [
+        'organizations',
+        'programs',
+        'beneficiaries',
+        'items',
+        'results',
+        'records',
+      ]) {
+        final value = decoded[key];
+
+        if (value is List) {
+          return List<dynamic>.from(value);
+        }
+      }
+    }
+
+    return <dynamic>[];
   }
 
   Future<void> _showStatusPicker({

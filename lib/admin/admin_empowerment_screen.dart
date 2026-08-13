@@ -1122,6 +1122,65 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         return;
       }
 
+      final action = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Empowerment Organizations'),
+            content: SizedBox(
+              width: 620,
+              height: 480,
+              child: organizations.isEmpty
+                  ? const Center(
+                      child: Text('No organizations found.'),
+                    )
+                  : ListView.separated(
+                      itemCount: organizations.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = organizations[index];
+                        final name =
+                            (item['name'] ?? 'Organization').toString();
+                        final status = (item['status'] ?? 'PENDING').toString();
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.account_balance_rounded),
+                          ),
+                          title: Text(name),
+                          subtitle: Text('Status: $status'),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop('CREATE');
+                },
+                icon: const Icon(Icons.add_business_rounded),
+                label: const Text('Create Organization'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (action == 'CREATE' && mounted) {
+        await _openCreateOrganizationDialog();
+        if (mounted) {
+          await _openOrganizationsManager();
+        }
+      }
+
+      return;
+
       await showDialog<void>(
         context: context,
         builder: (dialogContext) {

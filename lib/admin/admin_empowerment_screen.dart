@@ -190,6 +190,127 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     return {};
   }
 
+  Future<bool> _patchEmpowermentStatus({
+    required String path,
+    required String status,
+    String rejectionReason = '',
+  }) async {
+    try {
+      final token = await _getToken();
+
+      if (token.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Admin session expired. Please log in again.'),
+            ),
+          );
+        }
+        return false;
+      }
+
+      final payload = <String, dynamic>{
+        'status': status,
+      };
+
+      if (rejectionReason.trim().isNotEmpty) {
+        payload['rejectionReason'] = rejectionReason.trim();
+      }
+
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl$path'),
+            headers: <String, String>{
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(
+            const Duration(seconds: 45),
+          );
+
+      dynamic body;
+
+      try {
+        body = jsonDecode(response.body);
+      } catch (_) {
+        body = null;
+      }
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (body is! Map || body['success'] != false);
+
+      if (!mounted) {
+        return success;
+      }
+
+      final message = body is Map && body['message'] != null
+          ? body['message'].toString()
+          : success
+              ? 'Status updated successfully.'
+              : 'Unable to update status.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+        ),
+      );
+
+      if (success) {
+        await loadDashboard();
+      }
+
+      return success;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+
+      return false;
+    }
+  }
+
+  Future<bool> _updateOrganizationStatus(
+    String organizationId,
+    String status,
+  ) {
+    return _patchEmpowermentStatus(
+      path: '/empowerment/organizations/$organizationId/status',
+      status: status,
+    );
+  }
+
+  Future<bool> _updateProgramStatus(
+    String programId,
+    String status,
+  ) {
+    return _patchEmpowermentStatus(
+      path: '/empowerment/programs/$programId/status',
+      status: status,
+    );
+  }
+
+  Future<bool> _updateBeneficiaryStatus(
+    String beneficiaryId,
+    String status, {
+    String rejectionReason = '',
+  }) {
+    return _patchEmpowermentStatus(
+      path: '/empowerment/beneficiaries/$beneficiaryId/status',
+      status: status,
+      rejectionReason: rejectionReason,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final organizations = _section('organizations');
@@ -515,6 +636,664 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     );
   }
 
+  Future<Map<String, String>> _empowermentHeaders() async {
+    final token = await _getToken();
+
+    if (token.trim().isEmpty) {
+      throw Exception('Admin session expired. Please log in again.');
+    }
+
+    return <String, String>{
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+  }
+
+  List<dynamic> _extractList(
+    dynamic body,
+    String key,
+  ) {
+    if (body is Map) {
+      final direct = body[key];
+
+      if (direct is List) {
+        return direct;
+      }
+
+      final data = body['data'];
+
+      if (data is Map && data[key] is List) {
+        return data[key] as List<dynamic>;
+      }
+    }
+
+    return <dynamic>[];
+  }
+
+  Future<List<dynamic>> _loadEmpowermentList(
+    String path,
+    String key,
+  ) async {
+    final headers = await _empowermentHeaders();
+
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl$path'),
+          headers: headers,
+        )
+        .timeout(
+          const Duration(seconds: 45),
+        );
+
+    dynamic body;
+
+    try {
+      body = jsonDecode(response.body);
+    } catch (_) {
+      body = null;
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String message = 'Unable to load $key.';
+
+      if (body is Map && body['message'] != null) {
+        message = body['message'].toString();
+      }
+
+      throw Exception(message);
+    }
+
+    return _extractList(
+      body,
+      key,
+    );
+  }
+
+  Future<void> _showStatusPicker({
+    required String title,
+    required String currentStatus,
+    required List<String> statuses,
+    required Future<void> Function(String status) onSelected,
+  }) async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Current status: ${currentStatus.isEmpty ? 'UNKNOWN' : currentStatus}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Select new status:',
+                ),
+                const SizedBox(height: 10),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: statuses
+                          .map(
+                            (status) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                status.replaceAll(
+                                  '_',
+                                  ' ',
+                                ),
+                              ),
+                              trailing: status == currentStatus.toUpperCase()
+                                  ? const Icon(
+                                      Icons.check_circle_rounded,
+                                    )
+                                  : const Icon(
+                                      Icons.chevron_right_rounded,
+                                    ),
+                              onTap: () {
+                                Navigator.of(
+                                  dialogContext,
+                                ).pop(status);
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(
+                  dialogContext,
+                ).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Confirm Action',
+          ),
+          content: Text(
+            'Are you sure you want to change this status to ${selected.replaceAll('_', ' ')}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(
+                  dialogContext,
+                ).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(
+                  dialogContext,
+                ).pop(true);
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    await onSelected(selected);
+
+    if (!mounted) {
+      return;
+    }
+
+    await loadDashboard();
+  }
+
+  Future<void> _openOrganizationsManager() async {
+    try {
+      final organizations = await _loadEmpowermentList(
+        '/empowerment/organizations',
+        'organizations',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              'Empowerment Organizations',
+            ),
+            content: SizedBox(
+              width: 620,
+              height: 480,
+              child: organizations.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No organizations found.',
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: organizations.length,
+                      separatorBuilder: (_, __) => const Divider(
+                        height: 1,
+                      ),
+                      itemBuilder: (context, index) {
+                        final raw = organizations[index];
+
+                        final item = raw is Map
+                            ? Map<String, dynamic>.from(
+                                raw,
+                              )
+                            : <String, dynamic>{};
+
+                        final id = (item['_id'] ?? item['id'] ?? '').toString();
+
+                        final name =
+                            (item['name'] ?? 'Organization').toString();
+
+                        final status = (item['status'] ?? 'PENDING')
+                            .toString()
+                            .toUpperCase();
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(
+                              Icons.account_balance_outlined,
+                            ),
+                          ),
+                          title: Text(name),
+                          subtitle: Text(
+                            'Status: $status',
+                          ),
+                          trailing: const Icon(
+                            Icons.manage_accounts_outlined,
+                          ),
+                          onTap: id.isEmpty
+                              ? null
+                              : () async {
+                                  Navigator.of(
+                                    dialogContext,
+                                  ).pop();
+
+                                  await _showStatusPicker(
+                                    title: name,
+                                    currentStatus: status,
+                                    statuses: const [
+                                      'PENDING',
+                                      'ACTIVE',
+                                      'SUSPENDED',
+                                      'REJECTED',
+                                    ],
+                                    onSelected: (
+                                      newStatus,
+                                    ) async {
+                                      await _updateOrganizationStatus(
+                                        id,
+                                        newStatus,
+                                      );
+                                    },
+                                  );
+                                },
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(
+                    dialogContext,
+                  ).pop();
+                },
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openProgramsManager() async {
+    try {
+      final programs = await _loadEmpowermentList(
+        '/empowerment/programs',
+        'programs',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              'Empowerment Programs',
+            ),
+            content: SizedBox(
+              width: 620,
+              height: 480,
+              child: programs.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No programs found.',
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: programs.length,
+                      separatorBuilder: (_, __) => const Divider(
+                        height: 1,
+                      ),
+                      itemBuilder: (context, index) {
+                        final raw = programs[index];
+
+                        final item = raw is Map
+                            ? Map<String, dynamic>.from(
+                                raw,
+                              )
+                            : <String, dynamic>{};
+
+                        final id = (item['_id'] ?? item['id'] ?? '').toString();
+
+                        final name = (item['name'] ?? 'Program').toString();
+
+                        final status = (item['status'] ?? 'DRAFT')
+                            .toString()
+                            .toUpperCase();
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(
+                              Icons.volunteer_activism_outlined,
+                            ),
+                          ),
+                          title: Text(name),
+                          subtitle: Text(
+                            'Status: $status',
+                          ),
+                          trailing: const Icon(
+                            Icons.manage_accounts_outlined,
+                          ),
+                          onTap: id.isEmpty
+                              ? null
+                              : () async {
+                                  Navigator.of(
+                                    dialogContext,
+                                  ).pop();
+
+                                  await _showStatusPicker(
+                                    title: name,
+                                    currentStatus: status,
+                                    statuses: const [
+                                      'DRAFT',
+                                      'OPEN',
+                                      'UNDER_REVIEW',
+                                      'APPROVED',
+                                      'DISBURSING',
+                                      'COMPLETED',
+                                      'SUSPENDED',
+                                      'CANCELLED',
+                                    ],
+                                    onSelected: (
+                                      newStatus,
+                                    ) async {
+                                      await _updateProgramStatus(
+                                        id,
+                                        newStatus,
+                                      );
+                                    },
+                                  );
+                                },
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(
+                    dialogContext,
+                  ).pop();
+                },
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openBeneficiariesManager() async {
+    try {
+      final programs = await _loadEmpowermentList(
+        '/empowerment/programs',
+        'programs',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      final selectedProgram = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              'Select Program',
+            ),
+            content: SizedBox(
+              width: 560,
+              height: 420,
+              child: programs.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No programs found.',
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: programs.length,
+                      itemBuilder: (context, index) {
+                        final raw = programs[index];
+
+                        final item = raw is Map
+                            ? Map<String, dynamic>.from(
+                                raw,
+                              )
+                            : <String, dynamic>{};
+
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.volunteer_activism_outlined,
+                          ),
+                          title: Text(
+                            (item['name'] ?? 'Program').toString(),
+                          ),
+                          subtitle: Text(
+                            (item['status'] ?? '').toString(),
+                          ),
+                          trailing: const Icon(
+                            Icons.chevron_right_rounded,
+                          ),
+                          onTap: () {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop(item);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          );
+        },
+      );
+
+      if (selectedProgram == null || !mounted) {
+        return;
+      }
+
+      final programId =
+          (selectedProgram['_id'] ?? selectedProgram['id'] ?? '').toString();
+
+      if (programId.isEmpty) {
+        throw Exception(
+          'Program ID is missing.',
+        );
+      }
+
+      final beneficiaries = await _loadEmpowermentList(
+        '/empowerment/programs/$programId/beneficiaries',
+        'beneficiaries',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(
+              '${selectedProgram['name'] ?? 'Program'} Beneficiaries',
+            ),
+            content: SizedBox(
+              width: 620,
+              height: 480,
+              child: beneficiaries.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No beneficiaries found.',
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: beneficiaries.length,
+                      separatorBuilder: (_, __) => const Divider(
+                        height: 1,
+                      ),
+                      itemBuilder: (context, index) {
+                        final raw = beneficiaries[index];
+
+                        final item = raw is Map
+                            ? Map<String, dynamic>.from(
+                                raw,
+                              )
+                            : <String, dynamic>{};
+
+                        final id = (item['_id'] ?? item['id'] ?? '').toString();
+
+                        final name = (item['fullName'] ??
+                                item['name'] ??
+                                item['phone'] ??
+                                'Beneficiary')
+                            .toString();
+
+                        final status = (item['applicationStatus'] ??
+                                item['status'] ??
+                                'SUBMITTED')
+                            .toString()
+                            .toUpperCase();
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(
+                              Icons.person_outline_rounded,
+                            ),
+                          ),
+                          title: Text(name),
+                          subtitle: Text(
+                            'Status: $status',
+                          ),
+                          trailing: const Icon(
+                            Icons.manage_accounts_outlined,
+                          ),
+                          onTap: id.isEmpty
+                              ? null
+                              : () async {
+                                  Navigator.of(
+                                    dialogContext,
+                                  ).pop();
+
+                                  await _showStatusPicker(
+                                    title: name,
+                                    currentStatus: status,
+                                    statuses: const [
+                                      'SUBMITTED',
+                                      'UNDER_REVIEW',
+                                      'APPROVED',
+                                      'REJECTED',
+                                      'PAYMENT_PENDING',
+                                      'PAID',
+                                      'FAILED',
+                                      'REVERSED',
+                                    ],
+                                    onSelected: (
+                                      newStatus,
+                                    ) async {
+                                      await _updateBeneficiaryStatus(
+                                        id,
+                                        newStatus,
+                                      );
+                                    },
+                                  );
+                                },
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(
+                    dialogContext,
+                  ).pop();
+                },
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(
+                  'Exception: ',
+                  '',
+                ),
+          ),
+        ),
+      );
+    }
+  }
+
   Widget _actionRow(
     IconData icon,
     String title,
@@ -543,13 +1322,30 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       trailing: const Icon(
         Icons.chevron_right_rounded,
       ),
-      onTap: () {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+      onTap: () async {
+        if (title == 'Organizations') {
+          await _openOrganizationsManager();
+          return;
+        }
+
+        if (title == 'Programs') {
+          await _openProgramsManager();
+          return;
+        }
+
+        if (title == 'Beneficiaries') {
+          await _openBeneficiariesManager();
+          return;
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '$title screen will be added in the next Empowerment admin step.',
+              '$title management is not enabled yet.',
             ),
           ),
         );

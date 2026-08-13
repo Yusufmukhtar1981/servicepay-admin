@@ -20,6 +20,7 @@ import 'admin_airtime_to_cash_screen.dart';
 
 import 'admin_business_withdrawals_screen.dart';
 import 'admin_kyc_screen.dart';
+import 'admin_empowerment_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -292,6 +293,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.verified_user_outlined,
         activeIcon: Icons.verified_user_rounded,
         label: 'KYC',
+      );
+    }
+
+    /*
+     * ================================================================
+     * EMPOWERMENT - HEAD OFFICE ONLY
+     * ================================================================
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminEmpowermentScreen(),
+        icon: Icons.volunteer_activism_outlined,
+        activeIcon: Icons.volunteer_activism_rounded,
+        label: 'Empowerment',
       );
     }
 

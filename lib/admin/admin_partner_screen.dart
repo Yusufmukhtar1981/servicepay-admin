@@ -363,6 +363,136 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
     }
   }
 
+  Future<void> _regenerateApiCredentials(
+    Map<String, dynamic> partner,
+  ) async {
+    final id = _partnerId(partner);
+
+    if (id.isEmpty) {
+      _showMessage(
+        'Partner ID not found.',
+        success: false,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Regenerate API Credentials'),
+          content: const Text(
+            'This will invalidate the previous API credentials. '
+            'The new API Secret will be shown only once. Continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Regenerate'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final token =
+          prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+
+      if (token.isEmpty) {
+        throw Exception('Admin authentication token not found.');
+      }
+
+      final url = Uri.parse(
+        '$baseUrl/admin/partners/$id/regenerate-credentials',
+      );
+
+      final response = await http
+          .post(
+            url,
+            headers: _headers(token),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+          );
+
+      dynamic decoded = <String, dynamic>{};
+
+      try {
+        decoded = response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body);
+      } catch (_) {}
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map
+            ? _text(
+                decoded['message'] ??
+                    decoded['error'] ??
+                    'Unable to regenerate API credentials.',
+              )
+            : 'Unable to regenerate API credentials.';
+
+        throw Exception(message);
+      }
+
+      final credentials = decoded is Map && decoded['credentials'] is Map
+          ? Map<String, dynamic>.from(
+              decoded['credentials'] as Map,
+            )
+          : <String, dynamic>{};
+
+      final apiKey = _text(
+        credentials['apiKey'] ?? decoded['apiKey'],
+      );
+
+      final apiSecret = _text(
+        credentials['apiSecret'] ?? decoded['apiSecret'],
+      );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('New API Credentials'),
+            content: SelectableText(
+              'API Key:\n$apiKey\n\n'
+              'API Secret:\n$apiSecret\n\n'
+              'Important: Save the API Secret now. '
+              'It will not be shown again.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      );
+
+      await loadPartners();
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+        success: false,
+      );
+    }
+  }
+
   Future<void> _showWalletHistory(
     Map<String, dynamic> partner,
   ) async {
@@ -715,6 +845,12 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
                   onPressed: () => _showWalletHistory(partner),
                   icon: const Icon(Icons.history_rounded),
                   label: const Text('Wallet History'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _regenerateApiCredentials(partner),
+                  icon: const Icon(Icons.key_rounded),
+                  label: const Text('Regenerate API'),
                 ),
               ],
             ),

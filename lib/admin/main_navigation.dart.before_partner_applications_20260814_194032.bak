@@ -22,7 +22,6 @@ import 'admin_business_withdrawals_screen.dart';
 import 'admin_kyc_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_partner_screen.dart';
-import 'admin_partner_applications_screen.dart';
 
 import 'admin_cards_screen.dart';
 
@@ -308,16 +307,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.handshake_outlined,
         activeIcon: Icons.handshake_rounded,
         label: 'Partners',
-      );
-    }
-
-    // PARTNER APPLICATIONS - HEAD OFFICE ONLY
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminPartnerApplicationsScreen(),
-        icon: Icons.assignment_outlined,
-        activeIcon: Icons.assignment_turned_in_rounded,
-        label: 'Applications',
       );
     }
 

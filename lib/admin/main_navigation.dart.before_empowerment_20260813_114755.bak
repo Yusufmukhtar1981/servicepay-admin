@@ -20,9 +20,6 @@ import 'admin_airtime_to_cash_screen.dart';
 
 import 'admin_business_withdrawals_screen.dart';
 import 'admin_kyc_screen.dart';
-import 'admin_empowerment_screen.dart';
-
-import 'admin_cards_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -298,20 +295,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    /*
-     * ================================================================
-     * EMPOWERMENT - HEAD OFFICE ONLY
-     * ================================================================
-     */
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminEmpowermentScreen(),
-        icon: Icons.volunteer_activism_outlined,
-        activeIcon: Icons.volunteer_activism_rounded,
-        label: 'Empowerment',
-      );
-    }
-
 /*
      * =====================================================
      * STAFF
@@ -351,16 +334,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       activeIcon: Icons.account_balance_wallet_rounded,
       label: 'Business Withdrawals',
     );
-
-
-  if (isHeadOffice) {
-    addNavigationPage(
-      page: const AdminCardsScreen(),
-      icon: Icons.credit_card_outlined,
-      activeIcon: Icons.credit_card_rounded,
-      label: 'Cards',
-    );
-  }
 
     addNavigationPage(
       page: const AdminSettingsScreen(),

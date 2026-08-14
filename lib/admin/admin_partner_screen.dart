@@ -363,6 +363,174 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
     }
   }
 
+  Future<void> _managePartnerPermissions(
+    Map<String, dynamic> partner,
+  ) async {
+    final id = _partnerId(partner);
+
+    if (id.isEmpty) {
+      _showMessage('Partner ID is missing.');
+      return;
+    }
+
+    const availablePermissions = <String>[
+      'airtime',
+      'data',
+      'electricity',
+      'cable_tv',
+      'exam_pin',
+      'id_verification',
+      'delivery',
+      'wallet',
+      'transfer',
+    ];
+
+    final rawPermissions = partner['permissions'];
+
+    final selected = <String>{
+      if (rawPermissions is List)
+        ...rawPermissions
+            .map((item) => item.toString().trim().toLowerCase())
+            .where((item) => item.isNotEmpty),
+    };
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) {
+        final working = <String>{...selected};
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            String labelFor(String value) {
+              switch (value) {
+                case 'cable_tv':
+                  return 'Cable TV';
+                case 'exam_pin':
+                  return 'Exam PIN';
+                case 'id_verification':
+                  return 'ID Verification';
+                default:
+                  if (value.isEmpty) return value;
+                  return value
+                      .split('_')
+                      .map(
+                        (word) => word.isEmpty
+                            ? word
+                            : '${word[0].toUpperCase()}${word.substring(1)}',
+                      )
+                      .join(' ');
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Manage Partner Permissions'),
+              content: SizedBox(
+                width: 440,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Choose the ServicePay services this Partner API can access.',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      ...availablePermissions.map(
+                        (permission) => CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          value: working.contains(permission),
+                          title: Text(labelFor(permission)),
+                          onChanged: (checked) {
+                            setDialogState(() {
+                              if (checked == true) {
+                                working.add(permission);
+                              } else {
+                                working.remove(permission);
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(
+                      dialogContext,
+                      working.toList()..sort(),
+                    );
+                  },
+                  child: const Text('Save Permissions'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    try {
+      final token = await _token();
+
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/admin/partners/$id/permissions'),
+            headers: _headers(token),
+            body: jsonEncode(
+              <String, dynamic>{
+                'permissions': result,
+              },
+            ),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      dynamic decoded;
+
+      try {
+        decoded = response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body);
+      } catch (_) {
+        decoded = <String, dynamic>{};
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map
+            ? _text(
+                decoded['message'] ??
+                    decoded['error'] ??
+                    'Unable to update Partner permissions.',
+              )
+            : 'Unable to update Partner permissions.';
+
+        throw Exception(message);
+      }
+
+      _showMessage(
+        'Partner permissions updated successfully.',
+        success: true,
+      );
+
+      await loadPartners();
+    } catch (error) {
+      _showMessage(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+  }
+
   Future<void> _regenerateApiCredentials(
     Map<String, dynamic> partner,
   ) async {
@@ -845,6 +1013,12 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
                   onPressed: () => _showWalletHistory(partner),
                   icon: const Icon(Icons.history_rounded),
                   label: const Text('Wallet History'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _managePartnerPermissions(partner),
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  label: const Text('Manage Permissions'),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(

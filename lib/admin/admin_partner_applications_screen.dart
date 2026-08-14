@@ -249,7 +249,7 @@ class _AdminPartnerApplicationsScreenState
 
       for (final url in urls) {
         final current = await http
-            .post(
+            .patch(
               Uri.parse(url),
               headers: _headers(token),
               body: body,

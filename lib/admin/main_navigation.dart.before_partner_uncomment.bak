@@ -299,19 +299,21 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    // ================================================================
-    // PARTNER MANAGEMENT - HEAD OFFICE ONLY
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminPartnerScreen(),
-        icon: Icons.handshake_outlined,
-        activeIcon: Icons.handshake_rounded,
-        label: 'Partners',
-      );
-    }
+    /*
+     * ================================================================
+     // PARTNER MANAGEMENT - HEAD OFFICE ONLY
+     if (isHeadOffice) {
+       addNavigationPage(
+         page: const AdminPartnerScreen(),
+         icon: Icons.handshake_outlined,
+         activeIcon: Icons.handshake_rounded,
+         label: 'Partners',
+       );
+     }
 
-    // EMPOWERMENT - HEAD OFFICE ONLY
-    // ================================================================
+     * EMPOWERMENT - HEAD OFFICE ONLY
+     * ================================================================
+     */
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminEmpowermentScreen(),

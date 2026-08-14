@@ -21,7 +21,6 @@ import 'admin_airtime_to_cash_screen.dart';
 import 'admin_business_withdrawals_screen.dart';
 import 'admin_kyc_screen.dart';
 import 'admin_empowerment_screen.dart';
-import 'admin_partner_screen.dart';
 
 import 'admin_cards_screen.dart';
 
@@ -299,19 +298,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    // ================================================================
-    // PARTNER MANAGEMENT - HEAD OFFICE ONLY
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminPartnerScreen(),
-        icon: Icons.handshake_outlined,
-        activeIcon: Icons.handshake_rounded,
-        label: 'Partners',
-      );
-    }
-
-    // EMPOWERMENT - HEAD OFFICE ONLY
-    // ================================================================
+    /*
+     * ================================================================
+     * EMPOWERMENT - HEAD OFFICE ONLY
+     * ================================================================
+     */
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminEmpowermentScreen(),
@@ -361,14 +352,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       label: 'Business Withdrawals',
     );
 
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminCardsScreen(),
-        icon: Icons.credit_card_outlined,
-        activeIcon: Icons.credit_card_rounded,
-        label: 'Cards',
-      );
-    }
+
+  if (isHeadOffice) {
+    addNavigationPage(
+      page: const AdminCardsScreen(),
+      icon: Icons.credit_card_outlined,
+      activeIcon: Icons.credit_card_rounded,
+      label: 'Cards',
+    );
+  }
 
     addNavigationPage(
       page: const AdminSettingsScreen(),

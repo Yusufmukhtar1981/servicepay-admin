@@ -299,19 +299,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    // ================================================================
-    // PARTNER MANAGEMENT - HEAD OFFICE ONLY
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminPartnerScreen(),
-        icon: Icons.handshake_outlined,
-        activeIcon: Icons.handshake_rounded,
-        label: 'Partners',
-      );
-    }
-
-    // EMPOWERMENT - HEAD OFFICE ONLY
-    // ================================================================
+    /*
+     * ================================================================
+     * EMPOWERMENT - HEAD OFFICE ONLY
+     * ================================================================
+     */
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminEmpowermentScreen(),
@@ -361,14 +353,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       label: 'Business Withdrawals',
     );
 
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminCardsScreen(),
-        icon: Icons.credit_card_outlined,
-        activeIcon: Icons.credit_card_rounded,
-        label: 'Cards',
-      );
-    }
+
+  if (isHeadOffice) {
+    addNavigationPage(
+      page: const AdminCardsScreen(),
+      icon: Icons.credit_card_outlined,
+      activeIcon: Icons.credit_card_rounded,
+      label: 'Cards',
+    );
+  }
 
     addNavigationPage(
       page: const AdminSettingsScreen(),
@@ -607,7 +600,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         index: safeIndex,
         children: pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      
+    // PARTNER MANAGEMENT - HEAD OFFICE ONLY
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminPartnerScreen(),
+        icon: Icons.handshake_outlined,
+        activeIcon: Icons.handshake_rounded,
+        label: 'Partners',
+      );
+    }
+
+bottomNavigationBar: BottomNavigationBar(
         currentIndex: safeIndex,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(

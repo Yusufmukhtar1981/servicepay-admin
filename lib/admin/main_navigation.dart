@@ -618,30 +618,38 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         index: safeIndex,
         children: pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: safeIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(
-          0xFF0F766E,
-        ),
-        unselectedItemColor: const Color(
-          0xFF94A3B8,
-        ),
-        backgroundColor: Colors.white,
-        selectedFontSize: 10,
-        unselectedFontSize: 9,
-        onTap: (
-          int index,
-        ) {
-          if (index < 0 || index >= pages.length) {
-            return;
-          }
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+              width: items.length * 76.0,
+              child: BottomNavigationBar(
+                currentIndex: safeIndex,
+                type: BottomNavigationBarType.fixed,
+                selectedItemColor: const Color(
+                  0xFF0F766E,
+                ),
+                unselectedItemColor: const Color(
+                  0xFF94A3B8,
+                ),
+                backgroundColor: Colors.white,
+                selectedFontSize: 10,
+                unselectedFontSize: 9,
+                onTap: (
+                  int index,
+                ) {
+                  if (index < 0 || index >= pages.length) {
+                    return;
+                  }
 
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        items: items,
+                  setState(() {
+                    currentIndex = index;
+                  });
+                },
+                items: items,
+              )),
+        ),
       ),
     );
   }

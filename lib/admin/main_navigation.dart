@@ -26,6 +26,8 @@ import 'admin_partner_applications_screen.dart';
 
 import 'admin_cards_screen.dart';
 
+import 'admin_marketplace_screen.dart';
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
     super.key,
@@ -239,6 +241,21 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.payments_outlined,
         activeIcon: Icons.payments_rounded,
         label: 'Withdrawals',
+      );
+    }
+
+    /*
+     * ============================================================
+     * MARKETPLACE
+     * ============================================================
+     * Product moderation is restricted to Head Office.
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminMarketplaceScreen(),
+        icon: Icons.storefront_outlined,
+        activeIcon: Icons.storefront_rounded,
+        label: 'Marketplace',
       );
     }
 

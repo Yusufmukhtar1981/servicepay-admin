@@ -11,10 +11,8 @@ import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_riders_screen.dart';
-import 'admin_settings_screen.dart';
 import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
-import 'admin_data_pricing_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -27,6 +25,7 @@ import 'admin_partner_applications_screen.dart';
 import 'admin_cards_screen.dart';
 
 import 'admin_marketplace_screen.dart';
+import 'admin_data_pricing_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -399,19 +398,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     addNavigationPage(
-      page: const AdminSettingsScreen(),
+      page: const AdminControlCenterScreen(),
       icon: Icons.settings_outlined,
       activeIcon: Icons.settings_rounded,
       label: 'Settings',
     );
-
-    addNavigationPage(
-      page: const AdminControlCenterScreen(),
-      icon: Icons.admin_panel_settings_outlined,
-      activeIcon: Icons.admin_panel_settings_rounded,
-      label: 'Controls',
-    );
-
     addNavigationPage(
       page: const AdminDataPricingScreen(),
       icon: Icons.sell_outlined,

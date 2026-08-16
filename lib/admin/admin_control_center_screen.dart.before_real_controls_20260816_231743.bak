@@ -25,11 +25,6 @@ import 'staff_management_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'admin_airtime_to_cash_screen.dart';
-import 'admin_notifications_screen.dart';
-import 'admin_partner_applications_screen.dart';
-import 'admin_partner_screen.dart';
-
 class AdminControlCenterScreen extends StatefulWidget {
   const AdminControlCenterScreen({super.key});
 
@@ -986,6 +981,14 @@ class _AdminControlCenterScreenState extends State<AdminControlCenterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // SERVICEPAY_ALL_CONTROLS_BUTTON_V1
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAllPlatformControls,
+        icon: const Icon(Icons.admin_panel_settings_outlined),
+        label: const Text('All Controls'),
+        tooltip: 'Open ServicePay complete control center',
+      ),
+
       backgroundColor: const Color(0xFFF7F9FC),
       appBar: AppBar(
         title: const Text(

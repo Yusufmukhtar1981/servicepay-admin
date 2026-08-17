@@ -388,6 +388,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       label: 'Business Withdrawals',
     );
 
+    addNavigationPage(
+      page: const AdminControlCenterScreen(),
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings_rounded,
+      label: 'Settings',
+    );
+
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminCardsScreen(),
@@ -397,12 +404,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    addNavigationPage(
-      page: const AdminControlCenterScreen(),
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings_rounded,
-      label: 'Settings',
-    );
     addNavigationPage(
       page: const AdminDataPricingScreen(),
       icon: Icons.sell_outlined,

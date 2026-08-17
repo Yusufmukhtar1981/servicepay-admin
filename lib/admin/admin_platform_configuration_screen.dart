@@ -5,11 +5,11 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminPlatformConfigurationScreen extends StatefulWidget {
-  final String? initialSection;
+  final String initialSection;
 
   const AdminPlatformConfigurationScreen({
     super.key,
-    this.initialSection,
+    this.initialSection = 'Maintenance Mode',
   });
 
   @override
@@ -20,77 +20,63 @@ class AdminPlatformConfigurationScreen extends StatefulWidget {
 class _AdminPlatformConfigurationScreenState
     extends State<AdminPlatformConfigurationScreen> {
   static const String _baseUrl = 'https://api.servicepay.ng/api';
-  static const String _endpoint = '$_baseUrl/settings/admin/fintech-control';
+  static const String _endpoint = '/settings/admin/fintech-control';
 
   bool _loading = true;
   bool _saving = false;
   String? _error;
 
-  Map<String, dynamic> _data = <String, dynamic>{};
-
   late String _section;
-
-  final TextEditingController _maintenanceMessage = TextEditingController();
-
-  final TextEditingController _scheduledStart = TextEditingController();
-
-  final TextEditingController _scheduledEnd = TextEditingController();
 
   bool _maintenanceEnabled = false;
   bool _customerAppEnabled = true;
   bool _apiEnabled = true;
 
-  final Map<String, TextEditingController> _feeControllers = {};
-  final Map<String, TextEditingController> _legalControllers = {};
-  final Map<String, TextEditingController> _limitControllers = {};
+  final Map<String, TextEditingController> _c = {};
 
-  static const List<String> _feeKeys = <String>[
-    'servicepayTransfer',
-    'bankTransfer',
-    'walletFunding',
-    'withdrawal',
-    'merchantPayment',
-    'airtime',
-    'data',
-  ];
-
-  static const List<String> _legalKeys = <String>[
-    'privacyPolicyUrl',
-    'termsUrl',
-    'kycAmlPolicyUrl',
-    'complaintsPolicyUrl',
-    'dataProtectionPolicyUrl',
-  ];
-
-  static const List<String> _limitKeys = <String>[
-    'tier1Daily',
-    'tier1PerTransaction',
-    'tier2Daily',
-    'tier2PerTransaction',
-    'tier3Daily',
-    'tier3PerTransaction',
-    'servicepayTransfer',
-    'bankTransfer',
-    'walletFunding',
-    'withdrawal',
+  final List<String> _sections = const [
+    'Maintenance Mode',
+    'Service Limits',
+    'Transaction Fees',
+    'Legal & Policies',
   ];
 
   @override
   void initState() {
     super.initState();
 
-    _section = widget.initialSection ?? 'Maintenance Mode';
+    _section = _sections.contains(widget.initialSection)
+        ? widget.initialSection
+        : 'Maintenance Mode';
 
-    for (final key in _feeKeys) {
-      _feeControllers[key] = TextEditingController();
-    }
-
-    for (final key in _legalKeys) {
-      _legalControllers[key] = TextEditingController();
-    }
-
-    for (final key in _limitKeys) {
-      _limitControllers[key] = TextEditingController();
+    for (final key in [
+      'maintenanceMessage',
+      'scheduledStartAt',
+      'scheduledEndAt',
+      'tier1Daily',
+      'tier1PerTransaction',
+      'tier2Daily',
+      'tier2PerTransaction',
+      'tier3Daily',
+      'tier3PerTransaction',
+      'servicepayTransferLimit',
+      'bankTransferLimit',
+      'walletFundingLimit',
+      'withdrawalLimit',
+      'servicepayTransferFee',
+      'bankTransferFee',
+      'walletFundingFee',
+      'withdrawalFee',
+      'merchantPaymentFee',
+      'airtimeFee',
+      'dataFee',
+      'privacyPolicyUrl',
+      'termsUrl',
+      'kycAmlPolicyUrl',
+      'complaintsPolicyUrl',
+      'dataProtectionPolicyUrl',
+    ]) {
+      _c[key] = TextEditingController();
     }
 
     _load();
@@ -98,245 +84,543 @@ class _AdminPlatformConfigurationScreenState
 
   @override
   void dispose() {
-    _maintenanceMessage.dispose();
-    _scheduledStart.dispose();
-    _scheduledEnd.dispose();
-
-    for (final c in _feeControllers.values) {
-      c.dispose();
+    for (final controller in _c.values) {
+      controller.dispose();
     }
-
-    for (final c in _legalControllers.values) {
-      c.dispose();
-    }
-
-    for (final c in _limitControllers.values) {
-      c.dispose();
-    }
-
     super.dispose();
   }
 
   Future<String> _token() async {
     final prefs = await SharedPreferences.getInstance();
 
-    return prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+    final raw = prefs.getString('auth_token') ??
+        prefs.getString('token') ??
+        prefs.getString('admin_token') ??
+        '';
+
+    return raw.startsWith('Bearer ') ? raw.substring(7).trim() : raw.trim();
   }
 
-  Map<String, String> _headers(String token) {
-    return <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
-  }
+  Map<String, String> _headers(String token) => {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
 
   Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) {
-      return value;
-    }
+    if (value is Map<String, dynamic>) return value;
 
     if (value is Map) {
-      return Map<String, dynamic>.from(value);
+      return value.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
     }
 
     return <String, dynamic>{};
   }
 
-  dynamic _pickRoot(dynamic decoded) {
-    if (decoded is! Map) {
-      return decoded;
+  dynamic _firstNonNull(List<dynamic> values) {
+    for (final value in values) {
+      if (value != null) return value;
     }
-
-    final map = Map<String, dynamic>.from(decoded);
-
-    if (map['data'] is Map) {
-      return map['data'];
-    }
-
-    if (map['settings'] is Map) {
-      return map['settings'];
-    }
-
-    if (map['fintechControl'] is Map) {
-      return map['fintechControl'];
-    }
-
-    return map;
+    return null;
   }
 
-  bool _asBool(dynamic value, bool fallback) {
-    if (value is bool) {
-      return value;
+  Map<String, dynamic> _extractFintechControl(dynamic decoded) {
+    final root = _asMap(decoded);
+    final data = _asMap(root['data']);
+    final settings = _asMap(root['settings']);
+    final dataSettings = _asMap(data['settings']);
+
+    final candidates = [
+      root['fintechControl'],
+      data['fintechControl'],
+      settings['fintechControl'],
+      dataSettings['fintechControl'],
+      root['data'],
+      root,
+    ];
+
+    for (final candidate in candidates) {
+      final map = _asMap(candidate);
+
+      if (map.isNotEmpty &&
+          (map.containsKey('maintenance') ||
+              map.containsKey('serviceLimits') ||
+              map.containsKey('transactionFees') ||
+              map.containsKey('legalPolicies') ||
+              map.containsKey('tier1Daily') ||
+              map.containsKey('customerAppEnabled'))) {
+        return map;
+      }
     }
 
-    if (value is num) {
-      return value != 0;
+    return <String, dynamic>{};
+  }
+
+  bool _boolValue(dynamic value, bool fallback) {
+    if (value is bool) return value;
+
+    final text = value?.toString().trim().toLowerCase();
+
+    if (text == 'true' || text == '1' || text == 'yes' || text == 'on') {
+      return true;
     }
 
-    if (value is String) {
-      final v = value.toLowerCase().trim();
-
-      if (v == 'true' || v == '1' || v == 'yes') {
-        return true;
-      }
-
-      if (v == 'false' || v == '0' || v == 'no') {
-        return false;
-      }
+    if (text == 'false' || text == '0' || text == 'no' || text == 'off') {
+      return false;
     }
 
     return fallback;
   }
 
   String _text(dynamic value) {
-    if (value == null) {
-      return '';
+    if (value == null) return '';
+
+    if (value is num) {
+      if (value is double && value == value.roundToDouble()) {
+        return value.toInt().toString();
+      }
+      return value.toString();
     }
 
     return value.toString();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  void _setText(String key, dynamic value) {
+    final controller = _c[key];
 
-    try {
-      final token = await _token();
+    if (controller == null) return;
 
-      if (token.isEmpty) {
-        throw Exception('Admin authentication token not found.');
-      }
-
-      final response = await http
-          .get(
-            Uri.parse(_endpoint),
-            headers: _headers(token),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(
-          'GET failed (${response.statusCode}): ${response.body}',
-        );
-      }
-
-      dynamic decoded;
-
-      try {
-        decoded = jsonDecode(response.body);
-      } catch (_) {
-        throw Exception('Backend returned invalid JSON.');
-      }
-
-      final root = _asMap(_pickRoot(decoded));
-
-      Map<String, dynamic> fintech = root;
-
-      if (root['fintechControl'] is Map) {
-        fintech = _asMap(root['fintechControl']);
-      }
-
-      _data = fintech;
-
-      final maintenance = _asMap(fintech['maintenance']);
-
-      _maintenanceEnabled = _asBool(maintenance['enabled'], false);
-
-      _customerAppEnabled = _asBool(maintenance['customerAppEnabled'], true);
-
-      _apiEnabled = _asBool(maintenance['apiEnabled'], true);
-
-      _maintenanceMessage.text = _text(maintenance['message']);
-
-      _scheduledStart.text = _text(maintenance['scheduledStartAt']);
-
-      _scheduledEnd.text = _text(maintenance['scheduledEndAt']);
-
-      final fees = _asMap(fintech['transactionFees']);
-
-      for (final key in _feeKeys) {
-        _feeControllers[key]!.text = _text(fees[key]);
-      }
-
-      final legal = _asMap(fintech['legalPolicies']);
-
-      for (final key in _legalKeys) {
-        _legalControllers[key]!.text = _text(legal[key]);
-      }
-
-      final limits = _asMap(
-        fintech['serviceLimits'] ?? fintech['limits'],
-      );
-
-      for (final key in _limitKeys) {
-        _limitControllers[key]!.text = _text(limits[key]);
-      }
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
+    controller.text = _text(value);
   }
 
-  dynamic _numberOrString(String raw) {
-    final value = raw.trim();
+  dynamic _readNested(
+    Map<String, dynamic> root,
+    String group,
+    List<String> keys,
+  ) {
+    final nested = _asMap(root[group]);
 
-    if (value.isEmpty) {
-      return '';
-    }
+    return _firstNonNull([
+      for (final key in keys) nested[key],
+      for (final key in keys) root[key],
+    ]);
+  }
 
-    final number = num.tryParse(
-      value.replaceAll(',', ''),
+  void _applyServerState(Map<String, dynamic> fc) {
+    final maintenance = _asMap(fc['maintenance']);
+    final limits = _asMap(fc['serviceLimits']);
+    final fees = _asMap(fc['transactionFees']);
+    final legal = _asMap(fc['legalPolicies']);
+
+    _maintenanceEnabled = _boolValue(
+      _firstNonNull([
+        maintenance['enabled'],
+        fc['maintenanceEnabled'],
+      ]),
+      false,
     );
 
-    return number ?? value;
+    _customerAppEnabled = _boolValue(
+      _firstNonNull([
+        maintenance['customerAppEnabled'],
+        fc['customerAppEnabled'],
+      ]),
+      true,
+    );
+
+    _apiEnabled = _boolValue(
+      _firstNonNull([
+        maintenance['apiEnabled'],
+        fc['apiEnabled'],
+      ]),
+      true,
+    );
+
+    _setText(
+      'maintenanceMessage',
+      _firstNonNull([
+        maintenance['message'],
+        fc['maintenanceMessage'],
+      ]),
+    );
+
+    _setText(
+      'scheduledStartAt',
+      _firstNonNull([
+        maintenance['scheduledStartAt'],
+        maintenance['scheduledStart'],
+        fc['scheduledStartAt'],
+        fc['scheduledStart'],
+      ]),
+    );
+
+    _setText(
+      'scheduledEndAt',
+      _firstNonNull([
+        maintenance['scheduledEndAt'],
+        maintenance['scheduledEnd'],
+        fc['scheduledEndAt'],
+        fc['scheduledEnd'],
+      ]),
+    );
+
+    _setText(
+      'tier1Daily',
+      _firstNonNull([
+        limits['tier1Daily'],
+        fc['tier1Daily'],
+      ]),
+    );
+
+    _setText(
+      'tier1PerTransaction',
+      _firstNonNull([
+        limits['tier1PerTransaction'],
+        fc['tier1PerTransaction'],
+      ]),
+    );
+
+    _setText(
+      'tier2Daily',
+      _firstNonNull([
+        limits['tier2Daily'],
+        fc['tier2Daily'],
+      ]),
+    );
+
+    _setText(
+      'tier2PerTransaction',
+      _firstNonNull([
+        limits['tier2PerTransaction'],
+        fc['tier2PerTransaction'],
+      ]),
+    );
+
+    _setText(
+      'tier3Daily',
+      _firstNonNull([
+        limits['tier3Daily'],
+        fc['tier3Daily'],
+      ]),
+    );
+
+    _setText(
+      'tier3PerTransaction',
+      _firstNonNull([
+        limits['tier3PerTransaction'],
+        fc['tier3PerTransaction'],
+      ]),
+    );
+
+    _setText(
+      'servicepayTransferLimit',
+      _firstNonNull([
+        limits['servicepayTransfer'],
+        limits['servicePayTransfer'],
+        limits['servicepayTransferLimit'],
+        limits['servicePayTransferLimit'],
+        fc['servicepayTransferLimit'],
+        fc['servicePayTransferLimit'],
+        fc['dailyServicepayTransferLimit'],
+        fc['dailyServicePayTransferLimit'],
+      ]),
+    );
+
+    _setText(
+      'bankTransferLimit',
+      _firstNonNull([
+        limits['bankTransfer'],
+        limits['bankTransferLimit'],
+        fc['bankTransferLimit'],
+        fc['maximumBankTransfer'],
+        fc['dailyBankTransferLimit'],
+      ]),
+    );
+
+    _setText(
+      'walletFundingLimit',
+      _firstNonNull([
+        limits['walletFunding'],
+        limits['walletFundingLimit'],
+        fc['walletFundingLimit'],
+      ]),
+    );
+
+    _setText(
+      'withdrawalLimit',
+      _firstNonNull([
+        limits['withdrawal'],
+        limits['withdrawalLimit'],
+        fc['withdrawalLimit'],
+      ]),
+    );
+
+    _setText(
+      'servicepayTransferFee',
+      _firstNonNull([
+        fees['servicepayTransfer'],
+        fees['servicePayTransfer'],
+        fc['servicepayTransferFee'],
+        fc['servicePayTransferFee'],
+      ]),
+    );
+
+    _setText(
+      'bankTransferFee',
+      _firstNonNull([
+        fees['bankTransfer'],
+        fc['bankTransferFee'],
+      ]),
+    );
+
+    _setText(
+      'walletFundingFee',
+      _firstNonNull([
+        fees['walletFunding'],
+        fc['walletFundingFee'],
+      ]),
+    );
+
+    _setText(
+      'withdrawalFee',
+      _firstNonNull([
+        fees['withdrawal'],
+        fc['withdrawalFee'],
+      ]),
+    );
+
+    _setText(
+      'merchantPaymentFee',
+      _firstNonNull([
+        fees['merchantPayment'],
+        fc['merchantPaymentFee'],
+      ]),
+    );
+
+    _setText(
+      'airtimeFee',
+      _firstNonNull([
+        fees['airtime'],
+        fc['airtimeFee'],
+      ]),
+    );
+
+    _setText(
+      'dataFee',
+      _firstNonNull([
+        fees['data'],
+        fc['dataFee'],
+      ]),
+    );
+
+    _setText(
+      'privacyPolicyUrl',
+      _firstNonNull([
+        legal['privacyPolicyUrl'],
+        legal['privacyPolicyURL'],
+        fc['privacyPolicyUrl'],
+        fc['privacyPolicyURL'],
+      ]),
+    );
+
+    _setText(
+      'termsUrl',
+      _firstNonNull([
+        legal['termsUrl'],
+        legal['termsURL'],
+        legal['termsAndConditionsUrl'],
+        fc['termsUrl'],
+        fc['termsURL'],
+        fc['termsAndConditionsUrl'],
+      ]),
+    );
+
+    _setText(
+      'kycAmlPolicyUrl',
+      _firstNonNull([
+        legal['kycAmlPolicyUrl'],
+        legal['kycAMLPolicyUrl'],
+        fc['kycAmlPolicyUrl'],
+        fc['kycAMLPolicyUrl'],
+      ]),
+    );
+
+    _setText(
+      'complaintsPolicyUrl',
+      _firstNonNull([
+        legal['complaintsPolicyUrl'],
+        fc['complaintsPolicyUrl'],
+      ]),
+    );
+
+    _setText(
+      'dataProtectionPolicyUrl',
+      _firstNonNull([
+        legal['dataProtectionPolicyUrl'],
+        fc['dataProtectionPolicyUrl'],
+      ]),
+    );
   }
 
-  Map<String, dynamic> _buildPayload() {
-    final fees = <String, dynamic>{};
+  Future<Map<String, dynamic>> _fetch() async {
+    final token = await _token();
 
-    for (final entry in _feeControllers.entries) {
-      fees[entry.key] = _numberOrString(entry.value.text);
+    if (token.isEmpty) {
+      throw Exception('Admin login token not found. Please login again.');
     }
 
-    final legal = <String, dynamic>{};
+    final response = await http.get(
+      Uri.parse('$_baseUrl$_endpoint'),
+      headers: _headers(token),
+    );
 
-    for (final entry in _legalControllers.entries) {
-      legal[entry.key] = entry.value.text.trim();
+    dynamic decoded;
+
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        'Invalid server response (${response.statusCode}).',
+      );
     }
 
-    final limits = <String, dynamic>{};
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = _asMap(decoded);
 
-    for (final entry in _limitControllers.entries) {
-      limits[entry.key] = _numberOrString(entry.value.text);
+      throw Exception(
+        body['message']?.toString() ?? 'GET failed (${response.statusCode})',
+      );
     }
 
-    return <String, dynamic>{
-      'maintenance': <String, dynamic>{
-        'enabled': _maintenanceEnabled,
-        'customerAppEnabled': _customerAppEnabled,
-        'apiEnabled': _apiEnabled,
-        'message': _maintenanceMessage.text.trim(),
-        'scheduledStartAt': _scheduledStart.text.trim(),
-        'scheduledEndAt': _scheduledEnd.text.trim(),
-      },
-      'transactionFees': fees,
-      'serviceLimits': limits,
-      'legalPolicies': legal,
+    return _extractFintechControl(decoded);
+  }
+
+  Future<void> _load({
+    bool showLoading = true,
+  }) async {
+    if (mounted && showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final fc = await _fetch();
+
+      if (!mounted) return;
+
+      setState(() {
+        _applyServerState(fc);
+        _error = null;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _error = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  num? _number(String key) {
+    final raw = _c[key]?.text.trim() ?? '';
+
+    if (raw.isEmpty) return null;
+
+    final cleaned =
+        raw.replaceAll(',', '').replaceAll('₦', '').replaceAll('N', '').trim();
+
+    final value = num.tryParse(cleaned);
+
+    return value;
+  }
+
+  Map<String, dynamic> _buildFintechControl() {
+    final maintenance = <String, dynamic>{
+      'enabled': _maintenanceEnabled,
+      'customerAppEnabled': _customerAppEnabled,
+      'apiEnabled': _apiEnabled,
+      'message': _c['maintenanceMessage']!.text.trim(),
+      'scheduledStartAt': _c['scheduledStartAt']!.text.trim(),
+      'scheduledEndAt': _c['scheduledEndAt']!.text.trim(),
+    };
+
+    final serviceLimits = <String, dynamic>{
+      if (_number('tier1Daily') != null) 'tier1Daily': _number('tier1Daily'),
+      if (_number('tier1PerTransaction') != null)
+        'tier1PerTransaction': _number('tier1PerTransaction'),
+      if (_number('tier2Daily') != null) 'tier2Daily': _number('tier2Daily'),
+      if (_number('tier2PerTransaction') != null)
+        'tier2PerTransaction': _number('tier2PerTransaction'),
+      if (_number('tier3Daily') != null) 'tier3Daily': _number('tier3Daily'),
+      if (_number('tier3PerTransaction') != null)
+        'tier3PerTransaction': _number('tier3PerTransaction'),
+      if (_number('servicepayTransferLimit') != null)
+        'servicepayTransfer': _number('servicepayTransferLimit'),
+      if (_number('bankTransferLimit') != null)
+        'bankTransfer': _number('bankTransferLimit'),
+      if (_number('walletFundingLimit') != null)
+        'walletFunding': _number('walletFundingLimit'),
+      if (_number('withdrawalLimit') != null)
+        'withdrawal': _number('withdrawalLimit'),
+    };
+
+    final transactionFees = <String, dynamic>{
+      if (_number('servicepayTransferFee') != null)
+        'servicepayTransfer': _number('servicepayTransferFee'),
+      if (_number('bankTransferFee') != null)
+        'bankTransfer': _number('bankTransferFee'),
+      if (_number('walletFundingFee') != null)
+        'walletFunding': _number('walletFundingFee'),
+      if (_number('withdrawalFee') != null)
+        'withdrawal': _number('withdrawalFee'),
+      if (_number('merchantPaymentFee') != null)
+        'merchantPayment': _number('merchantPaymentFee'),
+      if (_number('airtimeFee') != null) 'airtime': _number('airtimeFee'),
+      if (_number('dataFee') != null) 'data': _number('dataFee'),
+    };
+
+    final legalPolicies = <String, dynamic>{
+      'privacyPolicyUrl': _c['privacyPolicyUrl']!.text.trim(),
+      'termsUrl': _c['termsUrl']!.text.trim(),
+      'kycAmlPolicyUrl': _c['kycAmlPolicyUrl']!.text.trim(),
+      'complaintsPolicyUrl': _c['complaintsPolicyUrl']!.text.trim(),
+      'dataProtectionPolicyUrl': _c['dataProtectionPolicyUrl']!.text.trim(),
+    };
+
+    return {
+      'maintenance': maintenance,
+      'serviceLimits': serviceLimits,
+      'transactionFees': transactionFees,
+      'legalPolicies': legalPolicies,
     };
   }
 
-  Future<void> _save() async {
-    if (_saving) {
-      return;
+  Future<bool> _sendPayload(
+    Map<String, dynamic> payload,
+  ) async {
+    final token = await _token();
+
+    final response = await http.put(
+      Uri.parse('$_baseUrl$_endpoint'),
+      headers: _headers(token),
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return true;
     }
+
+    return false;
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
 
     setState(() {
       _saving = true;
@@ -344,160 +628,162 @@ class _AdminPlatformConfigurationScreenState
     });
 
     try {
-      final token = await _token();
+      final fc = _buildFintechControl();
 
-      if (token.isEmpty) {
-        throw Exception('Admin authentication token not found.');
+      bool saved = await _sendPayload({
+        'fintechControl': fc,
+      });
+
+      if (!saved) {
+        saved = await _sendPayload(fc);
       }
 
-      final response = await http
-          .put(
-            Uri.parse(_endpoint),
-            headers: _headers(token),
-            body: jsonEncode(_buildPayload()),
-          )
-          .timeout(const Duration(seconds: 30));
+      if (!saved) {
+        saved = await _sendPayload({
+          'settings': {
+            'fintechControl': fc,
+          },
+        });
+      }
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (!saved) {
         throw Exception(
-          'PUT failed (${response.statusCode}): ${response.body}',
+          'Backend rejected the configuration update.',
         );
       }
 
-      if (!mounted) {
-        return;
-      }
+      // IMPORTANT:
+      // Read the server again after save.
+      // The UI therefore shows what the backend REALLY persisted,
+      // not merely what was typed locally.
+      final serverState = await _fetch();
+
+      if (!mounted) return;
+
+      setState(() {
+        _applyServerState(serverState);
+        _saving = false;
+        _error = null;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Platform configuration saved successfully.',
+            'Platform configuration saved and reloaded successfully.',
           ),
         ),
       );
+    } catch (error) {
+      if (!mounted) return;
 
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Save failed: $e'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+      setState(() {
+        _saving = false;
+        _error = error.toString().replaceFirst('Exception: ', '');
+      });
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FA),
-      appBar: AppBar(
-        title: const Text(
-          'Platform Configuration',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+  InputDecoration _decoration(
+    String label, {
+    String? hint,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _header(),
-                  const SizedBox(height: 16),
-                  _sectionSelector(),
-                  const SizedBox(height: 16),
-                  if (_error != null) _errorCard(_error!),
-                  if (_error != null) const SizedBox(height: 16),
-                  if (_section == 'Maintenance Mode') _maintenanceSection(),
-                  if (_section == 'Service Limits') _limitsSection(),
-                  if (_section == 'Transaction Fees') _feesSection(),
-                  if (_section == 'Legal & Policies') _legalSection(),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : _save,
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.save_outlined),
-                      label: Text(
-                        _saving ? 'Saving...' : 'Save Configuration',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                ],
-              ),
-            ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
     );
   }
 
-  Widget _header() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF08783E),
-        borderRadius: BorderRadius.circular(18),
+  Widget _numberField(
+    String key,
+    String label,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: _c[key],
+        keyboardType: const TextInputType.numberWithOptions(
+          decimal: true,
+        ),
+        decoration: _decoration(label),
       ),
-      child: const Row(
+    );
+  }
+
+  Widget _textField(
+    String key,
+    String label, {
+    int maxLines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: _c[key],
+        maxLines: maxLines,
+        decoration: _decoration(label),
+      ),
+    );
+  }
+
+  Widget _switchTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: Text(subtitle),
+      value: value,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _sectionHeader(
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 18,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            Icons.admin_panel_settings_outlined,
-            color: Colors.white,
-            size: 34,
+            icon,
+            color: const Color(0xFF08783E),
           ),
-          SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'ServicePay Fintech Control',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 3),
                 Text(
-                  'Live administration connected to the ServicePay backend.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    height: 1.35,
+                  subtitle,
+                  style: const TextStyle(
+                    color: Colors.black54,
                   ),
                 ),
               ],
@@ -508,48 +794,18 @@ class _AdminPlatformConfigurationScreenState
     );
   }
 
-  Widget _sectionSelector() {
-    const sections = <String>[
-      'Maintenance Mode',
-      'Service Limits',
-      'Transaction Fees',
-      'Legal & Policies',
-    ];
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: sections.map((item) {
-        return ChoiceChip(
-          label: Text(item),
-          selected: _section == item,
-          onSelected: (_) {
-            setState(() {
-              _section = item;
-            });
-          },
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _maintenanceSection() {
-    return _panel(
-      title: 'Maintenance Mode',
-      subtitle: 'Control ServicePay customer access and API availability.',
-      icon: Icons.engineering_outlined,
+  Widget _maintenance() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Global Maintenance',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          subtitle: const Text(
-            'Enable maintenance mode for the platform.',
-          ),
+        _sectionHeader(
+          Icons.engineering_outlined,
+          'Maintenance Mode',
+          'Control ServicePay customer access and API availability.',
+        ),
+        _switchTile(
+          title: 'Global Maintenance',
+          subtitle: 'Enable maintenance mode for the platform.',
           value: _maintenanceEnabled,
           onChanged: (value) {
             setState(() {
@@ -557,15 +813,9 @@ class _AdminPlatformConfigurationScreenState
             });
           },
         ),
-        const Divider(),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Customer App Enabled',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+        _switchTile(
+          title: 'Customer App Enabled',
+          subtitle: 'Allow customers to use ServicePay.',
           value: _customerAppEnabled,
           onChanged: (value) {
             setState(() {
@@ -573,14 +823,9 @@ class _AdminPlatformConfigurationScreenState
             });
           },
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'API Enabled',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+        _switchTile(
+          title: 'API Enabled',
+          subtitle: 'Allow normal ServicePay API operations.',
           value: _apiEnabled,
           onChanged: (value) {
             setState(() {
@@ -588,206 +833,340 @@ class _AdminPlatformConfigurationScreenState
             });
           },
         ),
-        _field(
-          controller: _maintenanceMessage,
-          label: 'Maintenance Message',
-          hint: 'ServicePay is temporarily unavailable...',
+        const SizedBox(height: 8),
+        _textField(
+          'maintenanceMessage',
+          'Maintenance Message',
           maxLines: 3,
         ),
-        _field(
-          controller: _scheduledStart,
-          label: 'Scheduled Start',
-          hint: '2026-08-17T23:00:00.000Z',
+        _textField(
+          'scheduledStartAt',
+          'Scheduled Start',
         ),
-        _field(
-          controller: _scheduledEnd,
-          label: 'Scheduled End',
-          hint: '2026-08-18T01:00:00.000Z',
+        _textField(
+          'scheduledEndAt',
+          'Scheduled End',
         ),
       ],
     );
   }
 
-  Widget _limitsSection() {
-    return _panel(
-      title: 'Service Limits',
-      subtitle: 'Manage transaction and operational limits.',
-      icon: Icons.speed_outlined,
+  Widget _serviceLimits() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final key in _limitKeys)
-          _field(
-            controller: _limitControllers[key]!,
-            label: _pretty(key),
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
-          ),
+        _sectionHeader(
+          Icons.speed_outlined,
+          'Service Limits',
+          'Manage transaction and operational limits.',
+        ),
+        _numberField(
+          'tier1Daily',
+          'Tier 1 Daily',
+        ),
+        _numberField(
+          'tier1PerTransaction',
+          'Tier 1 Per Transaction',
+        ),
+        _numberField(
+          'tier2Daily',
+          'Tier 2 Daily',
+        ),
+        _numberField(
+          'tier2PerTransaction',
+          'Tier 2 Per Transaction',
+        ),
+        _numberField(
+          'tier3Daily',
+          'Tier 3 Daily',
+        ),
+        _numberField(
+          'tier3PerTransaction',
+          'Tier 3 Per Transaction',
+        ),
+        _numberField(
+          'servicepayTransferLimit',
+          'ServicePay Transfer',
+        ),
+        _numberField(
+          'bankTransferLimit',
+          'Bank Transfer',
+        ),
+        _numberField(
+          'walletFundingLimit',
+          'Wallet Funding',
+        ),
+        _numberField(
+          'withdrawalLimit',
+          'Withdrawal',
+        ),
       ],
     );
   }
 
-  Widget _feesSection() {
-    return _panel(
-      title: 'Transaction Fees',
-      subtitle: 'Central fee administration for ServicePay products.',
-      icon: Icons.price_change_outlined,
+  Widget _transactionFees() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final key in _feeKeys)
-          _field(
-            controller: _feeControllers[key]!,
-            label: _pretty(key),
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
-          ),
+        _sectionHeader(
+          Icons.price_change_outlined,
+          'Transaction Fees',
+          'Central fee administration for ServicePay products.',
+        ),
+        _numberField(
+          'servicepayTransferFee',
+          'ServicePay Transfer',
+        ),
+        _numberField(
+          'bankTransferFee',
+          'Bank Transfer',
+        ),
+        _numberField(
+          'walletFundingFee',
+          'Wallet Funding',
+        ),
+        _numberField(
+          'withdrawalFee',
+          'Withdrawal',
+        ),
+        _numberField(
+          'merchantPaymentFee',
+          'Merchant Payment',
+        ),
+        _numberField(
+          'airtimeFee',
+          'Airtime',
+        ),
+        _numberField(
+          'dataFee',
+          'Data',
+        ),
       ],
     );
   }
 
-  Widget _legalSection() {
-    return _panel(
-      title: 'Legal & Policies',
-      subtitle: 'Manage ServicePay policy document URLs.',
-      icon: Icons.gavel_outlined,
+  Widget _legalPolicies() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final key in _legalKeys)
-          _field(
-            controller: _legalControllers[key]!,
-            label: _pretty(key),
-            hint: 'https://servicepay.ng/...',
-          ),
+        _sectionHeader(
+          Icons.gavel_outlined,
+          'Legal & Policies',
+          'Manage ServicePay policy document URLs.',
+        ),
+        _textField(
+          'privacyPolicyUrl',
+          'Privacy Policy URL',
+        ),
+        _textField(
+          'termsUrl',
+          'Terms URL',
+        ),
+        _textField(
+          'kycAmlPolicyUrl',
+          'KYC / AML Policy URL',
+        ),
+        _textField(
+          'complaintsPolicyUrl',
+          'Complaints Policy URL',
+        ),
+        _textField(
+          'dataProtectionPolicyUrl',
+          'Data Protection Policy URL',
+        ),
       ],
     );
   }
 
-  Widget _panel({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0D000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
+  Widget _activeSection() {
+    switch (_section) {
+      case 'Service Limits':
+        return _serviceLimits();
+
+      case 'Transaction Fees':
+        return _transactionFees();
+
+      case 'Legal & Policies':
+        return _legalPolicies();
+
+      default:
+        return _maintenance();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF08783E);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Platform Configuration'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Reload configuration',
+            onPressed: _loading || _saving ? null : () => _load(),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                color: const Color(0xFF08783E),
+      backgroundColor: const Color(0xFFF7F9F8),
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: () => _load(
+                showLoading: false,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
+              child: ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: green,
+                      borderRadius: BorderRadius.circular(18),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Colors.black54,
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.admin_panel_settings_outlined,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ServicePay Fintech Control',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Live administration connected to the ServicePay backend.',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _sections.map((section) {
+                        final selected = section == _section;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            selected: selected,
+                            label: Text(section),
+                            avatar: selected
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 18,
+                                  )
+                                : null,
+                            onSelected: (_) {
+                              setState(() {
+                                _section = section;
+                              });
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.red.shade200,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.red,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  Widget _field({
-    required TextEditingController controller,
-    required String label,
-    String? hint,
-    int maxLines = 1,
-    TextInputType? keyboardType,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextField(
-        controller: controller,
-        maxLines: maxLines,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _errorCard(String message) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFFFC8C8),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.error_outline,
-            color: Colors.red,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                color: Colors.red,
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.black12,
+                      ),
+                    ),
+                    child: _activeSection(),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(
+                        _saving
+                            ? 'Saving & Verifying...'
+                            : 'Save Configuration',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
     );
-  }
-
-  String _pretty(String value) {
-    final spaced = value
-        .replaceAllMapped(
-          RegExp(r'([a-z])([A-Z])'),
-          (match) => '${match.group(1)} ${match.group(2)}',
-        )
-        .replaceAll('_', ' ');
-
-    return spaced
-        .split(' ')
-        .where((e) => e.isNotEmpty)
-        .map(
-          (e) => '${e[0].toUpperCase()}${e.substring(1)}',
-        )
-        .join(' ');
   }
 }

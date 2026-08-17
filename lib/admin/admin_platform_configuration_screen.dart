@@ -208,260 +208,285 @@ class _AdminPlatformConfigurationScreenState
     ]);
   }
 
-  void _applyServerState(Map<String, dynamic> fc) {
-    final maintenance = _asMap(fc['maintenance']);
-    final limits = _asMap(fc['serviceLimits']);
-    final fees = _asMap(fc['transactionFees']);
-    final legal = _asMap(fc['legalPolicies']);
+  void _applyServerState(Map<String, dynamic> raw) {
+    Map<String, dynamic> mapOf(dynamic value) {
+      if (value is Map<String, dynamic>) {
+        return value;
+      }
 
-    _maintenanceEnabled = _boolValue(
-      _firstNonNull([
+      if (value is Map) {
+        return value.map(
+          (key, value) => MapEntry(
+            key.toString(),
+            value,
+          ),
+        );
+      }
+
+      return <String, dynamic>{};
+    }
+
+    dynamic firstValue(List<dynamic> values) {
+      for (final value in values) {
+        if (value != null) {
+          return value;
+        }
+      }
+      return null;
+    }
+
+    bool boolOf(
+      dynamic value, {
+      bool fallback = false,
+    }) {
+      if (value is bool) {
+        return value;
+      }
+
+      if (value is num) {
+        return value != 0;
+      }
+
+      final normalized = value?.toString().trim().toLowerCase();
+
+      if (normalized == 'true' ||
+          normalized == '1' ||
+          normalized == 'yes' ||
+          normalized == 'on' ||
+          normalized == 'enabled') {
+        return true;
+      }
+
+      if (normalized == 'false' ||
+          normalized == '0' ||
+          normalized == 'no' ||
+          normalized == 'off' ||
+          normalized == 'disabled') {
+        return false;
+      }
+
+      return fallback;
+    }
+
+    String textOf(dynamic value) {
+      if (value == null) {
+        return '';
+      }
+
+      if (value is num) {
+        if (value.toDouble() == value.toDouble().truncateToDouble()) {
+          return value.toInt().toString();
+        }
+      }
+
+      return value.toString();
+    }
+
+    /*
+     * The backend may return Fintech Control in any of these
+     * compatible shapes:
+     *
+     * { fintechControl: {...} }
+     * { settings: { fintechControl: {...} } }
+     * { data: { fintechControl: {...} } }
+     * { data: { settings: { fintechControl: {...} } } }
+     * or the fintechControl object directly.
+     */
+
+    final root = mapOf(raw);
+    final data = mapOf(root['data']);
+    final rootSettings = mapOf(root['settings']);
+    final dataSettings = mapOf(data['settings']);
+
+    Map<String, dynamic> fc = mapOf(root['fintechControl']);
+
+    if (fc.isEmpty) {
+      fc = mapOf(data['fintechControl']);
+    }
+
+    if (fc.isEmpty) {
+      fc = mapOf(rootSettings['fintechControl']);
+    }
+
+    if (fc.isEmpty) {
+      fc = mapOf(dataSettings['fintechControl']);
+    }
+
+    if (fc.isEmpty &&
+        (root.containsKey('maintenance') ||
+            root.containsKey('serviceLimits') ||
+            root.containsKey('transactionFees') ||
+            root.containsKey('legalPolicies'))) {
+      fc = root;
+    }
+
+    if (fc.isEmpty &&
+        (data.containsKey('maintenance') ||
+            data.containsKey('serviceLimits') ||
+            data.containsKey('transactionFees') ||
+            data.containsKey('legalPolicies'))) {
+      fc = data;
+    }
+
+    final maintenance = mapOf(fc['maintenance']);
+
+    final limits = mapOf(fc['serviceLimits']);
+
+    final fees = mapOf(fc['transactionFees']);
+
+    final legal = mapOf(fc['legalPolicies']);
+
+    _maintenanceEnabled = boolOf(
+      firstValue([
         maintenance['enabled'],
         fc['maintenanceEnabled'],
+        fc['globalMaintenance'],
       ]),
-      false,
+      fallback: _maintenanceEnabled,
     );
 
-    _customerAppEnabled = _boolValue(
-      _firstNonNull([
+    _customerAppEnabled = boolOf(
+      firstValue([
         maintenance['customerAppEnabled'],
         fc['customerAppEnabled'],
       ]),
-      true,
+      fallback: _customerAppEnabled,
     );
 
-    _apiEnabled = _boolValue(
-      _firstNonNull([
+    _apiEnabled = boolOf(
+      firstValue([
         maintenance['apiEnabled'],
         fc['apiEnabled'],
       ]),
-      true,
+      fallback: _apiEnabled,
     );
 
-    _setText(
+    void setField(
+      String key,
+      List<dynamic> values,
+    ) {
+      final controller = _c[key];
+
+      if (controller == null) {
+        return;
+      }
+
+      final value = firstValue(values);
+
+      if (value == null) {
+        return;
+      }
+
+      controller.text = textOf(value);
+    }
+
+    setField(
       'maintenanceMessage',
-      _firstNonNull([
+      [
         maintenance['message'],
+        maintenance['maintenanceMessage'],
         fc['maintenanceMessage'],
-      ]),
+      ],
     );
 
-    _setText(
+    setField(
       'scheduledStartAt',
-      _firstNonNull([
+      [
         maintenance['scheduledStartAt'],
         maintenance['scheduledStart'],
         fc['scheduledStartAt'],
-        fc['scheduledStart'],
-      ]),
+      ],
     );
 
-    _setText(
+    setField(
       'scheduledEndAt',
-      _firstNonNull([
+      [
         maintenance['scheduledEndAt'],
         maintenance['scheduledEnd'],
         fc['scheduledEndAt'],
-        fc['scheduledEnd'],
-      ]),
+      ],
     );
 
-    _setText(
+    const limitKeys = <String>[
       'tier1Daily',
-      _firstNonNull([
-        limits['tier1Daily'],
-        fc['tier1Daily'],
-      ]),
-    );
-
-    _setText(
       'tier1PerTransaction',
-      _firstNonNull([
-        limits['tier1PerTransaction'],
-        fc['tier1PerTransaction'],
-      ]),
-    );
-
-    _setText(
       'tier2Daily',
-      _firstNonNull([
-        limits['tier2Daily'],
-        fc['tier2Daily'],
-      ]),
-    );
-
-    _setText(
       'tier2PerTransaction',
-      _firstNonNull([
-        limits['tier2PerTransaction'],
-        fc['tier2PerTransaction'],
-      ]),
-    );
-
-    _setText(
       'tier3Daily',
-      _firstNonNull([
-        limits['tier3Daily'],
-        fc['tier3Daily'],
-      ]),
-    );
-
-    _setText(
       'tier3PerTransaction',
-      _firstNonNull([
-        limits['tier3PerTransaction'],
-        fc['tier3PerTransaction'],
-      ]),
-    );
+      'servicepayTransfer',
+      'bankTransfer',
+      'walletFunding',
+      'withdrawal',
+      'merchantPayment',
+      'airtime',
+      'data',
+    ];
 
-    _setText(
-      'servicepayTransferLimit',
-      _firstNonNull([
-        limits['servicepayTransfer'],
-        limits['servicePayTransfer'],
-        limits['servicepayTransferLimit'],
-        limits['servicePayTransferLimit'],
-        fc['servicepayTransferLimit'],
-        fc['servicePayTransferLimit'],
-        fc['dailyServicepayTransferLimit'],
-        fc['dailyServicePayTransferLimit'],
-      ]),
-    );
+    for (final key in limitKeys) {
+      setField(
+        key,
+        [
+          limits[key],
+          fc[key],
+        ],
+      );
+    }
 
-    _setText(
-      'bankTransferLimit',
-      _firstNonNull([
-        limits['bankTransfer'],
-        limits['bankTransferLimit'],
-        fc['bankTransferLimit'],
-        fc['maximumBankTransfer'],
-        fc['dailyBankTransferLimit'],
-      ]),
-    );
+    const feeKeys = <String>[
+      'servicepayTransfer',
+      'bankTransfer',
+      'walletFunding',
+      'withdrawal',
+      'merchantPayment',
+      'airtime',
+      'data',
+    ];
 
-    _setText(
-      'walletFundingLimit',
-      _firstNonNull([
-        limits['walletFunding'],
-        limits['walletFundingLimit'],
-        fc['walletFundingLimit'],
-      ]),
-    );
+    for (final key in feeKeys) {
+      final feeControllerKey = 'fee_$key';
 
-    _setText(
-      'withdrawalLimit',
-      _firstNonNull([
-        limits['withdrawal'],
-        limits['withdrawalLimit'],
-        fc['withdrawalLimit'],
-      ]),
-    );
+      if (_c.containsKey(feeControllerKey)) {
+        setField(
+          feeControllerKey,
+          [
+            fees[key],
+            fc['${key}Fee'],
+          ],
+        );
+      } else if (_c.containsKey(key) &&
+          limits[key] == null &&
+          fees[key] != null) {
+        setField(
+          key,
+          [
+            fees[key],
+          ],
+        );
+      }
+    }
 
-    _setText(
-      'servicepayTransferFee',
-      _firstNonNull([
-        fees['servicepayTransfer'],
-        fees['servicePayTransfer'],
-        fc['servicepayTransferFee'],
-        fc['servicePayTransferFee'],
-      ]),
-    );
-
-    _setText(
-      'bankTransferFee',
-      _firstNonNull([
-        fees['bankTransfer'],
-        fc['bankTransferFee'],
-      ]),
-    );
-
-    _setText(
-      'walletFundingFee',
-      _firstNonNull([
-        fees['walletFunding'],
-        fc['walletFundingFee'],
-      ]),
-    );
-
-    _setText(
-      'withdrawalFee',
-      _firstNonNull([
-        fees['withdrawal'],
-        fc['withdrawalFee'],
-      ]),
-    );
-
-    _setText(
-      'merchantPaymentFee',
-      _firstNonNull([
-        fees['merchantPayment'],
-        fc['merchantPaymentFee'],
-      ]),
-    );
-
-    _setText(
-      'airtimeFee',
-      _firstNonNull([
-        fees['airtime'],
-        fc['airtimeFee'],
-      ]),
-    );
-
-    _setText(
-      'dataFee',
-      _firstNonNull([
-        fees['data'],
-        fc['dataFee'],
-      ]),
-    );
-
-    _setText(
+    const legalKeys = <String>[
       'privacyPolicyUrl',
-      _firstNonNull([
-        legal['privacyPolicyUrl'],
-        legal['privacyPolicyURL'],
-        fc['privacyPolicyUrl'],
-        fc['privacyPolicyURL'],
-      ]),
-    );
-
-    _setText(
       'termsUrl',
-      _firstNonNull([
-        legal['termsUrl'],
-        legal['termsURL'],
-        legal['termsAndConditionsUrl'],
-        fc['termsUrl'],
-        fc['termsURL'],
-        fc['termsAndConditionsUrl'],
-      ]),
-    );
-
-    _setText(
       'kycAmlPolicyUrl',
-      _firstNonNull([
-        legal['kycAmlPolicyUrl'],
-        legal['kycAMLPolicyUrl'],
-        fc['kycAmlPolicyUrl'],
-        fc['kycAMLPolicyUrl'],
-      ]),
-    );
-
-    _setText(
       'complaintsPolicyUrl',
-      _firstNonNull([
-        legal['complaintsPolicyUrl'],
-        fc['complaintsPolicyUrl'],
-      ]),
-    );
-
-    _setText(
       'dataProtectionPolicyUrl',
-      _firstNonNull([
-        legal['dataProtectionPolicyUrl'],
-        fc['dataProtectionPolicyUrl'],
-      ]),
-    );
+    ];
+
+    for (final key in legalKeys) {
+      setField(
+        key,
+        [
+          legal[key],
+          fc[key],
+        ],
+      );
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<Map<String, dynamic>> _fetch() async {

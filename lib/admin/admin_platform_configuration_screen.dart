@@ -20,8 +20,7 @@ class AdminPlatformConfigurationScreen extends StatefulWidget {
 class _AdminPlatformConfigurationScreenState
     extends State<AdminPlatformConfigurationScreen> {
   static const String _baseUrl = 'https://api.servicepay.ng/api';
-  static const String _endpoint =
-      '$_baseUrl/app-settings/admin/fintech-control';
+  static const String _endpoint = '$_baseUrl/settings/admin/fintech-control';
 
   bool _loading = true;
   bool _saving = false;

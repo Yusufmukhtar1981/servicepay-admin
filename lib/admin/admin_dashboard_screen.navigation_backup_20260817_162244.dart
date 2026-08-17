@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'fintech_screen_registry.dart';
-
 import 'admin_dashboard_legacy_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -755,18 +753,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _moduleInfo(String title) {
-    // SERVICEPAY_VERIFIED_FINTECH_NAVIGATION
-    final linkedScreen = fintechScreenForTitle(title);
-
-    if (linkedScreen != null) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => linkedScreen,
-        ),
-      );
-      return;
-    }
-
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,

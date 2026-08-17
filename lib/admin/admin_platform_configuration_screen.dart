@@ -1,76 +1,468 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
-class AdminPlatformConfigurationScreen extends StatelessWidget {
-  final String initialSection;
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AdminPlatformConfigurationScreen extends StatefulWidget {
+  final String? initialSection;
 
   const AdminPlatformConfigurationScreen({
     super.key,
-    this.initialSection = 'Platform Configuration',
+    this.initialSection,
   });
 
-  static const Color _primary = Color(0xFF08783E);
-  static const Color _dark = Color(0xFF10231A);
+  @override
+  State<AdminPlatformConfigurationScreen> createState() =>
+      _AdminPlatformConfigurationScreenState();
+}
+
+class _AdminPlatformConfigurationScreenState
+    extends State<AdminPlatformConfigurationScreen> {
+  static const String _baseUrl = 'https://api.servicepay.ng/api';
+  static const String _endpoint =
+      '$_baseUrl/app-settings/admin/fintech-control';
+
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  Map<String, dynamic> _data = <String, dynamic>{};
+
+  late String _section;
+
+  final TextEditingController _maintenanceMessage = TextEditingController();
+
+  final TextEditingController _scheduledStart = TextEditingController();
+
+  final TextEditingController _scheduledEnd = TextEditingController();
+
+  bool _maintenanceEnabled = false;
+  bool _customerAppEnabled = true;
+  bool _apiEnabled = true;
+
+  final Map<String, TextEditingController> _feeControllers = {};
+  final Map<String, TextEditingController> _legalControllers = {};
+  final Map<String, TextEditingController> _limitControllers = {};
+
+  static const List<String> _feeKeys = <String>[
+    'servicepayTransfer',
+    'bankTransfer',
+    'walletFunding',
+    'withdrawal',
+    'merchantPayment',
+    'airtime',
+    'data',
+  ];
+
+  static const List<String> _legalKeys = <String>[
+    'privacyPolicyUrl',
+    'termsUrl',
+    'kycAmlPolicyUrl',
+    'complaintsPolicyUrl',
+    'dataProtectionPolicyUrl',
+  ];
+
+  static const List<String> _limitKeys = <String>[
+    'tier1Daily',
+    'tier1PerTransaction',
+    'tier2Daily',
+    'tier2PerTransaction',
+    'tier3Daily',
+    'tier3PerTransaction',
+    'servicepayTransfer',
+    'bankTransfer',
+    'walletFunding',
+    'withdrawal',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _section = widget.initialSection ?? 'Maintenance Mode';
+
+    for (final key in _feeKeys) {
+      _feeControllers[key] = TextEditingController();
+    }
+
+    for (final key in _legalKeys) {
+      _legalControllers[key] = TextEditingController();
+    }
+
+    for (final key in _limitKeys) {
+      _limitControllers[key] = TextEditingController();
+    }
+
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _maintenanceMessage.dispose();
+    _scheduledStart.dispose();
+    _scheduledEnd.dispose();
+
+    for (final c in _feeControllers.values) {
+      c.dispose();
+    }
+
+    for (final c in _legalControllers.values) {
+      c.dispose();
+    }
+
+    for (final c in _limitControllers.values) {
+      c.dispose();
+    }
+
+    super.dispose();
+  }
+
+  Future<String> _token() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getString('auth_token') ?? prefs.getString('token') ?? '';
+  }
+
+  Map<String, String> _headers(String token) {
+    return <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  dynamic _pickRoot(dynamic decoded) {
+    if (decoded is! Map) {
+      return decoded;
+    }
+
+    final map = Map<String, dynamic>.from(decoded);
+
+    if (map['data'] is Map) {
+      return map['data'];
+    }
+
+    if (map['settings'] is Map) {
+      return map['settings'];
+    }
+
+    if (map['fintechControl'] is Map) {
+      return map['fintechControl'];
+    }
+
+    return map;
+  }
+
+  bool _asBool(dynamic value, bool fallback) {
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    if (value is String) {
+      final v = value.toLowerCase().trim();
+
+      if (v == 'true' || v == '1' || v == 'yes') {
+        return true;
+      }
+
+      if (v == 'false' || v == '0' || v == 'no') {
+        return false;
+      }
+    }
+
+    return fallback;
+  }
+
+  String _text(dynamic value) {
+    if (value == null) {
+      return '';
+    }
+
+    return value.toString();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final token = await _token();
+
+      if (token.isEmpty) {
+        throw Exception('Admin authentication token not found.');
+      }
+
+      final response = await http
+          .get(
+            Uri.parse(_endpoint),
+            headers: _headers(token),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          'GET failed (${response.statusCode}): ${response.body}',
+        );
+      }
+
+      dynamic decoded;
+
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        throw Exception('Backend returned invalid JSON.');
+      }
+
+      final root = _asMap(_pickRoot(decoded));
+
+      Map<String, dynamic> fintech = root;
+
+      if (root['fintechControl'] is Map) {
+        fintech = _asMap(root['fintechControl']);
+      }
+
+      _data = fintech;
+
+      final maintenance = _asMap(fintech['maintenance']);
+
+      _maintenanceEnabled = _asBool(maintenance['enabled'], false);
+
+      _customerAppEnabled = _asBool(maintenance['customerAppEnabled'], true);
+
+      _apiEnabled = _asBool(maintenance['apiEnabled'], true);
+
+      _maintenanceMessage.text = _text(maintenance['message']);
+
+      _scheduledStart.text = _text(maintenance['scheduledStartAt']);
+
+      _scheduledEnd.text = _text(maintenance['scheduledEndAt']);
+
+      final fees = _asMap(fintech['transactionFees']);
+
+      for (final key in _feeKeys) {
+        _feeControllers[key]!.text = _text(fees[key]);
+      }
+
+      final legal = _asMap(fintech['legalPolicies']);
+
+      for (final key in _legalKeys) {
+        _legalControllers[key]!.text = _text(legal[key]);
+      }
+
+      final limits = _asMap(
+        fintech['serviceLimits'] ?? fintech['limits'],
+      );
+
+      for (final key in _limitKeys) {
+        _limitControllers[key]!.text = _text(limits[key]);
+      }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  dynamic _numberOrString(String raw) {
+    final value = raw.trim();
+
+    if (value.isEmpty) {
+      return '';
+    }
+
+    final number = num.tryParse(
+      value.replaceAll(',', ''),
+    );
+
+    return number ?? value;
+  }
+
+  Map<String, dynamic> _buildPayload() {
+    final fees = <String, dynamic>{};
+
+    for (final entry in _feeControllers.entries) {
+      fees[entry.key] = _numberOrString(entry.value.text);
+    }
+
+    final legal = <String, dynamic>{};
+
+    for (final entry in _legalControllers.entries) {
+      legal[entry.key] = entry.value.text.trim();
+    }
+
+    final limits = <String, dynamic>{};
+
+    for (final entry in _limitControllers.entries) {
+      limits[entry.key] = _numberOrString(entry.value.text);
+    }
+
+    return <String, dynamic>{
+      'maintenance': <String, dynamic>{
+        'enabled': _maintenanceEnabled,
+        'customerAppEnabled': _customerAppEnabled,
+        'apiEnabled': _apiEnabled,
+        'message': _maintenanceMessage.text.trim(),
+        'scheduledStartAt': _scheduledStart.text.trim(),
+        'scheduledEndAt': _scheduledEnd.text.trim(),
+      },
+      'transactionFees': fees,
+      'serviceLimits': limits,
+      'legalPolicies': legal,
+    };
+  }
+
+  Future<void> _save() async {
+    if (_saving) {
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    try {
+      final token = await _token();
+
+      if (token.isEmpty) {
+        throw Exception('Admin authentication token not found.');
+      }
+
+      final response = await http
+          .put(
+            Uri.parse(_endpoint),
+            headers: _headers(token),
+            body: jsonEncode(_buildPayload()),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          'PUT failed (${response.statusCode}): ${response.body}',
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Platform configuration saved successfully.',
+          ),
+        ),
+      );
+
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F5),
+      backgroundColor: const Color(0xFFF6F8FA),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: _dark,
-        title: Text(
-          initialSection,
-          style: const TextStyle(
+        title: const Text(
+          'Platform Configuration',
+          style: TextStyle(
             fontWeight: FontWeight.w800,
           ),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          _header(),
-          const SizedBox(height: 18),
-          if (initialSection == 'Maintenance Mode')
-            _maintenanceMode(context)
-          else if (initialSection == 'Service Limits')
-            _serviceLimits(context)
-          else if (initialSection == 'Transaction Fees')
-            _transactionFees(context)
-          else if (initialSection == 'Legal & Policies')
-            _legalPolicies(context)
-          else ...[
-            _configurationTile(
-              context,
-              title: 'Maintenance Mode',
-              subtitle:
-                  'Control platform maintenance readiness and customer-facing service availability.',
-              icon: Icons.engineering_outlined,
-            ),
-            _configurationTile(
-              context,
-              title: 'Service Limits',
-              subtitle:
-                  'Manage transaction and operational limits by service and customer tier.',
-              icon: Icons.speed_outlined,
-            ),
-            _configurationTile(
-              context,
-              title: 'Transaction Fees',
-              subtitle:
-                  'Prepare central administration of charges, fees and pricing rules.',
-              icon: Icons.price_change_outlined,
-            ),
-            _configurationTile(
-              context,
-              title: 'Legal & Policies',
-              subtitle:
-                  'Manage policy documents, terms, privacy and regulatory notices.',
-              icon: Icons.gavel_outlined,
-            ),
-          ],
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _header(),
+                  const SizedBox(height: 16),
+                  _sectionSelector(),
+                  const SizedBox(height: 16),
+                  if (_error != null) _errorCard(_error!),
+                  if (_error != null) const SizedBox(height: 16),
+                  if (_section == 'Maintenance Mode') _maintenanceSection(),
+                  if (_section == 'Service Limits') _limitsSection(),
+                  if (_section == 'Transaction Fees') _feesSection(),
+                  if (_section == 'Legal & Policies') _legalSection(),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(
+                        _saving ? 'Saving...' : 'Save Configuration',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                ],
+              ),
+            ),
     );
   }
 
@@ -78,37 +470,38 @@ class AdminPlatformConfigurationScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF08783E),
-            Color(0xFF0B5F35),
-          ],
-        ),
+        color: const Color(0xFF08783E),
         borderRadius: BorderRadius.circular(18),
       ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: const Row(
         children: [
           Icon(
             Icons.admin_panel_settings_outlined,
             color: Colors.white,
-            size: 30,
+            size: 34,
           ),
-          SizedBox(height: 12),
-          Text(
-            'Platform Configuration',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          SizedBox(height: 5),
-          Text(
-            'Central governance controls for ServicePay fintech operations.',
-            style: TextStyle(
-              color: Color(0xFFD7F2E3),
-              height: 1.4,
+          SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ServicePay Fintech Control',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Live administration connected to the ServicePay backend.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -116,407 +509,265 @@ class AdminPlatformConfigurationScreen extends StatelessWidget {
     );
   }
 
-  Widget _maintenanceMode(BuildContext context) {
-    return Column(
+  Widget _sectionSelector() {
+    const sections = <String>[
+      'Maintenance Mode',
+      'Service Limits',
+      'Transaction Fees',
+      'Legal & Policies',
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: sections.map((item) {
+        return ChoiceChip(
+          label: Text(item),
+          selected: _section == item,
+          onSelected: (_) {
+            setState(() {
+              _section = item;
+            });
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _maintenanceSection() {
+    return _panel(
+      title: 'Maintenance Mode',
+      subtitle: 'Control ServicePay customer access and API availability.',
+      icon: Icons.engineering_outlined,
       children: [
-        _statusBanner(
-          title: 'Maintenance Mode',
-          message:
-              'The administration page is ready. Backend enforcement will be connected only after the ServicePay settings API is verified.',
-          icon: Icons.engineering_outlined,
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Global Maintenance',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          subtitle: const Text(
+            'Enable maintenance mode for the platform.',
+          ),
+          value: _maintenanceEnabled,
+          onChanged: (value) {
+            setState(() {
+              _maintenanceEnabled = value;
+            });
+          },
         ),
-        const SizedBox(height: 14),
-        _readOnlyControl(
-          title: 'Global Maintenance',
-          value: 'Backend status not yet connected',
-          icon: Icons.public_off_outlined,
+        const Divider(),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Customer App Enabled',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          value: _customerAppEnabled,
+          onChanged: (value) {
+            setState(() {
+              _customerAppEnabled = value;
+            });
+          },
         ),
-        _readOnlyControl(
-          title: 'Customer App',
-          value: 'Controlled by existing production configuration',
-          icon: Icons.phone_android_outlined,
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'API Enabled',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          value: _apiEnabled,
+          onChanged: (value) {
+            setState(() {
+              _apiEnabled = value;
+            });
+          },
         ),
-        _readOnlyControl(
-          title: 'Admin Portal',
-          value: 'Operational',
-          icon: Icons.admin_panel_settings_outlined,
+        _field(
+          controller: _maintenanceMessage,
+          label: 'Maintenance Message',
+          hint: 'ServicePay is temporarily unavailable...',
+          maxLines: 3,
         ),
-        _readOnlyControl(
-          title: 'API Services',
-          value: 'No change made from this page',
-          icon: Icons.api_outlined,
+        _field(
+          controller: _scheduledStart,
+          label: 'Scheduled Start',
+          hint: '2026-08-17T23:00:00.000Z',
+        ),
+        _field(
+          controller: _scheduledEnd,
+          label: 'Scheduled End',
+          hint: '2026-08-18T01:00:00.000Z',
         ),
       ],
     );
   }
 
-  Widget _serviceLimits(BuildContext context) {
-    return Column(
+  Widget _limitsSection() {
+    return _panel(
+      title: 'Service Limits',
+      subtitle: 'Manage transaction and operational limits.',
+      icon: Icons.speed_outlined,
       children: [
-        _statusBanner(
-          title: 'Service Limits',
-          message:
-              'This page is ready for Tier 1, Tier 2, Tier 3 and product limits. Existing production limits remain untouched.',
-          icon: Icons.speed_outlined,
-        ),
-        const SizedBox(height: 14),
-        _limitCard(
-          'Customer Tier 1',
-          'Daily / transaction limits',
-          Icons.looks_one_outlined,
-        ),
-        _limitCard(
-          'Customer Tier 2',
-          'Daily / transaction limits',
-          Icons.looks_two_outlined,
-        ),
-        _limitCard(
-          'Customer Tier 3',
-          'Daily / transaction limits',
-          Icons.looks_3_outlined,
-        ),
-        _limitCard(
-          'Transfers',
-          'ServicePay and bank transfer limits',
-          Icons.swap_horiz_outlined,
-        ),
-        _limitCard(
-          'Wallet Funding',
-          'Funding thresholds and operational controls',
-          Icons.account_balance_wallet_outlined,
-        ),
-        _limitCard(
-          'Bills & Services',
-          'Airtime, data and other service controls',
-          Icons.receipt_long_outlined,
-        ),
+        for (final key in _limitKeys)
+          _field(
+            controller: _limitControllers[key]!,
+            label: _pretty(key),
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+          ),
       ],
     );
   }
 
-  Widget _transactionFees(BuildContext context) {
-    return Column(
+  Widget _feesSection() {
+    return _panel(
+      title: 'Transaction Fees',
+      subtitle: 'Central fee administration for ServicePay products.',
+      icon: Icons.price_change_outlined,
       children: [
-        _statusBanner(
-          title: 'Transaction Fees',
-          message:
-              'Central fee administration interface created. Existing pricing and commissions are not overwritten.',
-          icon: Icons.price_change_outlined,
-        ),
-        const SizedBox(height: 14),
-        _feeCard(
-          'ServicePay Transfer',
-          Icons.swap_horiz_outlined,
-        ),
-        _feeCard(
-          'Bank Transfer',
-          Icons.account_balance_outlined,
-        ),
-        _feeCard(
-          'Wallet Funding',
-          Icons.add_card_outlined,
-        ),
-        _feeCard(
-          'Withdrawal',
-          Icons.outbox_outlined,
-        ),
-        _feeCard(
-          'Airtime & Data',
-          Icons.phone_android_outlined,
-        ),
-        _feeCard(
-          'Merchant Payments',
-          Icons.storefront_outlined,
-        ),
+        for (final key in _feeKeys)
+          _field(
+            controller: _feeControllers[key]!,
+            label: _pretty(key),
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+          ),
       ],
     );
   }
 
-  Widget _legalPolicies(BuildContext context) {
-    return Column(
+  Widget _legalSection() {
+    return _panel(
+      title: 'Legal & Policies',
+      subtitle: 'Manage ServicePay policy document URLs.',
+      icon: Icons.gavel_outlined,
       children: [
-        _statusBanner(
-          title: 'Legal & Policies',
-          message:
-              'Governance centre for ServicePay legal documents and customer disclosures.',
-          icon: Icons.gavel_outlined,
-        ),
-        const SizedBox(height: 14),
-        _policyCard(
-          'Privacy Policy',
-          'Customer privacy and data-handling policy',
-          Icons.privacy_tip_outlined,
-        ),
-        _policyCard(
-          'Terms & Conditions',
-          'Platform terms and customer agreement',
-          Icons.description_outlined,
-        ),
-        _policyCard(
-          'KYC / AML Policy',
-          'Customer due-diligence and financial crime controls',
-          Icons.verified_user_outlined,
-        ),
-        _policyCard(
-          'Complaints Policy',
-          'Customer complaints and dispute handling',
-          Icons.support_agent_outlined,
-        ),
-        _policyCard(
-          'Data Protection',
-          'Data governance and access controls',
-          Icons.shield_outlined,
-        ),
-        _policyCard(
-          'Regulatory Notices',
-          'Operational and compliance disclosures',
-          Icons.account_balance_outlined,
-        ),
+        for (final key in _legalKeys)
+          _field(
+            controller: _legalControllers[key]!,
+            label: _pretty(key),
+            hint: 'https://servicepay.ng/...',
+          ),
       ],
     );
   }
 
-  Widget _statusBanner({
+  Widget _panel({
     required String title,
-    required String message,
+    required String subtitle,
     required IconData icon,
+    required List<Widget> children,
   }) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(17),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF08783E),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    String? hint,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _errorCard(String message) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F1),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: const Color(0xFFDDE8E1),
+          color: const Color(0xFFFFC8C8),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE9F7EF),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: _primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _dark,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _readOnlyControl({
-    required String title,
-    required String value,
-    required IconData icon,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: _primary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
           const Icon(
-            Icons.lock_outline,
-            color: Colors.grey,
-            size: 19,
+            Icons.error_outline,
+            color: Colors.red,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _configurationTile(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(15),
-        leading: Container(
-          width: 45,
-          height: 45,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE9F7EF),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: _primary,
-          ),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 5),
-          child: Text(subtitle),
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => AdminPlatformConfigurationScreen(
-                initialSection: title,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _limitCard(
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: _primary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Chip(
-            label: Text(
-              'API Pending',
-              style: TextStyle(fontSize: 10),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _feeCard(
-    String title,
-    IconData icon,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: _primary,
-          ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              title,
+              message,
               style: const TextStyle(
-                fontWeight: FontWeight.w800,
+                color: Colors.red,
               ),
-            ),
-          ),
-          const Text(
-            'Existing configuration preserved',
-            style: TextStyle(
-              color: Colors.black45,
-              fontSize: 11,
             ),
           ),
         ],
@@ -524,52 +775,20 @@ class AdminPlatformConfigurationScreen extends StatelessWidget {
     );
   }
 
-  Widget _policyCard(
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: _primary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.chevron_right,
-            color: Colors.grey,
-          ),
-        ],
-      ),
-    );
+  String _pretty(String value) {
+    final spaced = value
+        .replaceAllMapped(
+          RegExp(r'([a-z])([A-Z])'),
+          (match) => '${match.group(1)} ${match.group(2)}',
+        )
+        .replaceAll('_', ' ');
+
+    return spaced
+        .split(' ')
+        .where((e) => e.isNotEmpty)
+        .map(
+          (e) => '${e[0].toUpperCase()}${e.substring(1)}',
+        )
+        .join(' ');
   }
 }

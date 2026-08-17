@@ -339,10 +339,11 @@ class _AdminPlatformConfigurationScreenState
     _maintenanceEnabled = boolOf(
       firstValue([
         maintenance['enabled'],
+        maintenance['maintenanceEnabled'],
         fc['maintenanceEnabled'],
-        fc['globalMaintenance'],
+        fc['maintenance'] is Map ? (fc['maintenance'] as Map)['enabled'] : null,
       ]),
-      fallback: _maintenanceEnabled,
+      fallback: false,
     );
 
     _customerAppEnabled = boolOf(

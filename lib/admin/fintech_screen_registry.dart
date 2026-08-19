@@ -15,6 +15,9 @@ import 'admin_settings_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'users_screen.dart';
 import 'staff_management_screen.dart';
+import 'admin_control_center_screen.dart';
+import 'admin_partner_screen.dart';
+import 'admin_business_withdrawals_screen.dart';
 
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
@@ -80,6 +83,18 @@ Widget? fintechScreenForTitle(String title) {
 
     case 'General Ledger':
       return AdminTransactionsScreen();
+
+    case 'Business Wallets':
+      return AdminPartnerScreen();
+
+    case 'Wallet Credit / Debit':
+      return AdminControlCenterScreen();
+
+    case 'Balance Adjustments':
+      return AdminControlCenterScreen();
+
+    case 'Settlement Accounts':
+      return AdminBusinessWithdrawalsScreen();
 
     default:
       return null;

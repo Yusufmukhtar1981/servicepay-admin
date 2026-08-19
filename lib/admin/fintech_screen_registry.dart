@@ -20,12 +20,16 @@ import 'admin_partner_screen.dart';
 import 'admin_business_withdrawals_screen.dart';
 
 import 'admin_bank_reconciliation_screen.dart';
+import 'admin_transaction_requery_screen.dart';
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
 
 Widget? fintechScreenForTitle(String title) {
   switch (title) {
+    case 'Transaction Requery':
+      return const AdminTransactionRequeryScreen();
+
     case 'Bank Reconciliation':
       return const AdminBankReconciliationScreen();
 

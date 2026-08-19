@@ -40,6 +40,9 @@ Widget? fintechScreenForTitle(String title) {
       return AdminDeliveryScreen();
     case 'Empowerment':
       return AdminEmpowermentScreen();
+
+    case 'Beneficiaries':
+      return AdminEmpowermentScreen();
     case 'Feature Toggles':
       return AdminSettingsScreen();
     case 'General Settings':

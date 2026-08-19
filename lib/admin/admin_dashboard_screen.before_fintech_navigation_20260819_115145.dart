@@ -767,275 +767,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _FintechOperationalModuleScreen(
-          title: title,
-        ),
-      ),
-    );
-  }
-}
-
-class _FintechOperationalModuleScreen extends StatelessWidget {
-  const _FintechOperationalModuleScreen({
-    required this.title,
-  });
-
-  final String title;
-
-  static const Color _primary = Color(0xFF08783E);
-  static const Color _dark = Color(0xFF10231A);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: _dark,
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontal = constraints.maxWidth >= 900 ? 40.0 : 18.0;
-
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                horizontal,
-                24,
-                horizontal,
-                40,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 1180,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF08783E),
-                              Color(0xFF12A05A),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.admin_panel_settings_outlined,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'SERVICEPAY FINTECH CONTROL CENTER',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: .7,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Admin operational workspace',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: const [
-                          _FintechStatusCard(
-                            icon: Icons.check_circle_outline,
-                            label: 'Module Status',
-                            value: 'ACTIVE',
-                          ),
-                          _FintechStatusCard(
-                            icon: Icons.security_outlined,
-                            label: 'Access',
-                            value: 'HEAD OFFICE',
-                          ),
-                          _FintechStatusCard(
-                            icon: Icons.shield_outlined,
-                            label: 'Control',
-                            value: 'ADMIN',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(22),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.grey.shade200,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Module Workspace',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: _dark,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '$title is now opened directly from the Fintech Control Center.',
-                              style: TextStyle(
-                                color: Colors.grey.shade700,
-                                height: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFFF0F8F4,
-                                ),
-                                borderRadius: BorderRadius.circular(
-                                  12,
-                                ),
-                              ),
-                              child: const Row(
-                                children: [
-                                  Icon(
-                                    Icons.check_circle,
-                                    color: _primary,
-                                  ),
-                                  SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Direct Fintech Control Center navigation is active. The old placeholder popup has been removed.',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _FintechStatusCard extends StatelessWidget {
-  const _FintechStatusCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: const Icon(
-              Icons.check_circle_outline,
-              color: Color(0xFF08783E),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
+                const SizedBox(height: 9),
+                const Text(
+                  'This module is now represented inside the ServicePay Fintech Control Center. Existing operational screens remain untouched in the Current Dashboard and existing admin navigation.',
+                  style: TextStyle(
+                    height: 1.45,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      setState(() => _selectedIndex = 0);
+                    },
+                    icon: const Icon(Icons.dashboard_outlined),
+                    label: const Text('Open Current Dashboard'),
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

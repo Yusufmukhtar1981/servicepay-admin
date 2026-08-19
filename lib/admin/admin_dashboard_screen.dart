@@ -769,9 +769,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _FintechOperationalModuleScreen(
-          title: title,
-        ),
+        builder: (_) =>
+            fintechScreenForTitle(title) ??
+            _FintechOperationalModuleScreen(
+              title: title,
+            ),
       ),
     );
   }

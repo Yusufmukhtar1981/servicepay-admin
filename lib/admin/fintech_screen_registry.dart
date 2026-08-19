@@ -75,6 +75,12 @@ Widget? fintechScreenForTitle(String title) {
     case 'Legal & Policies':
       return AdminPlatformConfigurationScreen(
           initialSection: 'Legal & Policies');
+    case 'Core Ledger':
+      return AdminTransactionsScreen();
+
+    case 'General Ledger':
+      return AdminTransactionsScreen();
+
     default:
       return null;
   }

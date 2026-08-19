@@ -36,6 +36,9 @@ Widget? fintechScreenForTitle(String title) {
       return AdminProductCommissionScreen();
     case 'Customers':
       return AdminUsersScreen();
+
+    case 'Customer Wallets':
+      return AdminUsersScreen();
     case 'Deliveries':
       return AdminDeliveryScreen();
     case 'Empowerment':

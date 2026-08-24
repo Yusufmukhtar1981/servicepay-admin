@@ -199,7 +199,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             ? (body['message'] ?? 'Unable to load dashboard.').toString()
             : 'Unable to load dashboard.',
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
 
       setState(() {

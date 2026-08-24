@@ -597,6 +597,21 @@ Future<void> pumpAdminScreen(
   await tester.pumpAndSettle();
 }
 
+Future<void> pumpKycScreen(
+  WidgetTester tester,
+  KycRecordingHttpClient client,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: AdminKycScreen(
+        httpClient: client,
+        headOfficeOverride: true,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> openOrganizationDetails(
   WidgetTester tester,
   RecordingHttpClient client,

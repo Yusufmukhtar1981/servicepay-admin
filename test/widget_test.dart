@@ -1010,6 +1010,105 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'selects only eligible beneficiaries and completes a confirmed bulk disbursement',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [
+            program(
+              status: 'APPROVED',
+              amountPerBeneficiary: 1000,
+              totalFunded: 3000,
+              remainingBalance: 3000,
+            ),
+          ],
+          beneficiaries: [
+            beneficiary(
+              id: 'eligible-1',
+              fullName: 'Eligible One',
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+            beneficiary(
+              id: 'eligible-2',
+              fullName: 'Eligible Two',
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+            beneficiary(
+              id: 'already-paid',
+              fullName: 'Already Paid',
+              applicationStatus: 'PAID',
+              verificationStatus: 'VERIFIED',
+              paymentStatus: 'PAID',
+            ),
+            beneficiary(
+              id: 'unverified',
+              fullName: 'Unverified Person',
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'PENDING',
+            ),
+            beneficiary(
+              id: 'unlinked',
+              fullName: 'No Linked Account',
+              servicePayAccount: '',
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Review applications and beneficiaries'),
+          400,
+        );
+        await tester.tap(find.text('Review applications and beneficiaries'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Youth Grant'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bulk Disbursement'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Eligible beneficiaries'), findsOneWidget);
+        expect(find.text('Eligible One'), findsOneWidget);
+        expect(find.text('Eligible Two'), findsOneWidget);
+        expect(find.text('Already Paid'), findsNothing);
+        expect(find.text('Unverified Person'), findsNothing);
+        expect(find.text('No Linked Account'), findsNothing);
+
+        await tester.tap(find.text('Select All Eligible'));
+        await tester.pumpAndSettle();
+        expect(find.text('₦2,000'), findsOneWidget);
+        expect(find.text('₦1,000'), findsOneWidget);
+
+        await tester.tap(find.text('Review & Continue'));
+        await tester.pumpAndSettle();
+        expect(find.text('Confirm bulk disbursement'), findsOneWidget);
+        expect(find.text('Number of beneficiaries'), findsOneWidget);
+        expect(find.text('Total amount to disburse'), findsOneWidget);
+
+        await tester.tap(find.text('Confirm Bulk Disbursement'));
+        await tester.pumpAndSettle();
+
+        expect(client.bulkDisburseCount, 1);
+        expect(
+          client.lastBulkDisbursementPayload['beneficiaryIds'],
+          ['eligible-1', 'eligible-2'],
+        );
+        expect(
+          client.lastBulkDisbursementHeaders['idempotency-key'],
+          startsWith('empowerment-bulk-program-1-'),
+        );
+        expect(find.text('Bulk Disbursement Result'), findsOneWidget);
+        expect(find.text('Successful'), findsOneWidget);
+        expect(find.text('Total amount paid'), findsOneWidget);
+        expect(find.text('Eligible One'), findsOneWidget);
+        expect(find.textContaining('EMP-BULK-eligible-1'), findsOneWidget);
+      },
+    );
   });
 
   group('Head Office admin KYC review', () {
@@ -1452,6 +1551,9 @@ Map<String, dynamic> program({
 }
 
 Map<String, dynamic> beneficiary({
+  String id = 'beneficiary-1',
+  String fullName = 'Pending Beneficiary',
+  String servicePayAccount = 'SPW-1234',
   String applicationStatus = 'UNDER_REVIEW',
   String verificationStatus = 'PENDING',
   String paymentStatus = '',
@@ -1459,10 +1561,10 @@ Map<String, dynamic> beneficiary({
   String paidAt = '',
 }) {
   return {
-    '_id': 'beneficiary-1',
-    'fullName': 'Pending Beneficiary',
+    '_id': id,
+    'fullName': fullName,
     'phone': '08000000000',
-    'servicePayAccount': 'SPW-1234',
+    'servicePayAccount': servicePayAccount,
     'applicationStatus': applicationStatus,
     'verificationStatus': verificationStatus,
     if (paymentStatus.isNotEmpty) 'paymentStatus': paymentStatus,
@@ -1574,6 +1676,8 @@ class RecordingHttpClient extends http.BaseClient {
     this.auditTrail = const [],
     this.disburseStatusCode = 201,
     this.disburseResponse,
+    this.bulkDisburseStatusCode = 201,
+    this.bulkDisburseResponse,
     this.fundingStatusCode = 201,
     this.fundingResponse,
     this.programGetStatusCode = 200,
@@ -1587,11 +1691,14 @@ class RecordingHttpClient extends http.BaseClient {
   final List<Map<String, dynamic>> auditTrail;
   final int disburseStatusCode;
   final Map<String, dynamic>? disburseResponse;
+  final int bulkDisburseStatusCode;
+  final Map<String, dynamic>? bulkDisburseResponse;
   final int fundingStatusCode;
   final Map<String, dynamic>? fundingResponse;
   final int programGetStatusCode;
   final List<RecordedRequest> requests = [];
   int disburseCount = 0;
+  int bulkDisburseCount = 0;
   int fundingCount = 0;
   int disbursementHistoryGetCount = 0;
   int programGetCount = 0;
@@ -1656,6 +1763,25 @@ class RecordingHttpClient extends http.BaseClient {
     };
   }
 
+  RecordedRequest get lastBulkDisbursementRequest {
+    return requests.lastWhere(
+      (request) =>
+          request.method == 'POST' &&
+          request.url.path.endsWith('/bulk-disbursement'),
+    );
+  }
+
+  Map<String, dynamic> get lastBulkDisbursementPayload {
+    return jsonDecode(lastBulkDisbursementRequest.body) as Map<String, dynamic>;
+  }
+
+  Map<String, String> get lastBulkDisbursementHeaders {
+    return {
+      for (final entry in lastBulkDisbursementRequest.headers.entries)
+        entry.key.toLowerCase(): entry.value,
+    };
+  }
+
   Map<String, dynamic> _currentProgramFinancials() {
     if (programs.isEmpty) return <String, dynamic>{};
     final program = programs.first;
@@ -1705,6 +1831,35 @@ class RecordingHttpClient extends http.BaseClient {
     });
   }
 
+  void _applyBulkDisbursement(List<String> beneficiaryIds) {
+    if (programs.isEmpty) return;
+    final current = _currentProgramFinancials();
+    final amount = programs.first['amountPerBeneficiary'] as num? ?? 0;
+    final total = amount * beneficiaryIds.length;
+    _saveProgramFinancials({
+      ...current,
+      'totalFundedAmount': current['totalFundedAmount'] as num? ?? 0,
+      'totalFunded': current['totalFunded'] as num? ?? 0,
+      'availableFundingAmount':
+          (current['availableFundingAmount'] as num? ?? 0) - total,
+      'remainingBalance':
+          (current['remainingBalance'] as num? ?? 0) - total,
+      'totalDisbursedAmount':
+          (current['totalDisbursedAmount'] as num? ?? 0) + total,
+      'totalDisbursed':
+          (current['totalDisbursed'] as num? ?? 0) + total,
+    });
+    for (final beneficiary in beneficiaries) {
+      if (beneficiaryIds.contains(beneficiary['_id']?.toString())) {
+        beneficiary['applicationStatus'] = 'PAID';
+        beneficiary['paymentStatus'] = 'PAID';
+        beneficiary['paymentReference'] =
+            'EMP-BULK-${beneficiary['_id']?.toString() ?? ''}';
+        beneficiary['paidAt'] = '2026-08-24T18:00:00.000Z';
+      }
+    }
+  }
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = request is http.Request ? request.body : '';
@@ -1748,10 +1903,14 @@ class RecordingHttpClient extends http.BaseClient {
     } else if (request.method == 'GET' &&
         request.url.path.endsWith('/empowerment/audit')) {
       responseBody = {'success': true, 'activities': auditTrail};
+    } else if (request.method == 'GET' &&
+        request.url.path.endsWith('/eligible-beneficiaries')) {
+      responseBody = {'success': true, 'beneficiaries': beneficiaries};
     } else if (request.url.path.contains('/programs/') &&
         request.url.path.endsWith('/beneficiaries')) {
       responseBody = {
-        'beneficiaries': disburseCount > 0 && refreshedBeneficiaries != null
+        'beneficiaries': (disburseCount > 0 || bulkDisburseCount > 0) &&
+                refreshedBeneficiaries != null
             ? refreshedBeneficiaries
             : beneficiaries,
       };
@@ -1773,6 +1932,55 @@ class RecordingHttpClient extends http.BaseClient {
         'success': true,
         'message': 'Beneficiary updated successfully.',
       };
+    } else if (request.method == 'POST' &&
+        request.url.path.endsWith('/bulk-disbursement')) {
+      bulkDisburseCount++;
+      statusCode = bulkDisburseStatusCode;
+      final requestPayload = jsonDecode(body) as Map<String, dynamic>;
+      final beneficiaryIds = List<String>.from(
+        requestPayload['beneficiaryIds'] as List? ?? const <String>[],
+      );
+      if (statusCode >= 200 && statusCode < 300) {
+        _applyBulkDisbursement(beneficiaryIds);
+      }
+      final amount = programs.isEmpty
+          ? 0
+          : programs.first['amountPerBeneficiary'] as num? ?? 0;
+      responseBody = bulkDisburseResponse ??
+          {
+            'success': statusCode >= 200 && statusCode < 300,
+            'idempotent': false,
+            'financials': _currentProgramFinancials(),
+            'resultSummary': {
+              'successful': [
+                for (final id in beneficiaryIds)
+                  {
+                    'beneficiary': id,
+                    'amount': amount,
+                    'status': 'SUCCESSFUL',
+                    'transactionReference': 'EMP-BULK-$id',
+                  },
+              ],
+              'skipped': const [],
+              'failed': const [],
+              'totalAmountPaid': amount * beneficiaryIds.length,
+              'remainingProgramBalance':
+                  _currentProgramFinancials()['availableFundingAmount'] ?? 0,
+            },
+            'batch': {
+              'batchReference': 'EMP-BULK-001',
+              'status': 'COMPLETED',
+              'results': [
+                for (final id in beneficiaryIds)
+                  {
+                    'beneficiary': id,
+                    'amount': amount,
+                    'status': 'SUCCESSFUL',
+                    'transactionReference': 'EMP-BULK-$id',
+                  },
+              ],
+            },
+          };
     } else if (request.method == 'POST' &&
         request.url.path.endsWith('/fund')) {
       fundingCount++;

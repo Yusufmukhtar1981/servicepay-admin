@@ -277,11 +277,11 @@ void main() {
     );
 
     testWidgets(
-      'Head Office disburses an approved verified beneficiary with idempotency',
+      'Head Office disburses a verified beneficiary while a program is DISBURSING',
       (tester) async {
         final client = RecordingHttpClient(
           organizations: const [],
-          programs: [program(status: 'APPROVED')],
+          programs: [program(status: 'DISBURSING')],
           beneficiaries: [
             beneficiary(
               applicationStatus: 'APPROVED',
@@ -1018,7 +1018,7 @@ void main() {
           organizations: const [],
           programs: [
             program(
-              status: 'APPROVED',
+              status: 'DISBURSING',
               amountPerBeneficiary: 1000,
               totalFunded: 3000,
               remainingBalance: 3000,

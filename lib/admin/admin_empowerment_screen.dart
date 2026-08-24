@@ -25,6 +25,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   String errorMessage = '';
   bool isHeadOffice = false;
   bool isDisbursing = false;
+  bool isFunding = false;
+  final Map<String, String> _fundingIdempotencyKeys = {};
 
   Map<String, dynamic> summary = {};
   List<dynamic> recentActivity = [];
@@ -225,6 +227,59 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
 
     return {};
+  }
+
+  Map<String, dynamic> _programMap(dynamic value) {
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : <String, dynamic>{};
+  }
+
+  Map<String, dynamic> _programFinancials(
+    Map<String, dynamic> program,
+  ) {
+    final nested = _programMap(program['financials']);
+
+    return {
+      'totalBudget': nested['totalBudget'] ??
+          program['totalBudget'] ??
+          program['budget'] ??
+          0,
+      'totalFundedAmount': nested['totalFundedAmount'] ??
+          nested['fundedAmount'] ??
+          program['totalFundedAmount'] ??
+          program['totalFunded'] ??
+          0,
+      'totalDisbursedAmount': nested['totalDisbursedAmount'] ??
+          nested['disbursedAmount'] ??
+          program['totalDisbursedAmount'] ??
+          program['totalDisbursed'] ??
+          0,
+      'availableFundingAmount': nested['availableFundingAmount'] ??
+          nested['availableBalance'] ??
+          program['availableFundingAmount'] ??
+          program['remainingBalance'] ??
+          program['availableBalance'] ??
+          0,
+    };
+  }
+
+  String _programStatus(
+    Map<String, dynamic> program,
+  ) {
+    final status = (program['status'] ?? '').toString().trim();
+    return status.isEmpty
+        ? 'DRAFT'
+        : status.toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
+  }
+
+  bool _hasSufficientProgramFunding({
+    required dynamic remainingBalance,
+    required dynamic amountPerBeneficiary,
+  }) {
+    final remaining = _asDouble(remainingBalance);
+    final amount = _asDouble(amountPerBeneficiary);
+    return amount > 0 && remaining >= amount;
   }
 
   Future<bool> _patchEmpowermentStatus({
@@ -933,6 +988,56 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
 
     return <dynamic>[];
+  }
+
+  Future<Map<String, dynamic>> _loadEmpowermentProgram(
+    String programId,
+  ) async {
+    final headers = await _empowermentHeaders();
+    final response = await _httpClient.get(
+      Uri.parse('$baseUrl/empowerment/programs/$programId'),
+      headers: headers,
+    );
+
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception('Invalid program response (${response.statusCode}).');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final message = decoded is Map && decoded['message'] != null
+          ? decoded['message'].toString()
+          : 'Unable to refresh program funding.';
+      throw Exception(message);
+    }
+
+    final program = decoded is Map
+        ? _programMap(
+            decoded['program'] ??
+                (decoded['data'] is Map
+                    ? (decoded['data'] as Map)['program']
+                    : null),
+          )
+        : <String, dynamic>{};
+    if (program.isEmpty) {
+      throw Exception('Program funding details are unavailable.');
+    }
+
+    final financials = decoded is Map
+        ? _programMap(
+            decoded['financials'] ??
+                (decoded['data'] is Map
+                    ? (decoded['data'] as Map)['financials']
+                    : null),
+          )
+        : <String, dynamic>{};
+    if (financials.isNotEmpty) {
+      program['financials'] = financials;
+    }
+
+    return program;
   }
 
   Future<void> _showStatusPicker({
@@ -2053,6 +2158,237 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
   }
 
+  Future<bool> _fundProgram({
+    required String programId,
+    required double amount,
+  }) async {
+    if (!isHeadOffice) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Only Head Office can fund Empowerment programs.'),
+          ),
+        );
+      }
+      return false;
+    }
+
+    if (amount <= 0) {
+      return false;
+    }
+
+    if (isFunding) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('A program funding request is already processing.'),
+          ),
+        );
+      }
+      return false;
+    }
+
+    if (mounted) {
+      setState(() {
+        isFunding = true;
+      });
+    } else {
+      isFunding = true;
+    }
+
+    try {
+      final headers = await _empowermentHeaders();
+      final requestKey = '$programId:${amount.toStringAsFixed(2)}';
+      final idempotencyKey = _fundingIdempotencyKeys.putIfAbsent(
+        requestKey,
+        () =>
+            'empowerment-funding-$programId-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      headers['Idempotency-Key'] = idempotencyKey;
+      final response = await _httpClient
+          .post(
+            Uri.parse('$baseUrl/empowerment/programs/$programId/funding'),
+            headers: headers,
+            body: jsonEncode({'amount': amount}),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      dynamic body;
+      try {
+        body = jsonDecode(response.body);
+      } catch (_) {
+        body = null;
+      }
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (body is! Map || body['success'] != false);
+      final idempotent = body is Map && body['idempotent'] == true;
+      final message = body is Map && body['message'] != null
+          ? body['message'].toString()
+          : success
+              ? 'Program funded successfully.'
+              : 'Unable to fund this program.';
+
+      if (success) {
+        await loadDashboard();
+        _fundingIdempotencyKeys.remove(requestKey);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              idempotent
+                  ? 'This funding request was already processed. '
+                      'The latest program balance has been refreshed.'
+                  : message,
+            ),
+          ),
+        );
+      }
+
+      return success;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          isFunding = false;
+        });
+      } else {
+        isFunding = false;
+      }
+    }
+  }
+
+  Future<void> _openFundProgramDialog(
+    Map<String, dynamic> program,
+  ) async {
+    if (!isHeadOffice) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Only Head Office can fund Empowerment programs.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final programId = (program['_id'] ?? program['id'] ?? '').toString();
+    if (programId.isEmpty) {
+      throw Exception('Program ID is missing.');
+    }
+
+    final programName = (program['name'] ?? 'Empowerment Program').toString();
+    final financials = _programFinancials(program);
+    final amountController = TextEditingController();
+
+    try {
+      final amount = await showDialog<double>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          String? validationMessage;
+
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: Text('Fund $programName'),
+                content: SizedBox(
+                  width: 520,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Remaining balance: '
+                          '${money(financials['availableFundingAmount'])}',
+                          style: const TextStyle(
+                            color: Color(0xFF08783E),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: amountController,
+                          autofocus: true,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Amount to add *',
+                            prefixText: '₦ ',
+                            border: const OutlineInputBorder(),
+                            errorText: validationMessage,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Funding debits the Head Office wallet and updates '
+                          'this program’s persisted balance. It does not pay '
+                          'beneficiaries directly.',
+                          style: TextStyle(
+                            color: Color(0xFF667085),
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () {
+                      final rawAmount =
+                          amountController.text.trim().replaceAll(',', '');
+                      final parsedAmount = double.tryParse(rawAmount);
+                      if (parsedAmount == null || parsedAmount <= 0) {
+                        setDialogState(() {
+                          validationMessage = 'Enter a positive amount.';
+                        });
+                        return;
+                      }
+                      Navigator.of(dialogContext).pop(parsedAmount);
+                    },
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
+                    label: const Text('Add Funds'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (amount == null || !mounted) {
+        return;
+      }
+
+      await _fundProgram(
+        programId: programId,
+        amount: amount,
+      );
+    } finally {
+      amountController.dispose();
+    }
+  }
+
   Future<void> _openProgramsManager() async {
     try {
       final programs = await _loadEmpowermentList(
@@ -2103,9 +2439,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                             itemBuilder: (_, index) {
                               final raw = programs[index];
 
-                              final item = raw is Map
-                                  ? Map<String, dynamic>.from(raw)
-                                  : <String, dynamic>{};
+                              final item = _programMap(raw);
 
                               final id =
                                   (item['_id'] ?? item['id'] ?? '').toString();
@@ -2113,61 +2447,96 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                               final name =
                                   (item['name'] ?? 'Program').toString();
 
-                              final status = (item['status'] ?? 'DRAFT')
-                                  .toString()
-                                  .toUpperCase();
+                              final status = _programStatus(item);
 
                               final targetGroup =
                                   (item['targetGroup'] ?? 'GENERAL').toString();
 
                               final amount = item['amountPerBeneficiary'];
+                              final financials = _programFinancials(item);
 
-                              return ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(
-                                    Icons.volunteer_activism_outlined,
-                                  ),
-                                ),
-                                title: Text(name),
-                                subtitle: Text(
-                                  'Status: $status'
-                                  '${targetGroup.isNotEmpty ? ' • $targetGroup' : ''}'
-                                  '${amount != null ? ' • ₦$amount per beneficiary' : ''}',
-                                ),
-                                trailing: const Icon(
-                                  Icons.manage_accounts_outlined,
-                                ),
-                                onTap: id.isEmpty
-                                    ? null
-                                    : () async {
-                                        Navigator.of(
-                                          dialogContext,
-                                        ).pop();
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const CircleAvatar(
+                                        child: Icon(
+                                          Icons.volunteer_activism_outlined,
+                                        ),
+                                      ),
+                                      title: Text(name),
+                                      subtitle: Text(
+                                        'Status: $status'
+                                        '${targetGroup.isNotEmpty ? ' • $targetGroup' : ''}'
+                                        '${amount != null ? ' • ${money(amount)} per beneficiary' : ''}'
+                                        '\nTotal Funded: ${money(financials['totalFundedAmount'])}'
+                                        ' • Total Disbursed: ${money(financials['totalDisbursedAmount'])}'
+                                        '\nRemaining Balance: ${money(financials['availableFundingAmount'])}',
+                                      ),
+                                      trailing: const Icon(
+                                        Icons.manage_accounts_outlined,
+                                      ),
+                                      onTap: id.isEmpty
+                                          ? null
+                                          : () async {
+                                              Navigator.of(
+                                                dialogContext,
+                                              ).pop();
 
-                                        await _showStatusPicker(
-                                          title: name,
-                                          currentStatus: status,
-                                          statuses: const [
-                                            'DRAFT',
-                                            'OPEN',
-                                            'UNDER_REVIEW',
-                                            'APPROVED',
-                                            'DISBURSING',
-                                            'COMPLETED',
-                                            'SUSPENDED',
-                                            'CANCELLED',
-                                          ],
-                                          onSelected: (newStatus) async {
-                                            await _updateProgramStatus(
-                                              id,
-                                              newStatus,
-                                            );
-                                          },
-                                        );
+                                              await _showStatusPicker(
+                                                title: name,
+                                                currentStatus: status,
+                                                statuses: const [
+                                                  'DRAFT',
+                                                  'OPEN',
+                                                  'UNDER_REVIEW',
+                                                  'APPROVED',
+                                                  'DISBURSING',
+                                                  'COMPLETED',
+                                                  'SUSPENDED',
+                                                  'CANCELLED',
+                                                ],
+                                                onSelected: (newStatus) async {
+                                                  await _updateProgramStatus(
+                                                    id,
+                                                    newStatus,
+                                                  );
+                                                },
+                                              );
 
-                                        if (!mounted) return;
-                                        await _openProgramsManager();
-                                      },
+                                              if (!mounted) return;
+                                              await _openProgramsManager();
+                                            },
+                                    ),
+                                    if (isHeadOffice && id.isNotEmpty)
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: OutlinedButton.icon(
+                                          onPressed: isFunding
+                                              ? null
+                                              : () async {
+                                                  Navigator.of(dialogContext)
+                                                      .pop();
+                                                  await _openFundProgramDialog(
+                                                    item,
+                                                  );
+                                                  if (!mounted) return;
+                                                  await _openProgramsManager();
+                                                },
+                                          icon: const Icon(
+                                            Icons.add_card_rounded,
+                                          ),
+                                          label: const Text('Add Funds'),
+                                        ),
+                                      ),
+                                    const Divider(height: 1),
+                                  ],
+                                ),
                               );
                             },
                           ),
@@ -2632,7 +3001,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     return 'NOT PAID';
   }
 
-  bool _canDisburseBeneficiary(Map<String, dynamic> beneficiary) {
+  bool _hasPayableBeneficiaryState(Map<String, dynamic> beneficiary) {
     final paymentStatus = _beneficiaryPaymentStatus(beneficiary);
     return isHeadOffice &&
         _beneficiaryApplicationStatus(beneficiary) == 'APPROVED' &&
@@ -2640,6 +3009,20 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         (paymentStatus == 'NOT PAID' ||
             paymentStatus == 'UNPAID' ||
             paymentStatus == 'NONE');
+  }
+
+  bool _canDisburseBeneficiary(
+    Map<String, dynamic> beneficiary, {
+    required String programStatus,
+    required dynamic remainingBalance,
+    required dynamic amountPerBeneficiary,
+  }) {
+    return _hasPayableBeneficiaryState(beneficiary) &&
+        programStatus == 'APPROVED' &&
+        _hasSufficientProgramFunding(
+          remainingBalance: remainingBalance,
+          amountPerBeneficiary: amountPerBeneficiary,
+        );
   }
 
   List<String> _beneficiaryStatusOptions(
@@ -2837,7 +3220,53 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     required dynamic amountPerBeneficiary,
   }) async {
     final beneficiaryId = _beneficiaryId(beneficiary);
-    if (beneficiaryId.isEmpty || !_canDisburseBeneficiary(beneficiary)) {
+    if (beneficiaryId.isEmpty || !_hasPayableBeneficiaryState(beneficiary)) {
+      return false;
+    }
+
+    Map<String, dynamic> currentProgram;
+    try {
+      currentProgram = await _loadEmpowermentProgram(programId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to confirm current program funding. '
+              '${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+
+    final currentProgramStatus = _programStatus(currentProgram);
+    final currentAmount = currentProgram['amountPerBeneficiary'] ??
+        currentProgram['amount'] ??
+        currentProgram['grantAmount'] ??
+        amountPerBeneficiary;
+    final currentFinancials = _programFinancials(currentProgram);
+    final currentRemainingBalance =
+        currentFinancials['availableFundingAmount'];
+
+    if (currentProgramStatus != 'APPROVED') {
+      return false;
+    }
+
+    if (!_hasSufficientProgramFunding(
+      remainingBalance: currentRemainingBalance,
+      amountPerBeneficiary: currentAmount,
+    )) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Program funding is insufficient. Fund this program before disbursement.',
+            ),
+          ),
+        );
+      }
       return false;
     }
 
@@ -2870,8 +3299,12 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                   _organizationDetailRow('Program', programName),
                   _organizationDetailRow(
                     'Configured amount per beneficiary',
-                    money(amountPerBeneficiary),
+                     money(currentAmount),
                   ),
+                   _organizationDetailRow(
+                     'Program remaining balance',
+                     money(currentRemainingBalance),
+                   ),
                   _organizationDetailRow(
                     'ServicePay account',
                     servicePayAccount,
@@ -2927,7 +3360,9 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     Map<String, dynamic> beneficiary, {
     required String programName,
     required String programId,
+    required String programStatus,
     required dynamic amountPerBeneficiary,
+    required dynamic remainingBalance,
   }) async {
     final id = _beneficiaryId(beneficiary);
     final fullName = _beneficiaryValue(
@@ -2946,7 +3381,16 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     final canUpdateStatus =
         statusOptions.any((status) => status != applicationStatus);
     final paymentStatus = _beneficiaryPaymentStatus(beneficiary);
-    final canDisburse = _canDisburseBeneficiary(beneficiary);
+    final canAttemptPayment =
+        _hasPayableBeneficiaryState(beneficiary) && programStatus == 'APPROVED';
+    final canDisburse = _canDisburseBeneficiary(
+      beneficiary,
+      programStatus: programStatus,
+      remainingBalance: remainingBalance,
+      amountPerBeneficiary: amountPerBeneficiary,
+    );
+    final insufficientFunding =
+        canAttemptPayment && !canDisburse;
     final paidAmountValue = _beneficiaryValue(
       beneficiary,
       const ['paidAmount', 'amountPaid', 'disbursedAmount', 'amount'],
@@ -2999,6 +3443,10 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                     servicePayAccount,
                   ),
                   _organizationDetailRow('Payment status', paymentStatus),
+                   _organizationDetailRow(
+                     'Program remaining balance',
+                     money(remainingBalance),
+                   ),
                   if (paymentStatus != 'NOT PAID') ...[
                     _organizationDetailRow('Paid amount', paidAmount),
                     _organizationDetailRow('Payment reference', paymentReference),
@@ -3064,6 +3512,17 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                         ),
                       ),
                     ),
+                  if (insufficientFunding)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Program funding is insufficient. Fund this program before disbursement.',
+                        style: TextStyle(
+                          color: Color(0xFFB42318),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -3086,7 +3545,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                 icon: const Icon(Icons.verified_user_rounded),
                 label: const Text('Verify Beneficiary'),
               ),
-            if (canDisburse && id.isNotEmpty)
+            if ((canDisburse || insufficientFunding) && id.isNotEmpty)
               FilledButton.icon(
                 onPressed: isDisbursing
                     ? null
@@ -3178,7 +3637,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                   : ListView.builder(
                       itemCount: programs.length,
                       itemBuilder: (context, index) {
-                        final item = _organizationMap(programs[index]);
+                        final item = _programMap(programs[index]);
+                        final financials = _programFinancials(item);
                         return ListTile(
                           leading: const Icon(
                             Icons.volunteer_activism_outlined,
@@ -3187,7 +3647,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                             (item['name'] ?? 'Program').toString(),
                           ),
                           subtitle: Text(
-                            (item['status'] ?? '').toString(),
+                            '${_programStatus(item)} • '
+                            'Remaining: ${money(financials['availableFundingAmount'])}',
                           ),
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: () => Navigator.of(dialogContext).pop(item),
@@ -3203,20 +3664,26 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         return;
       }
 
+      var currentProgram = _programMap(selectedProgram);
       final programId =
-          (selectedProgram['_id'] ?? selectedProgram['id'] ?? '').toString();
-      final programName = (selectedProgram['name'] ?? 'Program').toString();
-      final amountPerBeneficiary =
-          selectedProgram['amountPerBeneficiary'] ??
-              selectedProgram['amount'] ??
-              selectedProgram['grantAmount'] ??
-              0;
+          (currentProgram['_id'] ?? currentProgram['id'] ?? '').toString();
 
       if (programId.isEmpty) {
         throw Exception('Program ID is missing.');
       }
 
       while (mounted) {
+        final programName =
+            (currentProgram['name'] ?? 'Program').toString();
+        final programStatus = _programStatus(currentProgram);
+        final amountPerBeneficiary =
+            currentProgram['amountPerBeneficiary'] ??
+                currentProgram['amount'] ??
+                currentProgram['grantAmount'] ??
+                0;
+        final programFinancials = _programFinancials(currentProgram);
+        final remainingBalance =
+            programFinancials['availableFundingAmount'];
         final beneficiaries = await _loadEmpowermentList(
           '/empowerment/programs/$programId/beneficiaries',
           'beneficiaries',
@@ -3254,7 +3721,17 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                               _beneficiaryVerificationStatus(item);
                           final paymentStatus =
                               _beneficiaryPaymentStatus(item);
-                          final canDisburse = _canDisburseBeneficiary(item);
+                          final canAttemptPayment =
+                              _hasPayableBeneficiaryState(item) &&
+                                  programStatus == 'APPROVED';
+                          final canDisburse = _canDisburseBeneficiary(
+                            item,
+                            programStatus: programStatus,
+                            remainingBalance: remainingBalance,
+                            amountPerBeneficiary: amountPerBeneficiary,
+                          );
+                          final insufficientFunding =
+                              canAttemptPayment && !canDisburse;
 
                           return ListTile(
                             leading: const CircleAvatar(
@@ -3264,9 +3741,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                             subtitle: Text(
                               'Application: $applicationStatus • '
                               'Verification: $verificationStatus • '
-                              'Payment: $paymentStatus',
+                              'Payment: $paymentStatus'
+                              '${insufficientFunding ? ' • Funding insufficient' : ''}',
                             ),
-                            trailing: canDisburse && id.isNotEmpty
+                            trailing: (canDisburse || insufficientFunding) &&
+                                    id.isNotEmpty
                                 ? FilledButton.icon(
                                     style: FilledButton.styleFrom(
                                       backgroundColor: const Color(0xFF08783E),
@@ -3330,8 +3809,24 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
               selectedBeneficiary,
               programName: programName,
               programId: programId,
+                programStatus: programStatus,
               amountPerBeneficiary: amountPerBeneficiary,
+                remainingBalance: remainingBalance,
             );
+          }
+          try {
+            currentProgram = await _loadEmpowermentProgram(programId);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Program balance could not be refreshed: '
+                    '${e.toString().replaceFirst('Exception: ', '')}',
+                  ),
+                ),
+              );
+            }
           }
         }
       }

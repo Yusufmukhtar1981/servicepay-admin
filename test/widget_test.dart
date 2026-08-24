@@ -308,12 +308,12 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Youth Grant'));
         await tester.pumpAndSettle();
-        expect(find.text('Disburse / Pay'), findsOneWidget);
+        expect(find.text('Pay Beneficiary'), findsOneWidget);
         await tester.tap(find.text('Pending Beneficiary'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Disburse / Pay'), findsOneWidget);
-        await tester.tap(find.text('Disburse / Pay'));
+        expect(find.text('Pay Beneficiary'), findsOneWidget);
+        await tester.tap(find.text('Pay Beneficiary'));
         await tester.pumpAndSettle();
 
         expect(find.text('Confirm wallet payment'), findsOneWidget);
@@ -326,7 +326,7 @@ void main() {
           findsOneWidget,
         );
 
-        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.tap(find.text('Pay Beneficiary').last);
         await tester.pumpAndSettle();
 
         expect(
@@ -341,6 +341,132 @@ void main() {
         );
         expect(client.lastPostPayload, <String, dynamic>{});
         expect(find.textContaining('Payment: PAID'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'shows Pay Beneficiary for an approved verified unpaid production record',
+      (tester) async {
+        final productionBeneficiary = beneficiary(
+          applicationStatus: '',
+          verificationStatus: 'PENDING',
+        )
+          ..remove('applicationStatus')
+          ..['application'] = {'status': 'APPROVED'}
+          ..['verification'] = {'status': 'VERIFIED'}
+          ..['paymentReference'] = ''
+          ..['paidAt'] = null;
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [productionBeneficiary],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        expect(find.text('Pay Beneficiary'), findsOneWidget);
+        expect(find.text('Update Application Status'), findsOneWidget);
+        expect(
+          tester
+              .widget<OutlinedButton>(
+                find.widgetWithText(
+                  OutlinedButton,
+                  'Update Application Status',
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
+      },
+    );
+
+    testWidgets(
+      'hides Pay Beneficiary when verification is pending',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'PENDING',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        expect(find.text('Pay Beneficiary'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'hides Pay Beneficiary while an application is under review',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'UNDER_REVIEW',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        expect(find.text('Pay Beneficiary'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'hides Pay Beneficiary after a completed payment',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'PAID',
+              verificationStatus: 'VERIFIED',
+              paymentReference: 'EMP-PAID-001',
+              paidAt: '2026-08-24T16:00:00.000Z',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        expect(find.text('Payment status'), findsOneWidget);
+        expect(find.text('PAID'), findsNWidgets(2));
+        expect(find.text('Pay Beneficiary'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'keeps Pay Beneficiary reachable in a mobile detail dialog',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(360, 640));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        final payButton = find.text('Pay Beneficiary');
+        await tester.ensureVisible(payButton);
+        await tester.tap(payButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Confirm wallet payment'), findsOneWidget);
       },
     );
 
@@ -371,9 +497,9 @@ void main() {
         );
 
         await openBeneficiaryDetails(tester, client);
-        await tester.tap(find.text('Disburse / Pay'));
+        await tester.tap(find.text('Pay Beneficiary'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.tap(find.text('Pay Beneficiary').last);
         await tester.pumpAndSettle();
 
         expect(client.disburseCount, 1);
@@ -419,7 +545,7 @@ void main() {
         await tester.tap(find.text('Pending Beneficiary'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Disburse / Pay'), findsNothing);
+        expect(find.text('Pay Beneficiary'), findsNothing);
         expect(client.disburseCount, 0);
       },
     );
@@ -509,7 +635,7 @@ void main() {
 
         expect(find.textContaining('Payment: PROCESSING'), findsOneWidget);
         expect(find.textContaining('Payment: REVERSED'), findsOneWidget);
-        expect(find.text('Disburse / Pay'), findsNothing);
+        expect(find.text('Pay Beneficiary'), findsNothing);
       },
     );
 
@@ -540,9 +666,9 @@ void main() {
         );
 
         await openBeneficiaryDetails(tester, client);
-        await tester.tap(find.text('Disburse / Pay'));
+        await tester.tap(find.text('Pay Beneficiary'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.tap(find.text('Pay Beneficiary').last);
         await tester.pumpAndSettle();
 
         expect(client.disburseCount, 1);
@@ -577,9 +703,9 @@ void main() {
         );
 
         await openBeneficiaryDetails(tester, client);
-        await tester.tap(find.text('Disburse / Pay'));
+        await tester.tap(find.text('Pay Beneficiary'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.tap(find.text('Pay Beneficiary').last);
         await tester.pumpAndSettle();
 
         expect(client.disburseCount, 1);
@@ -1034,8 +1160,8 @@ Map<String, dynamic> beneficiary({
     'applicationStatus': applicationStatus,
     'verificationStatus': verificationStatus,
     if (paymentStatus.isNotEmpty) 'paymentStatus': paymentStatus,
-    if (paymentReference.isNotEmpty) 'paymentReference': paymentReference,
-    if (paidAt.isNotEmpty) 'paidAt': paidAt,
+    'paymentReference': paymentReference,
+    'paidAt': paidAt.isEmpty ? null : paidAt,
     'createdAt': '2026-08-24T00:00:00.000Z',
   };
 }

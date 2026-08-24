@@ -60,7 +60,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             prefs.getString('admin_role') ??
             '')
         .trim()
-        .toUpperCase();
+        .toUpperCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
 
     if (mounted) {
       setState(() {
@@ -2509,11 +2510,26 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   }
 
   String _beneficiaryApplicationStatus(Map<String, dynamic> beneficiary) {
-    return (beneficiary['applicationStatus'] ??
-            beneficiary['status'] ??
-            'SUBMITTED')
-        .toString()
-        .toUpperCase();
+    final application = _beneficiaryMap(beneficiary['application']);
+    final values = [
+      beneficiary['applicationStatus'],
+      beneficiary['status'],
+      beneficiary['application_status'],
+      application['applicationStatus'],
+      application['status'],
+      application['application_status'],
+    ];
+
+    for (final value in values) {
+      final status = value?.toString().trim();
+      if (status != null && status.isNotEmpty) {
+        return status
+            .toUpperCase()
+            .replaceAll(RegExp(r'[\s-]+'), '_');
+      }
+    }
+
+    return 'SUBMITTED';
   }
 
   String _beneficiaryVerificationStatus(Map<String, dynamic> beneficiary) {
@@ -2578,24 +2594,39 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
   String _beneficiaryPaymentStatus(Map<String, dynamic> beneficiary) {
     final applicationStatus = _beneficiaryApplicationStatus(beneficiary);
+    final payment = _beneficiaryMap(beneficiary['payment']);
+    final payout = _beneficiaryMap(beneficiary['payout']);
+    final disbursement = _beneficiaryMap(beneficiary['disbursement']);
     final values = [
       beneficiary['paymentStatus'],
       beneficiary['payoutStatus'],
       beneficiary['disbursementStatus'],
-      _beneficiaryMap(beneficiary['payment'])['status'],
-      _beneficiaryMap(beneficiary['payout'])['status'],
-      _beneficiaryMap(beneficiary['disbursement'])['status'],
-      applicationStatus == 'PAID' ? 'PAID' : null,
-      beneficiary['paidAt'] != null || beneficiary['paymentReference'] != null
-          ? 'PAID'
-          : null,
+      payment['status'],
+      payment['paymentStatus'],
+      payout['status'],
+      payout['payoutStatus'],
+      disbursement['status'],
+      disbursement['disbursementStatus'],
     ];
 
     for (final value in values) {
       final status = value?.toString().trim().toUpperCase() ?? '';
       if (status.isNotEmpty) {
-        return status == 'SUCCESSFUL' ? 'PAID' : status;
+        return const ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(status)
+            ? 'PAID'
+            : status;
       }
+    }
+
+    if (applicationStatus == 'PAID') {
+      return 'PAID';
+    }
+
+    final paidAt = beneficiary['paidAt']?.toString().trim() ?? '';
+    final paymentReference =
+        beneficiary['paymentReference']?.toString().trim() ?? '';
+    if (paidAt.isNotEmpty || paymentReference.isNotEmpty) {
+      return 'PAID';
     }
 
     return 'NOT PAID';
@@ -2763,13 +2794,14 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       }
 
       if (mounted) {
+        final displayMessage = success && body is Map && body['idempotent'] == true
+            ? 'Payment was already processed. The latest beneficiary data has been refreshed.'
+            : success
+                ? 'Payment successful. $message'
+                : message;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              success && body is Map && body['idempotent'] == true
-                  ? 'Payment was already processed. The latest beneficiary data has been refreshed.'
-                  : message,
-            ),
+            content: Text(displayMessage),
           ),
         );
       }
@@ -2874,7 +2906,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             FilledButton.icon(
               onPressed: () => Navigator.of(dialogContext).pop(true),
               icon: const Icon(Icons.payments_rounded),
-              label: const Text('Disburse / Pay'),
+              label: const Text('Pay Beneficiary'),
             ),
           ],
         );
@@ -3060,7 +3092,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                     ? null
                     : () => Navigator.of(dialogContext).pop('disburse'),
                 icon: const Icon(Icons.payments_rounded),
-                label: const Text('Disburse / Pay'),
+                label: const Text('Pay Beneficiary'),
               ),
           ],
         );
@@ -3244,7 +3276,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                                         : () => Navigator.of(dialogContext)
                                             .pop('disburse:$id'),
                                     icon: const Icon(Icons.payments_rounded),
-                                    label: const Text('Disburse / Pay'),
+                                    label: const Text('Pay Beneficiary'),
                                   )
                                 : const Icon(Icons.chevron_right_rounded),
                             onTap: id.isEmpty

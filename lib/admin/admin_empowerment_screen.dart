@@ -1170,171 +1170,336 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
   }
 
+  Map<String, dynamic> _organizationMap(dynamic value) {
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : <String, dynamic>{};
+  }
+
+  String _organizationId(Map<String, dynamic> organization) {
+    return (organization['_id'] ?? organization['id'] ?? '').toString();
+  }
+
+  String _organizationStatus(Map<String, dynamic> organization) {
+    return (organization['status'] ?? 'PENDING').toString().toUpperCase();
+  }
+
+  bool _isActiveOrganization(dynamic value) {
+    return _organizationStatus(_organizationMap(value)) == 'ACTIVE';
+  }
+
+  String _organizationValue(
+    Map<String, dynamic> organization,
+    List<String> keys, {
+    String fallback = 'Not provided',
+  }) {
+    for (final key in keys) {
+      final value = organization[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+    return fallback;
+  }
+
+  Future<void> _showOrganizationDetails(
+    Map<String, dynamic> organization,
+  ) async {
+    final id = _organizationId(organization);
+    final name = _organizationValue(
+      organization,
+      const ['name', 'organizationName'],
+      fallback: 'Organization',
+    );
+    final status = _organizationStatus(organization);
+
+    String? actionStatus;
+    String? actionLabel;
+    IconData? actionIcon;
+
+    if (status == 'PENDING') {
+      actionStatus = 'ACTIVE';
+      actionLabel = 'Approve / Verify';
+      actionIcon = Icons.verified_rounded;
+    } else if (status == 'ACTIVE') {
+      actionStatus = 'SUSPENDED';
+      actionLabel = 'Suspend';
+      actionIcon = Icons.pause_circle_outline_rounded;
+    } else if (status == 'SUSPENDED') {
+      actionStatus = 'ACTIVE';
+      actionLabel = 'Reactivate';
+      actionIcon = Icons.play_circle_outline_rounded;
+    }
+
+    final detailAction = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(name),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _organizationDetailRow('Status', status),
+                  _organizationDetailRow(
+                    'Organization type',
+                    _organizationValue(
+                      organization,
+                      const ['organizationType', 'type'],
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Contact person',
+                    _organizationValue(
+                      organization,
+                      const ['contactPerson', 'contactName', 'contact'],
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Phone',
+                    _organizationValue(
+                      organization,
+                      const ['phone', 'contactPhone', 'phoneNumber'],
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Email',
+                    _organizationValue(
+                      organization,
+                      const ['email', 'contactEmail'],
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Location',
+                    _organizationValue(
+                      organization,
+                      const ['location'],
+                      fallback: [
+                        organization['state'],
+                        organization['lga'],
+                      ].where((value) {
+                        final text = value?.toString().trim() ?? '';
+                        return text.isNotEmpty;
+                      }).join(', '),
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Created',
+                    _organizationValue(
+                      organization,
+                      const ['createdAt', 'createdDate'],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+            if (actionStatus != null && actionLabel != null && id.isNotEmpty)
+              FilledButton.icon(
+                onPressed: () => Navigator.of(dialogContext).pop('update'),
+                icon: Icon(actionIcon),
+                label: Text(actionLabel),
+              ),
+            if (status == 'PENDING' && id.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(dialogContext).pop('reject'),
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('Reject'),
+              ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || id.isEmpty) {
+      return;
+    }
+
+    if (status == 'PENDING' && detailAction == 'reject') {
+      final reject = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Reject organization?'),
+            content: Text(
+              'Reject $name? This will leave the organization unavailable for program creation.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                ),
+                child: const Text('Reject'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (reject == true) {
+        await _updateOrganizationStatus(id, 'REJECTED');
+      }
+      return;
+    }
+
+    if (detailAction == 'update' && actionStatus != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text('$actionLabel organization?'),
+            content: Text('Are you sure you want to $actionLabel this organization?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(actionLabel!),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed == true) {
+        await _updateOrganizationStatus(id, actionStatus);
+      }
+    }
+  }
+
+  Widget _organizationDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF667085),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openOrganizationsManager() async {
     try {
-      final organizations = await _loadEmpowermentList(
-        '/empowerment/organizations',
-        'organizations',
-      );
+      while (mounted) {
+        final organizations = await _loadEmpowermentList(
+          '/empowerment/organizations',
+          'organizations',
+        );
 
-      if (!mounted) {
-        return;
-      }
+        if (!mounted) {
+          return;
+        }
 
-      final action = await showDialog<String>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('Empowerment Organizations'),
-            content: SizedBox(
-              width: 620,
-              height: 480,
-              child: organizations.isEmpty
-                  ? const Center(
-                      child: Text('No organizations found.'),
-                    )
-                  : ListView.separated(
-                      itemCount: organizations.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final item = organizations[index];
-                        final name =
-                            (item['name'] ?? 'Organization').toString();
-                        final status = (item['status'] ?? 'PENDING').toString();
+        final action = await showDialog<String>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('Empowerment Organizations'),
+              content: SizedBox(
+                width: 620,
+                height: 480,
+                child: organizations.isEmpty
+                    ? const Center(
+                        child: Text('No organizations found.'),
+                      )
+                    : ListView.separated(
+                        itemCount: organizations.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = _organizationMap(organizations[index]);
+                          final id = _organizationId(item);
+                          final name = _organizationValue(
+                            item,
+                            const ['name', 'organizationName'],
+                            fallback: 'Organization',
+                          );
+                          final status = _organizationStatus(item);
 
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.account_balance_rounded),
-                          ),
-                          title: Text(name),
-                          subtitle: Text('Status: $status'),
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop('CREATE');
-                },
-                icon: const Icon(Icons.add_business_rounded),
-                label: const Text('Create Organization'),
+                          return ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.account_balance_outlined),
+                            ),
+                            title: Text(name),
+                            subtitle: Text('Status: $status'),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                            ),
+                            onTap: () => Navigator.of(dialogContext).pop(id),
+                          );
+                        },
+                      ),
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                },
-                child: const Text('Close'),
-              ),
-            ],
-          );
-        },
-      );
+              actions: [
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop('CREATE');
+                  },
+                  icon: const Icon(Icons.add_business_rounded),
+                  label: const Text('Create Organization'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
 
-      if (action == 'CREATE' && mounted) {
-        await _openCreateOrganizationDialog();
-        if (mounted) {
-          await _openOrganizationsManager();
+        if (!mounted || action == null) {
+          return;
+        }
+
+        if (action == 'CREATE') {
+          await _openCreateOrganizationDialog();
+          continue;
+        }
+
+        Map<String, dynamic>? selectedOrganization;
+        for (final raw in organizations) {
+          final item = _organizationMap(raw);
+          if (_organizationId(item) == action) {
+            selectedOrganization = item;
+            break;
+          }
+        }
+
+        if (selectedOrganization != null) {
+          await _showOrganizationDetails(selectedOrganization);
         }
       }
-
-      return;
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text(
-              'Empowerment Organizations',
-            ),
-            content: SizedBox(
-              width: 620,
-              height: 480,
-              child: organizations.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No organizations found.',
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: organizations.length,
-                      separatorBuilder: (_, __) => const Divider(
-                        height: 1,
-                      ),
-                      itemBuilder: (context, index) {
-                        final raw = organizations[index];
-
-                        final item = raw is Map
-                            ? Map<String, dynamic>.from(
-                                raw,
-                              )
-                            : <String, dynamic>{};
-
-                        final id = (item['_id'] ?? item['id'] ?? '').toString();
-
-                        final name =
-                            (item['name'] ?? 'Organization').toString();
-
-                        final status = (item['status'] ?? 'PENDING')
-                            .toString()
-                            .toUpperCase();
-
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(
-                              Icons.account_balance_outlined,
-                            ),
-                          ),
-                          title: Text(name),
-                          subtitle: Text(
-                            'Status: $status',
-                          ),
-                          trailing: const Icon(
-                            Icons.manage_accounts_outlined,
-                          ),
-                          onTap: id.isEmpty
-                              ? null
-                              : () async {
-                                  Navigator.of(
-                                    dialogContext,
-                                  ).pop();
-
-                                  await _showStatusPicker(
-                                    title: name,
-                                    currentStatus: status,
-                                    statuses: const [
-                                      'PENDING',
-                                      'ACTIVE',
-                                      'SUSPENDED',
-                                      'REJECTED',
-                                    ],
-                                    onSelected: (
-                                      newStatus,
-                                    ) async {
-                                      await _updateOrganizationStatus(
-                                        id,
-                                        newStatus,
-                                      );
-                                    },
-                                  );
-                                },
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(
-                    dialogContext,
-                  ).pop();
-                },
-                child: const Text('Close'),
-              ),
-            ],
-          );
-        },
-      );
     } catch (e) {
       if (!mounted) {
         return;
@@ -1374,6 +1539,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
       if (!mounted) return;
 
+      final activeOrganizations = organizations
+          .where(_isActiveOrganization)
+          .map(_organizationMap)
+          .toList();
+
       String selectedOrganizationId = '';
       String selectedOrganizationName = '';
 
@@ -1397,26 +1567,43 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                           value: selectedOrganization,
                           decoration: const InputDecoration(
                             labelText: 'Organization *',
+                            helperText:
+                                'Only ACTIVE / verified organizations can run programs.',
                             border: OutlineInputBorder(),
                           ),
-                          items: organizations.map((raw) {
-                            final item = raw is Map
-                                ? Map<String, dynamic>.from(raw)
-                                : <String, dynamic>{};
-
-                            return DropdownMenuItem<Map<String, dynamic>>(
-                              value: item,
-                              child: Text(
-                                (item['name'] ?? 'Organization').toString(),
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectedOrganization = value;
-                            });
-                          },
+                          items: activeOrganizations
+                              .map(
+                                (item) => DropdownMenuItem<Map<String, dynamic>>(
+                                  value: item,
+                                  child: Text(
+                                    _organizationValue(
+                                      item,
+                                      const ['name', 'organizationName'],
+                                      fallback: 'Organization',
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: activeOrganizations.isEmpty || isSubmitting
+                              ? null
+                              : (value) {
+                                  setDialogState(() {
+                                    selectedOrganization = value;
+                                  });
+                                },
                         ),
+                        if (activeOrganizations.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: Text(
+                              'No ACTIVE / verified organizations are available.',
+                              style: TextStyle(
+                                color: Color(0xFFB42318),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 14),
                         TextField(
                           controller: nameController,

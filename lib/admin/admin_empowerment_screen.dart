@@ -23,6 +23,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
   bool isLoading = true;
   String errorMessage = '';
+  bool isHeadOffice = false;
+  bool isDisbursing = false;
 
   Map<String, dynamic> summary = {};
   List<dynamic> recentActivity = [];
@@ -31,7 +33,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   void initState() {
     super.initState();
     _httpClient = widget.httpClient ?? http.Client();
-    loadDashboard();
+    _initializeScreen();
   }
 
   @override
@@ -49,6 +51,24 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         prefs.getString('admin_token') ??
         prefs.getString('token') ??
         '';
+  }
+
+  Future<void> _initializeScreen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('user_role') ??
+            prefs.getString('role') ??
+            prefs.getString('admin_role') ??
+            '')
+        .trim()
+        .toUpperCase();
+
+    if (mounted) {
+      setState(() {
+        isHeadOffice = role == 'HEAD_OFFICE';
+      });
+    }
+
+    await loadDashboard();
   }
 
   int _asInt(dynamic value) {
@@ -179,7 +199,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             ? (body['message'] ?? 'Unable to load dashboard.').toString()
             : 'Unable to load dashboard.',
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
       setState(() {
@@ -761,12 +781,13 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             'Beneficiaries',
             'Review applications and beneficiaries',
           ),
-          _actionRow(
-            Icons.payments_outlined,
-            'Disbursements',
-            'Preview and manage payment batches',
-            onTap: _openDisbursementsManager,
-          ),
+          if (isHeadOffice)
+            _actionRow(
+              Icons.payments_outlined,
+              'Disbursements',
+              'Review protected payout history',
+              onTap: _openDisbursementsManager,
+            ),
           _actionRow(
             Icons.history_rounded,
             'Audit Trail',
@@ -880,6 +901,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
           'organizations',
           'programs',
           'beneficiaries',
+          'batches',
           'items',
           'results',
           'records',
@@ -896,6 +918,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         'organizations',
         'programs',
         'beneficiaries',
+        'batches',
         'items',
         'results',
         'records',
@@ -2176,47 +2199,156 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
   }
 
+  List<Map<String, dynamic>> _disbursementRows(
+    List<dynamic> batches,
+    String programName,
+  ) {
+    final rows = <Map<String, dynamic>>[];
+
+    for (final rawBatch in batches) {
+      final batch = _beneficiaryMap(rawBatch);
+      final results = batch['results'];
+      final batchStatus =
+          (batch['status'] ?? 'UNKNOWN').toString().trim().toUpperCase();
+      final batchReference = (batch['batchReference'] ??
+              batch['reference'] ??
+              batch['paymentReference'] ??
+              'Not provided')
+          .toString();
+      final batchDate = (batch['completedAt'] ??
+              batch['paidAt'] ??
+              batch['createdAt'] ??
+              batch['date'] ??
+              'Not provided')
+          .toString();
+
+      if (results is! List || results.isEmpty) {
+        rows.add({
+          'beneficiary': _beneficiaryValue(
+            batch,
+            const ['beneficiaryName', 'fullName', 'recipientName'],
+            fallback: 'Beneficiary',
+          ),
+          'program': programName,
+          'amount': batch['amount'] ?? batch['totalAmount'] ?? 0,
+          'status': batchStatus,
+          'reference': batchReference,
+          'date': batchDate,
+        });
+        continue;
+      }
+
+      for (final rawResult in results) {
+        final result = _beneficiaryMap(rawResult);
+        final beneficiary = _beneficiaryMap(result['beneficiary']);
+        final recipient = _beneficiaryMap(result['recipient']);
+        rows.add({
+          'beneficiary': _beneficiaryValue(
+            beneficiary,
+            const ['fullName', 'name', 'phone'],
+            fallback: _beneficiaryValue(
+              recipient,
+              const ['fullName', 'name', 'phone', 'email'],
+              fallback: _beneficiaryValue(
+                result,
+                const ['beneficiaryName', 'recipientName'],
+                fallback: 'Beneficiary',
+              ),
+            ),
+          ),
+          'program': programName,
+          'amount': result['amount'] ?? batch['amount'] ?? 0,
+          'status': (result['status'] ?? batchStatus)
+              .toString()
+              .trim()
+              .toUpperCase(),
+          'reference': (result['transactionReference'] ??
+                  result['paymentReference'] ??
+                  result['reference'] ??
+                  batchReference)
+              .toString(),
+          'date': (result['paidAt'] ??
+                  result['completedAt'] ??
+                  batchDate)
+              .toString(),
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  Color _disbursementStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'PAID':
+      case 'SUCCESSFUL':
+      case 'COMPLETED':
+        return const Color(0xFF08783E);
+      case 'FAILED':
+      case 'REVERSED':
+      case 'REJECTED':
+        return const Color(0xFFB42318);
+      case 'PENDING':
+      case 'PROCESSING':
+      case 'DISBURSING':
+        return const Color(0xFFB54708);
+      default:
+        return const Color(0xFF667085);
+    }
+  }
+
   Future<void> _openDisbursementsManager() async {
+    if (!isHeadOffice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only Head Office can view disbursement history.'),
+        ),
+      );
+      return;
+    }
+
     try {
-      final items = await _loadEmpowermentList(
-        '/empowerment/dashboard-summary',
-        'disbursementBatches',
+      final programs = await _loadEmpowermentList(
+        '/empowerment/programs',
+        'programs',
       );
 
       if (!mounted) return;
 
-      await showDialog<void>(
+      final selectedProgram = await showDialog<Map<String, dynamic>>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text('Disbursements'),
+            title: const Text('Select Program'),
             content: SizedBox(
-              width: 760,
-              child: items.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Text(
-                        'No disbursement records available yet.',
-                      ),
+              width: 600,
+              height: 440,
+              child: programs.isEmpty
+                  ? const Center(
+                      child: Text('No empowerment programs found.'),
                     )
                   : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: items.length,
+                      itemCount: programs.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, index) {
-                        final item = items[index];
+                      itemBuilder: (context, index) {
+                        final program = _organizationMap(programs[index]);
+                        final id = (program['_id'] ?? program['id'] ?? '')
+                            .toString();
                         return ListTile(
                           leading: const CircleAvatar(
-                            child: Icon(Icons.payments_outlined),
+                            child: Icon(Icons.campaign_outlined),
                           ),
                           title: Text(
-                            item['batchReference']?.toString() ??
-                                item['reference']?.toString() ??
-                                'Disbursement',
+                            (program['name'] ?? 'Empowerment Program')
+                                .toString(),
                           ),
                           subtitle: Text(
-                            item['status']?.toString() ?? 'Prepared',
+                            (program['status'] ?? '').toString(),
                           ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: id.isEmpty
+                              ? null
+                              : () => Navigator.of(dialogContext).pop(program),
                         );
                       },
                     ),
@@ -2230,12 +2362,136 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
           );
         },
       );
+
+      if (!mounted || selectedProgram == null) return;
+
+      final programId =
+          (selectedProgram['_id'] ?? selectedProgram['id'] ?? '').toString();
+      final programName =
+          (selectedProgram['name'] ?? 'Empowerment Program').toString();
+      if (programId.isEmpty) {
+        throw Exception('Program ID is missing.');
+      }
+
+      var rows = _disbursementRows(
+        await _loadEmpowermentList(
+          '/empowerment/programs/$programId/disbursements',
+          'batches',
+        ),
+        programName,
+      );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          var refreshing = false;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              Future<void> refreshHistory() async {
+                setDialogState(() {
+                  refreshing = true;
+                });
+                try {
+                  final refreshed = await _loadEmpowermentList(
+                    '/empowerment/programs/$programId/disbursements',
+                    'batches',
+                  );
+                  if (context.mounted) {
+                    setDialogState(() {
+                      rows = _disbursementRows(refreshed, programName);
+                    });
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Unable to refresh disbursements: '
+                          '${e.toString().replaceFirst('Exception: ', '')}',
+                        ),
+                      ),
+                    );
+                  }
+                } finally {
+                  if (context.mounted) {
+                    setDialogState(() {
+                      refreshing = false;
+                    });
+                  }
+                }
+              }
+
+              return AlertDialog(
+                title: Text('$programName Disbursements'),
+                content: SizedBox(
+                  width: 760,
+                  height: 500,
+                  child: refreshing
+                      ? const Center(child: CircularProgressIndicator())
+                      : rows.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No disbursement records available yet.',
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: rows.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (_, index) {
+                                final row = rows[index];
+                                final status =
+                                    row['status']?.toString() ?? 'UNKNOWN';
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor:
+                                        _disbursementStatusColor(status)
+                                            .withOpacity(0.12),
+                                    child: Icon(
+                                      Icons.payments_outlined,
+                                      color: _disbursementStatusColor(status),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    row['beneficiary']?.toString() ??
+                                        'Beneficiary',
+                                  ),
+                                  subtitle: Text(
+                                    'Program: ${row['program']} • '
+                                    'Amount: ${money(row['amount'])}\n'
+                                    'Status: $status • Reference: ${row['reference']}\n'
+                                    'Date: ${row['date']}',
+                                  ),
+                                  isThreeLine: true,
+                                );
+                              },
+                            ),
+                ),
+                actions: [
+                  TextButton.icon(
+                    onPressed: refreshing ? null : refreshHistory,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Refresh'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Unable to load disbursements: $e',
+            'Unable to load disbursements: '
+            '${e.toString().replaceFirst('Exception: ', '')}',
           ),
         ),
       );
@@ -2320,6 +2576,41 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     return _beneficiaryVerificationStatus(beneficiary) == 'VERIFIED';
   }
 
+  String _beneficiaryPaymentStatus(Map<String, dynamic> beneficiary) {
+    final applicationStatus = _beneficiaryApplicationStatus(beneficiary);
+    final values = [
+      beneficiary['paymentStatus'],
+      beneficiary['payoutStatus'],
+      beneficiary['disbursementStatus'],
+      _beneficiaryMap(beneficiary['payment'])['status'],
+      _beneficiaryMap(beneficiary['payout'])['status'],
+      _beneficiaryMap(beneficiary['disbursement'])['status'],
+      applicationStatus == 'PAID' ? 'PAID' : null,
+      beneficiary['paidAt'] != null || beneficiary['paymentReference'] != null
+          ? 'PAID'
+          : null,
+    ];
+
+    for (final value in values) {
+      final status = value?.toString().trim().toUpperCase() ?? '';
+      if (status.isNotEmpty) {
+        return status == 'SUCCESSFUL' ? 'PAID' : status;
+      }
+    }
+
+    return 'NOT PAID';
+  }
+
+  bool _canDisburseBeneficiary(Map<String, dynamic> beneficiary) {
+    final paymentStatus = _beneficiaryPaymentStatus(beneficiary);
+    return isHeadOffice &&
+        _beneficiaryApplicationStatus(beneficiary) == 'APPROVED' &&
+        _isBeneficiaryVerified(beneficiary) &&
+        (paymentStatus == 'NOT PAID' ||
+            paymentStatus == 'UNPAID' ||
+            paymentStatus == 'NONE');
+  }
+
   List<String> _beneficiaryStatusOptions(
     String applicationStatus,
     bool isVerified,
@@ -2365,9 +2656,246 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     return fallback;
   }
 
+  String _newIdempotencyKey(String beneficiaryId) {
+    return 'empowerment-$beneficiaryId-${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  String _payoutApiMessage(
+    int statusCode,
+    dynamic body, {
+    required String fallback,
+  }) {
+    final serverMessage = body is Map && body['message'] != null
+        ? body['message'].toString()
+        : '';
+    final normalized = serverMessage.toLowerCase();
+
+    if (statusCode == 401 || statusCode == 403) {
+      return 'Only Head Office can disburse Empowerment funds.';
+    }
+
+    if (statusCode == 409) {
+      if (normalized.contains('already been paid') ||
+          normalized.contains('already processed') ||
+          normalized.contains('idempotency')) {
+        return 'This payment has already been processed. The latest beneficiary data has been refreshed.';
+      }
+
+      return serverMessage.isNotEmpty
+          ? '$serverMessage The latest beneficiary data has been refreshed.'
+          : 'The beneficiary payout state changed. The latest data has been refreshed.';
+    }
+
+    return serverMessage.isNotEmpty ? serverMessage : fallback;
+  }
+
+  Future<bool> _disburseBeneficiary({
+    required String programId,
+    required String beneficiaryId,
+  }) async {
+    if (!isHeadOffice) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Only Head Office can disburse Empowerment funds.'),
+          ),
+        );
+      }
+      return false;
+    }
+
+    if (isDisbursing) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('A beneficiary payout is already being processed.'),
+          ),
+        );
+      }
+      return false;
+    }
+
+    if (mounted) {
+      setState(() {
+        isDisbursing = true;
+      });
+    } else {
+      isDisbursing = true;
+    }
+
+    try {
+      final headers = await _empowermentHeaders();
+      headers['Idempotency-Key'] = _newIdempotencyKey(beneficiaryId);
+      final response = await _httpClient
+          .post(
+            Uri.parse(
+              '$baseUrl/empowerment/programs/$programId/beneficiaries/'
+              '$beneficiaryId/disbursement',
+            ),
+            headers: headers,
+            body: jsonEncode(<String, dynamic>{}),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      dynamic body;
+      try {
+        body = jsonDecode(response.body);
+      } catch (_) {
+        body = null;
+      }
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (body is! Map || body['success'] != false);
+      final message = _payoutApiMessage(
+        response.statusCode,
+        body,
+        fallback: success
+            ? 'Beneficiary wallet credited successfully.'
+            : 'Unable to disburse to this beneficiary.',
+      );
+      final duplicate = response.statusCode == 409 &&
+          message.startsWith('This payment has already been processed.');
+
+      final conflict = response.statusCode == 409;
+      if (success || conflict) {
+        await loadDashboard();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success && body is Map && body['idempotent'] == true
+                  ? 'Payment was already processed. The latest beneficiary data has been refreshed.'
+                  : message,
+            ),
+          ),
+        );
+      }
+
+      return success || duplicate;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'We could not confirm this payment. Refresh beneficiary details '
+              'before retrying.',
+            ),
+          ),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDisbursing = false;
+        });
+      } else {
+        isDisbursing = false;
+      }
+    }
+  }
+
+  Future<bool> _confirmBeneficiaryDisbursement({
+    required Map<String, dynamic> beneficiary,
+    required String programName,
+    required String programId,
+    required dynamic amountPerBeneficiary,
+  }) async {
+    final beneficiaryId = _beneficiaryId(beneficiary);
+    if (beneficiaryId.isEmpty || !_canDisburseBeneficiary(beneficiary)) {
+      return false;
+    }
+
+    final fullName = _beneficiaryValue(
+      beneficiary,
+      const ['fullName', 'name'],
+      fallback: 'Beneficiary',
+    );
+    final servicePayAccount = _beneficiaryValue(
+      beneficiary,
+      const ['accountNumber', 'userId', 'accountId', 'servicePayAccount'],
+      fallback: _beneficiaryValue(
+        _beneficiaryMap(beneficiary['user']),
+        const ['fullName', 'email', 'phone', '_id', 'id'],
+      ),
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm wallet payment'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _organizationDetailRow('Beneficiary', fullName),
+                  _organizationDetailRow('Program', programName),
+                  _organizationDetailRow(
+                    'Configured amount per beneficiary',
+                    money(amountPerBeneficiary),
+                  ),
+                  _organizationDetailRow(
+                    'ServicePay account',
+                    servicePayAccount,
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF7F0),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'This payment will credit the beneficiary wallet. '
+                      'The amount is controlled by the program configuration '
+                      'and cannot be edited here.',
+                      style: TextStyle(
+                        color: Color(0xFF08783E),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.payments_rounded),
+              label: const Text('Disburse / Pay'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return false;
+    }
+
+    return _disburseBeneficiary(
+      programId: programId,
+      beneficiaryId: beneficiaryId,
+    );
+  }
+
   Future<void> _showBeneficiaryDetails(
     Map<String, dynamic> beneficiary, {
     required String programName,
+    required String programId,
+    required dynamic amountPerBeneficiary,
   }) async {
     final id = _beneficiaryId(beneficiary);
     final fullName = _beneficiaryValue(
@@ -2385,6 +2913,26 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     );
     final canUpdateStatus =
         statusOptions.any((status) => status != applicationStatus);
+    final paymentStatus = _beneficiaryPaymentStatus(beneficiary);
+    final canDisburse = _canDisburseBeneficiary(beneficiary);
+    final paidAmountValue = _beneficiaryValue(
+      beneficiary,
+      const ['paidAmount', 'amountPaid', 'disbursedAmount', 'amount'],
+      fallback: '',
+    );
+    final paidAmount = paidAmountValue.isNotEmpty
+        ? money(paidAmountValue)
+        : paymentStatus == 'PAID'
+            ? money(amountPerBeneficiary)
+            : 'Not provided';
+    final paymentReference = _beneficiaryValue(
+      beneficiary,
+      const ['paymentReference', 'transactionReference', 'reference'],
+    );
+    final paidAt = _beneficiaryValue(
+      beneficiary,
+      const ['paidAt', 'paymentDate', 'disbursedAt'],
+    );
     final servicePayAccount = _beneficiaryValue(
       beneficiary,
       const ['accountNumber', 'userId', 'accountId', 'servicePayAccount'],
@@ -2418,6 +2966,12 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                     'ServicePay account',
                     servicePayAccount,
                   ),
+                  _organizationDetailRow('Payment status', paymentStatus),
+                  if (paymentStatus != 'NOT PAID') ...[
+                    _organizationDetailRow('Paid amount', paidAmount),
+                    _organizationDetailRow('Payment reference', paymentReference),
+                    _organizationDetailRow('Paid date', paidAt),
+                  ],
                   _organizationDetailRow(
                     'Phone',
                     _beneficiaryValue(
@@ -2500,6 +3054,14 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                 icon: const Icon(Icons.verified_user_rounded),
                 label: const Text('Verify Beneficiary'),
               ),
+            if (canDisburse && id.isNotEmpty)
+              FilledButton.icon(
+                onPressed: isDisbursing
+                    ? null
+                    : () => Navigator.of(dialogContext).pop('disburse'),
+                icon: const Icon(Icons.payments_rounded),
+                label: const Text('Disburse / Pay'),
+              ),
           ],
         );
       },
@@ -2547,6 +3109,15 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         onSelected: (newStatus) async {
           await _updateBeneficiaryStatus(id, newStatus);
         },
+      );
+    }
+
+    if (detailAction == 'disburse') {
+      await _confirmBeneficiaryDisbursement(
+        beneficiary: beneficiary,
+        programName: programName,
+        programId: programId,
+        amountPerBeneficiary: amountPerBeneficiary,
       );
     }
   }
@@ -2603,6 +3174,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       final programId =
           (selectedProgram['_id'] ?? selectedProgram['id'] ?? '').toString();
       final programName = (selectedProgram['name'] ?? 'Program').toString();
+      final amountPerBeneficiary =
+          selectedProgram['amountPerBeneficiary'] ??
+              selectedProgram['amount'] ??
+              selectedProgram['grantAmount'] ??
+              0;
 
       if (programId.isEmpty) {
         throw Exception('Program ID is missing.');
@@ -2618,7 +3194,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
           return;
         }
 
-        final selectedId = await showDialog<String>(
+        final selectedAction = await showDialog<String>(
           context: context,
           builder: (dialogContext) {
             return AlertDialog(
@@ -2644,6 +3220,9 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                               _beneficiaryApplicationStatus(item);
                           final verificationStatus =
                               _beneficiaryVerificationStatus(item);
+                          final paymentStatus =
+                              _beneficiaryPaymentStatus(item);
+                          final canDisburse = _canDisburseBeneficiary(item);
 
                           return ListTile(
                             leading: const CircleAvatar(
@@ -2652,12 +3231,26 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                             title: Text(name),
                             subtitle: Text(
                               'Application: $applicationStatus • '
-                              'Verification: $verificationStatus',
+                              'Verification: $verificationStatus • '
+                              'Payment: $paymentStatus',
                             ),
-                            trailing: const Icon(Icons.chevron_right_rounded),
+                            trailing: canDisburse && id.isNotEmpty
+                                ? FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF08783E),
+                                    ),
+                                    onPressed: isDisbursing
+                                        ? null
+                                        : () => Navigator.of(dialogContext)
+                                            .pop('disburse:$id'),
+                                    icon: const Icon(Icons.payments_rounded),
+                                    label: const Text('Disburse / Pay'),
+                                  )
+                                : const Icon(Icons.chevron_right_rounded),
                             onTap: id.isEmpty
                                 ? null
-                                : () => Navigator.of(dialogContext).pop(id),
+                                : () => Navigator.of(dialogContext)
+                                    .pop('view:$id'),
                           );
                         },
                       ),
@@ -2672,10 +3265,17 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
           },
         );
 
-        if (!mounted || selectedId == null) {
+        if (!mounted || selectedAction == null) {
           return;
         }
 
+        final wantsDisbursement = selectedAction.startsWith('disburse:');
+        final selectedId = selectedAction
+            .replaceFirst(
+              wantsDisbursement ? 'disburse:' : 'view:',
+              '',
+            )
+            .trim();
         Map<String, dynamic>? selectedBeneficiary;
         for (final raw in beneficiaries) {
           final item = _beneficiaryMap(raw);
@@ -2686,10 +3286,21 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         }
 
         if (selectedBeneficiary != null) {
-          await _showBeneficiaryDetails(
-            selectedBeneficiary,
-            programName: programName,
-          );
+          if (wantsDisbursement) {
+            await _confirmBeneficiaryDisbursement(
+              beneficiary: selectedBeneficiary,
+              programName: programName,
+              programId: programId,
+              amountPerBeneficiary: amountPerBeneficiary,
+            );
+          } else {
+            await _showBeneficiaryDetails(
+              selectedBeneficiary,
+              programName: programName,
+              programId: programId,
+              amountPerBeneficiary: amountPerBeneficiary,
+            );
+          }
         }
       }
     } catch (e) {
@@ -2822,6 +3433,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         Icons.chevron_right_rounded,
       ),
       onTap: () async {
+        if (onTap != null) {
+          onTap();
+          return;
+        }
+
         if (title == 'Organizations') {
           await _openOrganizationsManager();
           return;

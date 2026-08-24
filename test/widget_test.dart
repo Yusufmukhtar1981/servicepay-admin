@@ -12,6 +12,7 @@ void main() {
     setUp(() {
       SharedPreferences.setMockInitialValues({
         'auth_token': 'test-admin-token',
+        'user_role': 'HEAD_OFFICE',
       });
     });
 
@@ -272,6 +273,320 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('APPROVED'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Head Office disburses an approved verified beneficiary with idempotency',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+          refreshedBeneficiaries: [
+            beneficiary(
+              applicationStatus: 'PAID',
+              verificationStatus: 'VERIFIED',
+              paymentStatus: 'PAID',
+              paidAt: '2026-08-24T16:00:00.000Z',
+              paymentReference: 'EMP-PAID-001',
+            ),
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Review applications and beneficiaries'),
+          400,
+        );
+        await tester.tap(find.text('Review applications and beneficiaries'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Youth Grant'));
+        await tester.pumpAndSettle();
+        expect(find.text('Disburse / Pay'), findsOneWidget);
+        await tester.tap(find.text('Pending Beneficiary'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Disburse / Pay'), findsOneWidget);
+        await tester.tap(find.text('Disburse / Pay'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Confirm wallet payment'), findsOneWidget);
+        expect(find.text('Beneficiary'), findsOneWidget);
+        expect(find.text('Youth Grant'), findsOneWidget);
+        expect(find.text('₦25,000'), findsOneWidget);
+        expect(find.text('SPW-1234'), findsOneWidget);
+        expect(
+          find.textContaining('This payment will credit the beneficiary wallet.'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.pumpAndSettle();
+
+        expect(
+          client.lastPostPath,
+          '/api/empowerment/programs/program-1/beneficiaries/'
+          'beneficiary-1/disbursement',
+        );
+        expect(client.lastPostHeaders['authorization'], 'Bearer test-admin-token');
+        expect(
+          client.lastPostHeaders['idempotency-key']!.length,
+          greaterThanOrEqualTo(12),
+        );
+        expect(client.lastPostPayload, <String, dynamic>{});
+        expect(find.textContaining('Payment: PAID'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'handles an idempotent beneficiary payment response without a duplicate action',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+          refreshedBeneficiaries: [
+            beneficiary(
+              applicationStatus: 'PAID',
+              verificationStatus: 'VERIFIED',
+              paymentStatus: 'PAID',
+            ),
+          ],
+          disburseResponse: {
+            'success': true,
+            'idempotent': true,
+            'batch': {'batchReference': 'EMP-PAID-001'},
+          },
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Disburse / Pay'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.pumpAndSettle();
+
+        expect(client.disburseCount, 1);
+        expect(
+          find.text(
+            'Payment was already processed. The latest beneficiary data has been refreshed.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Payment: PAID'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'does not show payment actions to a non-Head-Office role',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'auth_token': 'test-admin-token',
+          'user_role': 'STATE_MANAGER',
+        });
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        expect(find.text('Disbursements'), findsNothing);
+
+        await tester.scrollUntilVisible(
+          find.text('Review applications and beneficiaries'),
+          400,
+        );
+        await tester.tap(find.text('Review applications and beneficiaries'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Youth Grant'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Pending Beneficiary'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Disburse / Pay'), findsNothing);
+        expect(client.disburseCount, 0);
+      },
+    );
+
+    testWidgets(
+      'lists and refreshes Head Office disbursement history',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          disbursements: [
+            {
+              'batchReference': 'EMP-BATCH-001',
+              'status': 'COMPLETED',
+              'createdAt': '2026-08-24T16:00:00.000Z',
+              'results': [
+                {
+                  'beneficiary': {'fullName': 'Paid Beneficiary'},
+                  'amount': 25000,
+                  'status': 'SUCCESSFUL',
+                  'transactionReference': 'EMP-PAID-001',
+                },
+                {
+                  'beneficiary': {'fullName': 'Reversed Beneficiary'},
+                  'amount': 25000,
+                  'status': 'REVERSED',
+                  'transactionReference': 'EMP-REV-001',
+                },
+              ],
+            },
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(find.text('Disbursements'), 400);
+        await tester.tap(find.text('Disbursements'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Youth Grant'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Paid Beneficiary'), findsOneWidget);
+        expect(find.text('Reversed Beneficiary'), findsOneWidget);
+        expect(find.textContaining('Status: SUCCESSFUL'), findsOneWidget);
+        expect(find.textContaining('Status: REVERSED'), findsOneWidget);
+        expect(find.textContaining('EMP-PAID-001'), findsOneWidget);
+
+        await tester.tap(find.text('Refresh'));
+        await tester.pumpAndSettle();
+
+        expect(client.disbursementHistoryGetCount, greaterThanOrEqualTo(2));
+      },
+    );
+
+    testWidgets(
+      'does not expose payout controls for existing payment states',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+              paymentStatus: 'PROCESSING',
+            ),
+            {
+              ...beneficiary(
+                applicationStatus: 'APPROVED',
+                verificationStatus: 'VERIFIED',
+                paymentStatus: 'REVERSED',
+              ),
+              '_id': 'beneficiary-2',
+              'fullName': 'Reversed Beneficiary',
+            },
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Review applications and beneficiaries'),
+          400,
+        );
+        await tester.tap(find.text('Review applications and beneficiaries'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Youth Grant'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Payment: PROCESSING'), findsOneWidget);
+        expect(find.textContaining('Payment: REVERSED'), findsOneWidget);
+        expect(find.text('Disburse / Pay'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'reconciles a conflicting payout with refreshed server status',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+          refreshedBeneficiaries: [
+            beneficiary(
+              applicationStatus: 'PAID',
+              verificationStatus: 'VERIFIED',
+              paymentStatus: 'PAID',
+            ),
+          ],
+          disburseStatusCode: 409,
+          disburseResponse: {
+            'success': false,
+            'message': 'Payout state no longer allows disbursement.',
+          },
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Disburse / Pay'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.pumpAndSettle();
+
+        expect(client.disburseCount, 1);
+        expect(
+          find.text(
+            'Payout state no longer allows disbursement. '
+            'The latest beneficiary data has been refreshed.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Payment: PAID'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'reports production authorization denial without duplicating a payout',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+          disburseStatusCode: 403,
+          disburseResponse: {
+            'success': false,
+            'message': 'Forbidden',
+          },
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Disburse / Pay'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Disburse / Pay').last);
+        await tester.pumpAndSettle();
+
+        expect(client.disburseCount, 1);
+        expect(
+          find.text('Only Head Office can disburse Empowerment funds.'),
+          findsOneWidget,
+        );
       },
     );
   });
@@ -692,24 +1007,35 @@ Map<String, dynamic> organization(
   };
 }
 
-Map<String, dynamic> program() {
+Map<String, dynamic> program({
+  String status = 'OPEN',
+  num amountPerBeneficiary = 25000,
+}) {
   return {
     '_id': 'program-1',
     'name': 'Youth Grant',
-    'status': 'OPEN',
+    'status': status,
+    'amountPerBeneficiary': amountPerBeneficiary,
   };
 }
 
 Map<String, dynamic> beneficiary({
   String applicationStatus = 'UNDER_REVIEW',
   String verificationStatus = 'PENDING',
+  String paymentStatus = '',
+  String paymentReference = '',
+  String paidAt = '',
 }) {
   return {
     '_id': 'beneficiary-1',
     'fullName': 'Pending Beneficiary',
     'phone': '08000000000',
+    'servicePayAccount': 'SPW-1234',
     'applicationStatus': applicationStatus,
     'verificationStatus': verificationStatus,
+    if (paymentStatus.isNotEmpty) 'paymentStatus': paymentStatus,
+    if (paymentReference.isNotEmpty) 'paymentReference': paymentReference,
+    if (paidAt.isNotEmpty) 'paidAt': paidAt,
     'createdAt': '2026-08-24T00:00:00.000Z',
   };
 }
@@ -811,12 +1137,22 @@ class RecordingHttpClient extends http.BaseClient {
     required this.organizations,
     this.programs = const [],
     this.beneficiaries = const [],
+    this.refreshedBeneficiaries,
+    this.disbursements = const [],
+    this.disburseStatusCode = 201,
+    this.disburseResponse,
   });
 
   final List<Map<String, dynamic>> organizations;
   final List<Map<String, dynamic>> programs;
   final List<Map<String, dynamic>> beneficiaries;
+  final List<Map<String, dynamic>>? refreshedBeneficiaries;
+  final List<Map<String, dynamic>> disbursements;
+  final int disburseStatusCode;
+  final Map<String, dynamic>? disburseResponse;
   final List<RecordedRequest> requests = [];
+  int disburseCount = 0;
+  int disbursementHistoryGetCount = 0;
 
   String? get lastPatchPath {
     for (final request in requests.reversed) {
@@ -836,14 +1172,41 @@ class RecordingHttpClient extends http.BaseClient {
     return null;
   }
 
+  String? get lastPostPath {
+    for (final request in requests.reversed) {
+      if (request.method == 'POST') {
+        return request.url.path;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? get lastPostPayload {
+    for (final request in requests.reversed) {
+      if (request.method == 'POST') {
+        return jsonDecode(request.body) as Map<String, dynamic>;
+      }
+    }
+    return null;
+  }
+
+  Map<String, String> get lastPostHeaders {
+    final request = requests.lastWhere((item) => item.method == 'POST');
+    return {
+      for (final entry in request.headers.entries) entry.key.toLowerCase(): entry.value,
+    };
+  }
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = request is http.Request ? request.body : '';
+    final headers = Map<String, String>.from(request.headers);
     requests.add(
       RecordedRequest(
         method: request.method,
         url: request.url,
         body: body,
+        headers: headers,
       ),
     );
 
@@ -854,9 +1217,18 @@ class RecordingHttpClient extends http.BaseClient {
       responseBody = {'organizations': organizations};
     } else if (request.url.path.endsWith('/empowerment/programs')) {
       responseBody = {'programs': programs};
+    } else if (request.method == 'GET' &&
+        request.url.path.contains('/empowerment/programs/') &&
+        request.url.path.endsWith('/disbursements')) {
+      disbursementHistoryGetCount++;
+      responseBody = {'success': true, 'batches': disbursements};
     } else if (request.url.path.contains('/programs/') &&
         request.url.path.endsWith('/beneficiaries')) {
-      responseBody = {'beneficiaries': beneficiaries};
+      responseBody = {
+        'beneficiaries': disburseCount > 0 && refreshedBeneficiaries != null
+            ? refreshedBeneficiaries
+            : beneficiaries,
+      };
     } else if (request.url.path.endsWith('/empowerment/dashboard-summary')) {
       responseBody = {
         'success': true,
@@ -875,6 +1247,17 @@ class RecordingHttpClient extends http.BaseClient {
         'success': true,
         'message': 'Beneficiary updated successfully.',
       };
+    } else if (request.method == 'POST' &&
+        request.url.path.contains('/beneficiaries/') &&
+        request.url.path.endsWith('/disbursement')) {
+      disburseCount++;
+      statusCode = disburseStatusCode;
+      responseBody = disburseResponse ??
+          {
+            'success': true,
+            'idempotent': false,
+            'batch': {'batchReference': 'EMP-PAID-001'},
+          };
     } else {
       statusCode = 404;
       responseBody = {'success': false, 'message': 'Unexpected test request.'};

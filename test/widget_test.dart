@@ -132,6 +132,101 @@ void main() {
         expect(find.text('Suspended Org'), findsNothing);
       },
     );
+
+    testWidgets(
+      'verifies a beneficiary through the protected verification endpoint',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program()],
+          beneficiaries: [beneficiary()],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        await tester.tap(find.text('Verify Beneficiary'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Verify Beneficiary').last);
+        await tester.pumpAndSettle();
+
+        expect(
+          client.lastPatchPath,
+          '/api/empowerment/beneficiaries/beneficiary-1/verify',
+        );
+        expect(
+          client.lastPatchPayload,
+          {'verificationStatus': 'VERIFIED'},
+        );
+      },
+    );
+
+    testWidgets(
+      'hides financial and approval statuses before verification',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program()],
+          beneficiaries: [beneficiary()],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Update Application Status'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('SUBMITTED'), findsNothing);
+        expect(find.text('UNDER REVIEW'), findsOneWidget);
+        expect(find.text('APPROVED'), findsNothing);
+        expect(find.text('PAYMENT PENDING'), findsNothing);
+        expect(find.text('PAID'), findsNothing);
+        expect(find.text('FAILED'), findsNothing);
+        expect(find.text('REVERSED'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'does not offer approval before a verified application reaches review',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program()],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'SUBMITTED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Update Application Status'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('UNDER REVIEW'), findsOneWidget);
+        expect(find.text('APPROVED'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'offers approval only for a verified application under review',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program()],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'UNDER_REVIEW',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Update Application Status'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('APPROVED'), findsOneWidget);
+      },
+    );
   });
 }
 
@@ -144,6 +239,28 @@ Map<String, dynamic> organization(
     '_id': id,
     'name': name,
     'status': status,
+  };
+}
+
+Map<String, dynamic> program() {
+  return {
+    '_id': 'program-1',
+    'name': 'Youth Grant',
+    'status': 'OPEN',
+  };
+}
+
+Map<String, dynamic> beneficiary({
+  String applicationStatus = 'UNDER_REVIEW',
+  String verificationStatus = 'PENDING',
+}) {
+  return {
+    '_id': 'beneficiary-1',
+    'fullName': 'Pending Beneficiary',
+    'phone': '08000000000',
+    'applicationStatus': applicationStatus,
+    'verificationStatus': verificationStatus,
+    'createdAt': '2026-08-24T00:00:00.000Z',
   };
 }
 
@@ -174,12 +291,33 @@ Future<void> openOrganizationDetails(
   await tester.pumpAndSettle();
 }
 
+Future<void> openBeneficiaryDetails(
+  WidgetTester tester,
+  RecordingHttpClient client,
+) async {
+  await pumpAdminScreen(tester, client);
+  await tester.scrollUntilVisible(
+    find.text('Review applications and beneficiaries'),
+    400,
+  );
+  await tester.tap(find.text('Review applications and beneficiaries'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(client.programs.first['name'] as String));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(client.beneficiaries.first['fullName'] as String));
+  await tester.pumpAndSettle();
+}
+
 class RecordingHttpClient extends http.BaseClient {
   RecordingHttpClient({
     required this.organizations,
+    this.programs = const [],
+    this.beneficiaries = const [],
   });
 
   final List<Map<String, dynamic>> organizations;
+  final List<Map<String, dynamic>> programs;
+  final List<Map<String, dynamic>> beneficiaries;
   final List<RecordedRequest> requests = [];
 
   String? get lastPatchPath {
@@ -216,6 +354,11 @@ class RecordingHttpClient extends http.BaseClient {
 
     if (request.url.path.endsWith('/empowerment/organizations')) {
       responseBody = {'organizations': organizations};
+    } else if (request.url.path.endsWith('/empowerment/programs')) {
+      responseBody = {'programs': programs};
+    } else if (request.url.path.contains('/programs/') &&
+        request.url.path.endsWith('/beneficiaries')) {
+      responseBody = {'beneficiaries': beneficiaries};
     } else if (request.url.path.endsWith('/empowerment/dashboard-summary')) {
       responseBody = {
         'success': true,
@@ -227,6 +370,12 @@ class RecordingHttpClient extends http.BaseClient {
       responseBody = {
         'success': true,
         'message': 'Status updated successfully.',
+      };
+    } else if (request.method == 'PATCH' &&
+        request.url.path.contains('/empowerment/beneficiaries/')) {
+      responseBody = {
+        'success': true,
+        'message': 'Beneficiary updated successfully.',
       };
     } else {
       statusCode = 404;

@@ -263,11 +263,17 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         return success;
       }
 
-      final message = body is Map && body['message'] != null
-          ? body['message'].toString()
-          : success
-              ? 'Status updated successfully.'
-              : 'Unable to update status.';
+      final fallbackMessage =
+          success ? 'Status updated successfully.' : 'Unable to update status.';
+      final message = path.contains('/empowerment/beneficiaries/')
+          ? _beneficiaryApiMessage(
+              response.statusCode,
+              body,
+              fallback: fallbackMessage,
+            )
+          : body is Map && body['message'] != null
+              ? body['message'].toString()
+              : fallbackMessage;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -325,6 +331,124 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       status: status,
       rejectionReason: rejectionReason,
     );
+  }
+
+  String _beneficiaryApiMessage(
+    int statusCode,
+    dynamic body, {
+    required String fallback,
+    bool isVerificationAction = false,
+  }) {
+    final serverMessage = body is Map && body['message'] != null
+        ? body['message'].toString()
+        : '';
+    final normalizedMessage = serverMessage.toLowerCase();
+
+    if (statusCode == 401 || statusCode == 403) {
+      return 'You are not authorized to perform this beneficiary action.';
+    }
+
+    if (statusCode == 404 || statusCode == 405) {
+      return isVerificationAction
+          ? 'Beneficiary verification is not available on the production API yet. '
+              'The main ServicePay backend must expose this protected action.'
+          : 'The beneficiary record or application-status action is not available.';
+    }
+
+    if (normalizedMessage.contains('verify') &&
+        normalizedMessage.contains('beneficiar')) {
+      return 'This beneficiary must be verified before approval.';
+    }
+
+    if (normalizedMessage.contains('kyc') ||
+        normalizedMessage.contains('nin') ||
+        normalizedMessage.contains('bvn') ||
+        normalizedMessage.contains('identity')) {
+      return 'The beneficiary does not meet the KYC requirement: $serverMessage';
+    }
+
+    return serverMessage.isNotEmpty ? serverMessage : fallback;
+  }
+
+  Future<bool> _updateBeneficiaryVerification(
+    String beneficiaryId,
+    String verificationStatus,
+  ) async {
+    try {
+      final token = await _getToken();
+
+      if (token.trim().isEmpty) {
+        throw Exception('Admin session expired. Please log in again.');
+      }
+
+      final response = await _httpClient
+          .patch(
+            Uri.parse(
+              '$baseUrl/empowerment/beneficiaries/$beneficiaryId/verify',
+            ),
+            headers: <String, String>{
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(
+              {
+                'verificationStatus': verificationStatus,
+              },
+            ),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      dynamic body;
+      try {
+        body = jsonDecode(response.body);
+      } catch (_) {
+        body = null;
+      }
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (body is! Map || body['success'] != false);
+
+      if (!mounted) {
+        return success;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? body is Map && body['message'] != null
+                    ? body['message'].toString()
+                    : 'Beneficiary verification updated successfully.'
+                : _beneficiaryApiMessage(
+                    response.statusCode,
+                    body,
+                    fallback: 'Unable to update beneficiary verification.',
+                  isVerificationAction: true,
+                  ),
+          ),
+        ),
+      );
+
+      if (success) {
+        await loadDashboard();
+      }
+
+      return success;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+
+      return false;
+    }
   }
 
   @override
@@ -2118,6 +2242,281 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
   }
 
+  Map<String, dynamic> _beneficiaryMap(dynamic value) {
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : <String, dynamic>{};
+  }
+
+  String _beneficiaryId(Map<String, dynamic> beneficiary) {
+    return (beneficiary['_id'] ?? beneficiary['id'] ?? '').toString();
+  }
+
+  String _beneficiaryApplicationStatus(Map<String, dynamic> beneficiary) {
+    return (beneficiary['applicationStatus'] ??
+            beneficiary['status'] ??
+            'SUBMITTED')
+        .toString()
+        .toUpperCase();
+  }
+
+  String _beneficiaryVerificationStatus(Map<String, dynamic> beneficiary) {
+    final verification = _beneficiaryMap(beneficiary['verification']);
+    final value = beneficiary['verificationStatus'] ??
+        beneficiary['verification_status'] ??
+        beneficiary['kycStatus'] ??
+        verification['status'] ??
+        beneficiary['isVerified'] ??
+        beneficiary['verified'];
+
+    if (value is bool) {
+      return value ? 'VERIFIED' : 'PENDING';
+    }
+
+    final status = value?.toString().trim().toUpperCase() ?? '';
+    if (const ['VERIFIED', 'SUCCESS', 'SUCCESSFUL'].contains(status)) {
+      return 'VERIFIED';
+    }
+    if (status.isEmpty || status == 'UNVERIFIED') {
+      return 'PENDING';
+    }
+    return status;
+  }
+
+  bool _isBeneficiaryVerified(Map<String, dynamic> beneficiary) {
+    return _beneficiaryVerificationStatus(beneficiary) == 'VERIFIED';
+  }
+
+  List<String> _beneficiaryStatusOptions(
+    String applicationStatus,
+    bool isVerified,
+  ) {
+    switch (applicationStatus) {
+      case 'SUBMITTED':
+        return const ['SUBMITTED', 'UNDER_REVIEW', 'REJECTED'];
+      case 'UNDER_REVIEW':
+        return [
+          'UNDER_REVIEW',
+          if (isVerified) 'APPROVED',
+          'REJECTED',
+        ];
+      default:
+        return [applicationStatus];
+    }
+  }
+
+  String _beneficiaryValue(
+    Map<String, dynamic> beneficiary,
+    List<String> keys, {
+    String fallback = 'Not provided',
+  }) {
+    final sources = <Map<String, dynamic>>[
+      beneficiary,
+      _beneficiaryMap(beneficiary['user']),
+      _beneficiaryMap(beneficiary['account']),
+      _beneficiaryMap(beneficiary['application']),
+      _beneficiaryMap(beneficiary['verification']),
+      _beneficiaryMap(beneficiary['kyc']),
+    ];
+
+    for (final source in sources) {
+      for (final key in keys) {
+        final value = source[key]?.toString().trim();
+        if (value != null && value.isNotEmpty) {
+          return value;
+        }
+      }
+    }
+
+    return fallback;
+  }
+
+  Future<void> _showBeneficiaryDetails(
+    Map<String, dynamic> beneficiary, {
+    required String programName,
+  }) async {
+    final id = _beneficiaryId(beneficiary);
+    final fullName = _beneficiaryValue(
+      beneficiary,
+      const ['fullName', 'name'],
+      fallback: 'Beneficiary',
+    );
+    final applicationStatus = _beneficiaryApplicationStatus(beneficiary);
+    final verificationStatus = _beneficiaryVerificationStatus(beneficiary);
+    final isVerified = _isBeneficiaryVerified(beneficiary);
+    final canVerify = !isVerified && applicationStatus == 'UNDER_REVIEW';
+    final statusOptions = _beneficiaryStatusOptions(
+      applicationStatus,
+      isVerified,
+    );
+    final canUpdateStatus =
+        statusOptions.any((status) => status != applicationStatus);
+    final servicePayAccount = _beneficiaryValue(
+      beneficiary,
+      const ['accountNumber', 'userId', 'accountId', 'servicePayAccount'],
+      fallback: _beneficiaryValue(
+        _beneficiaryMap(beneficiary['user']),
+        const ['fullName', 'email', 'phone', '_id', 'id'],
+      ),
+    );
+
+    final detailAction = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(fullName),
+          content: SizedBox(
+            width: 620,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _organizationDetailRow(
+                    'Application status',
+                    applicationStatus,
+                  ),
+                  _organizationDetailRow(
+                    'Verification status',
+                    verificationStatus,
+                  ),
+                  _organizationDetailRow(
+                    'ServicePay account',
+                    servicePayAccount,
+                  ),
+                  _organizationDetailRow(
+                    'Phone',
+                    _beneficiaryValue(
+                      beneficiary,
+                      const ['phone', 'phoneNumber'],
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Email',
+                    _beneficiaryValue(beneficiary, const ['email']),
+                  ),
+                  _organizationDetailRow('Program', programName),
+                  _organizationDetailRow(
+                    'State',
+                    _beneficiaryValue(beneficiary, const ['state']),
+                  ),
+                  _organizationDetailRow(
+                    'LGA',
+                    _beneficiaryValue(beneficiary, const ['lga']),
+                  ),
+                  _organizationDetailRow(
+                    'Address',
+                    _beneficiaryValue(beneficiary, const ['address']),
+                  ),
+                  _organizationDetailRow(
+                    'Gender',
+                    _beneficiaryValue(beneficiary, const ['gender']),
+                  ),
+                  _organizationDetailRow(
+                    'KYC / NIN / BVN reference',
+                    _beneficiaryValue(
+                      beneficiary,
+                      const [
+                        'kycReference',
+                        'ninReference',
+                        'bvnReference',
+                        'maskedIdNumber',
+                        'nin',
+                        'bvn',
+                      ],
+                    ),
+                  ),
+                  _organizationDetailRow(
+                    'Applied',
+                    _beneficiaryValue(
+                      beneficiary,
+                      const ['appliedAt', 'createdAt', 'createdDate'],
+                    ),
+                  ),
+                  if (!isVerified && !canVerify)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Move this application to UNDER REVIEW before verifying it.',
+                        style: TextStyle(
+                          color: Color(0xFFB42318),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+            OutlinedButton.icon(
+              onPressed: id.isEmpty || !canUpdateStatus
+                  ? null
+                  : () => Navigator.of(dialogContext).pop('status'),
+              icon: const Icon(Icons.manage_accounts_outlined),
+              label: const Text('Update Application Status'),
+            ),
+            if (canVerify && id.isNotEmpty)
+              FilledButton.icon(
+                onPressed: () => Navigator.of(dialogContext).pop('verify'),
+                icon: const Icon(Icons.verified_user_rounded),
+                label: const Text('Verify Beneficiary'),
+              ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || id.isEmpty) {
+      return;
+    }
+
+    if (detailAction == 'verify') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Verify beneficiary?'),
+            content: Text(
+              'Confirm that the beneficiary information and KYC requirements '
+              'have been reviewed before verification.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Verify Beneficiary'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed == true) {
+        await _updateBeneficiaryVerification(id, 'VERIFIED');
+      }
+      return;
+    }
+
+    if (detailAction == 'status') {
+      await _showStatusPicker(
+        title: fullName,
+        currentStatus: applicationStatus,
+        statuses: statusOptions,
+        onSelected: (newStatus) async {
+          await _updateBeneficiaryStatus(id, newStatus);
+        },
+      );
+    }
+  }
+
   Future<void> _openBeneficiariesManager() async {
     try {
       final programs = await _loadEmpowermentList(
@@ -2133,29 +2532,16 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text(
-              'Select Program',
-            ),
+            title: const Text('Select Program'),
             content: SizedBox(
               width: 560,
               height: 420,
               child: programs.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No programs found.',
-                      ),
-                    )
+                  ? const Center(child: Text('No programs found.'))
                   : ListView.builder(
                       itemCount: programs.length,
                       itemBuilder: (context, index) {
-                        final raw = programs[index];
-
-                        final item = raw is Map
-                            ? Map<String, dynamic>.from(
-                                raw,
-                              )
-                            : <String, dynamic>{};
-
+                        final item = _organizationMap(programs[index]);
                         return ListTile(
                           leading: const Icon(
                             Icons.volunteer_activism_outlined,
@@ -2166,14 +2552,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                           subtitle: Text(
                             (item['status'] ?? '').toString(),
                           ),
-                          trailing: const Icon(
-                            Icons.chevron_right_rounded,
-                          ),
-                          onTap: () {
-                            Navigator.of(
-                              dialogContext,
-                            ).pop(item);
-                          },
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.of(dialogContext).pop(item),
                         );
                       },
                     ),
@@ -2188,126 +2568,96 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
       final programId =
           (selectedProgram['_id'] ?? selectedProgram['id'] ?? '').toString();
+      final programName = (selectedProgram['name'] ?? 'Program').toString();
 
       if (programId.isEmpty) {
-        throw Exception(
-          'Program ID is missing.',
+        throw Exception('Program ID is missing.');
+      }
+
+      while (mounted) {
+        final beneficiaries = await _loadEmpowermentList(
+          '/empowerment/programs/$programId/beneficiaries',
+          'beneficiaries',
         );
-      }
 
-      final beneficiaries = await _loadEmpowermentList(
-        '/empowerment/programs/$programId/beneficiaries',
-        'beneficiaries',
-      );
+        if (!mounted) {
+          return;
+        }
 
-      if (!mounted) {
-        return;
-      }
+        final selectedId = await showDialog<String>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: Text('$programName Beneficiaries'),
+              content: SizedBox(
+                width: 680,
+                height: 500,
+                child: beneficiaries.isEmpty
+                    ? const Center(child: Text('No beneficiaries found.'))
+                    : ListView.separated(
+                        itemCount: beneficiaries.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = _beneficiaryMap(beneficiaries[index]);
+                          final id = _beneficiaryId(item);
+                          final name = _beneficiaryValue(
+                            item,
+                            const ['fullName', 'name', 'phone'],
+                            fallback: 'Beneficiary',
+                          );
+                          final applicationStatus =
+                              _beneficiaryApplicationStatus(item);
+                          final verificationStatus =
+                              _beneficiaryVerificationStatus(item);
 
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(
-              '${selectedProgram['name'] ?? 'Program'} Beneficiaries',
-            ),
-            content: SizedBox(
-              width: 620,
-              height: 480,
-              child: beneficiaries.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No beneficiaries found.',
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: beneficiaries.length,
-                      separatorBuilder: (_, __) => const Divider(
-                        height: 1,
-                      ),
-                      itemBuilder: (context, index) {
-                        final raw = beneficiaries[index];
-
-                        final item = raw is Map
-                            ? Map<String, dynamic>.from(
-                                raw,
-                              )
-                            : <String, dynamic>{};
-
-                        final id = (item['_id'] ?? item['id'] ?? '').toString();
-
-                        final name = (item['fullName'] ??
-                                item['name'] ??
-                                item['phone'] ??
-                                'Beneficiary')
-                            .toString();
-
-                        final status = (item['applicationStatus'] ??
-                                item['status'] ??
-                                'SUBMITTED')
-                            .toString()
-                            .toUpperCase();
-
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(
-                              Icons.person_outline_rounded,
+                          return ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.person_outline_rounded),
                             ),
-                          ),
-                          title: Text(name),
-                          subtitle: Text(
-                            'Status: $status',
-                          ),
-                          trailing: const Icon(
-                            Icons.manage_accounts_outlined,
-                          ),
-                          onTap: id.isEmpty
-                              ? null
-                              : () async {
-                                  Navigator.of(
-                                    dialogContext,
-                                  ).pop();
-
-                                  await _showStatusPicker(
-                                    title: name,
-                                    currentStatus: status,
-                                    statuses: const [
-                                      'SUBMITTED',
-                                      'UNDER_REVIEW',
-                                      'APPROVED',
-                                      'REJECTED',
-                                      'PAYMENT_PENDING',
-                                      'PAID',
-                                      'FAILED',
-                                      'REVERSED',
-                                    ],
-                                    onSelected: (
-                                      newStatus,
-                                    ) async {
-                                      await _updateBeneficiaryStatus(
-                                        id,
-                                        newStatus,
-                                      );
-                                    },
-                                  );
-                                },
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(
-                    dialogContext,
-                  ).pop();
-                },
-                child: const Text('Close'),
+                            title: Text(name),
+                            subtitle: Text(
+                              'Application: $applicationStatus • '
+                              'Verification: $verificationStatus',
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => Navigator.of(dialogContext).pop(id),
+                          );
+                        },
+                      ),
               ),
-            ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (!mounted || selectedId == null) {
+          return;
+        }
+
+        Map<String, dynamic>? selectedBeneficiary;
+        for (final raw in beneficiaries) {
+          final item = _beneficiaryMap(raw);
+          if (_beneficiaryId(item) == selectedId) {
+            selectedBeneficiary = item;
+            break;
+          }
+        }
+
+        if (selectedBeneficiary != null) {
+          await _showBeneficiaryDetails(
+            selectedBeneficiary,
+            programName: programName,
           );
-        },
-      );
+        }
+      }
     } catch (e) {
       if (!mounted) {
         return;
@@ -2316,10 +2666,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.toString().replaceFirst(
-                  'Exception: ',
-                  '',
-                ),
+            e.toString().replaceFirst('Exception: ', ''),
           ),
         ),
       );

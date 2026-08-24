@@ -27,6 +27,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   bool isDisbursing = false;
   bool isFunding = false;
   final Map<String, String> _fundingIdempotencyKeys = {};
+  final Map<String, String> _bulkDisbursementIdempotencyKeys = {};
 
   Map<String, dynamic> summary = {};
   List<dynamic> recentActivity = [];
@@ -3048,6 +3049,34 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
             paymentStatus == 'NONE');
   }
 
+  bool _hasLinkedServicePayAccount(Map<String, dynamic> beneficiary) {
+    final user = _beneficiaryMap(beneficiary['user']);
+    final userId = (user['_id'] ?? user['id'] ?? '').toString().trim();
+    final userStatus = (user['status'] ?? '').toString().trim().toUpperCase();
+
+    if (userId.isNotEmpty) {
+      return userStatus.isEmpty || userStatus == 'ACTIVE';
+    }
+
+    final directUserId = beneficiary['user'] is Map
+        ? ''
+        : beneficiary['user']?.toString().trim() ?? '';
+    if (directUserId.isNotEmpty) {
+      return true;
+    }
+
+    return _beneficiaryValue(
+      beneficiary,
+      const ['servicePayAccount', 'accountNumber', 'accountId', 'userId'],
+      fallback: '',
+    ).isNotEmpty;
+  }
+
+  bool _isBulkEligibleBeneficiary(Map<String, dynamic> beneficiary) {
+    return _hasPayableBeneficiaryState(beneficiary) &&
+        _hasLinkedServicePayAccount(beneficiary);
+  }
+
   bool _canDisburseBeneficiary(
     Map<String, dynamic> beneficiary, {
     required String programStatus,
@@ -3109,6 +3138,19 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
   String _newIdempotencyKey(String beneficiaryId) {
     return 'empowerment-$beneficiaryId-${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  String _bulkDisbursementIdempotencyKey(
+    String programId,
+    List<String> beneficiaryIds,
+  ) {
+    final selection = [...beneficiaryIds]..sort();
+    final signature = '$programId:${selection.join(",")}';
+    return _bulkDisbursementIdempotencyKeys.putIfAbsent(
+      signature,
+      () => 'empowerment-bulk-$programId-'
+          '${DateTime.now().microsecondsSinceEpoch}',
+    );
   }
 
   String _payoutApiMessage(
@@ -3397,6 +3439,519 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       programId: programId,
       beneficiaryId: beneficiaryId,
     );
+  }
+
+  Future<Map<String, dynamic>?> _bulkDisburseBeneficiaries({
+    required String programId,
+    required List<String> beneficiaryIds,
+  }) async {
+    if (!isHeadOffice || beneficiaryIds.isEmpty || isDisbursing) {
+      return null;
+    }
+
+    if (mounted) {
+      setState(() {
+        isDisbursing = true;
+      });
+    } else {
+      isDisbursing = true;
+    }
+
+    try {
+      final headers = await _empowermentHeaders();
+      headers['Idempotency-Key'] = _bulkDisbursementIdempotencyKey(
+        programId,
+        beneficiaryIds,
+      );
+      final response = await _httpClient
+          .post(
+            Uri.parse(
+              '$baseUrl/empowerment/programs/$programId/bulk-disbursement',
+            ),
+            headers: headers,
+            body: jsonEncode(
+              <String, dynamic>{
+                'beneficiaryIds': beneficiaryIds,
+              },
+            ),
+          )
+          .timeout(const Duration(seconds: 60));
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = null;
+      }
+
+      final success = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (decoded is! Map || decoded['success'] != false);
+      if (!success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _payoutApiMessage(
+                  response.statusCode,
+                  decoded,
+                  fallback: 'Unable to complete bulk disbursement.',
+                ),
+              ),
+            ),
+          );
+        }
+        return null;
+      }
+
+      await loadDashboard();
+      return decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'We could not confirm this bulk disbursement. Refresh the '
+              'beneficiary list before retrying.',
+            ),
+          ),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDisbursing = false;
+        });
+      } else {
+        isDisbursing = false;
+      }
+    }
+  }
+
+  Future<void> _showBulkDisbursementResult({
+    required Map<String, dynamic> response,
+    required Map<String, String> beneficiaryNames,
+  }) async {
+    final batch = _beneficiaryMap(response['batch']);
+    final resultSummary = _beneficiaryMap(response['resultSummary']);
+    final financials = _programFinancials(
+      _beneficiaryMap(response['financials']),
+    );
+    final results = (batch['results'] is List)
+        ? List<dynamic>.from(batch['results'] as List)
+        : <dynamic>[];
+    final successful = (resultSummary['successful'] is List)
+        ? List<dynamic>.from(resultSummary['successful'] as List)
+        : results.where((raw) {
+            final result = _beneficiaryMap(raw);
+            return (result['status'] ?? '').toString().toUpperCase() ==
+                'SUCCESSFUL';
+          }).toList();
+    final skipped = (resultSummary['skipped'] is List)
+        ? List<dynamic>.from(resultSummary['skipped'] as List)
+        : <dynamic>[];
+    final failed = (resultSummary['failed'] is List)
+        ? List<dynamic>.from(resultSummary['failed'] as List)
+        : results.where((raw) {
+            final result = _beneficiaryMap(raw);
+            return (result['status'] ?? '').toString().toUpperCase() == 'FAILED';
+          }).toList();
+    final totalPaid = resultSummary['totalAmountPaid'] ??
+        successful.fold<num>(0, (total, raw) {
+          return total + _asDouble(_beneficiaryMap(raw)['amount']);
+        });
+    final remainingBalance = resultSummary['remainingProgramBalance'] ??
+        financials['availableFundingAmount'];
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Bulk Disbursement Result'),
+          content: SizedBox(
+            width: 680,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _organizationDetailRow(
+                    'Successful',
+                    successful.length.toString(),
+                  ),
+                  _organizationDetailRow('Skipped', skipped.length.toString()),
+                  _organizationDetailRow('Failed', failed.length.toString()),
+                  _organizationDetailRow('Total amount paid', money(totalPaid)),
+                  _organizationDetailRow(
+                    'Remaining program balance',
+                    money(remainingBalance),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Individual beneficiary results',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  if (results.isEmpty)
+                    const Text('No individual result records were returned.')
+                  else
+                    ...results.map((raw) {
+                      final result = _beneficiaryMap(raw);
+                      final beneficiary = _beneficiaryMap(result['beneficiary']);
+                      final beneficiaryId = beneficiary.isNotEmpty
+                          ? _beneficiaryId(beneficiary)
+                          : result['beneficiary']?.toString() ?? '';
+                      final name = _beneficiaryValue(
+                        beneficiary,
+                        const ['fullName', 'name', 'phone'],
+                        fallback: beneficiaryNames[beneficiaryId] ??
+                            'Beneficiary',
+                      );
+                      final status =
+                          (result['status'] ?? 'UNKNOWN').toString().toUpperCase();
+                      final reference = (result['transactionReference'] ??
+                              result['paymentReference'] ??
+                              result['reference'] ??
+                              'Not provided')
+                          .toString();
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          status == 'SUCCESSFUL'
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.error_outline_rounded,
+                          color: _disbursementStatusColor(status),
+                        ),
+                        title: Text(name),
+                        subtitle: Text(
+                          'Status: $status • Amount: ${money(result['amount'])}\n'
+                          'Reference: $reference',
+                        ),
+                        isThreeLine: true,
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openBulkDisbursementDialog({
+    required String programId,
+    required String programName,
+  }) async {
+    if (!isHeadOffice) {
+      return;
+    }
+
+    Map<String, dynamic> currentProgram;
+    List<dynamic> eligibleRows;
+    try {
+      currentProgram = await _loadEmpowermentProgram(programId);
+      eligibleRows = await _loadEmpowermentList(
+        '/empowerment/programs/$programId/eligible-beneficiaries?limit=200',
+        'beneficiaries',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to load eligible beneficiaries: '
+              '${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final programStatus = _programStatus(currentProgram);
+    if (programStatus != 'APPROVED') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Program must be approved before bulk disbursement.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final eligible = eligibleRows
+        .map(_beneficiaryMap)
+        .where(_isBulkEligibleBeneficiary)
+        .toList();
+    if (eligible.isEmpty) {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Bulk Disbursement'),
+            content: const Text(
+              'No eligible unpaid beneficiaries are available for this program.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    final currentAmount = currentProgram['amountPerBeneficiary'] ??
+        currentProgram['amount'] ??
+        currentProgram['grantAmount'] ??
+        0;
+    final currentFinancials = _programFinancials(currentProgram);
+    final currentBalance = currentFinancials['availableFundingAmount'];
+    final selectedIds = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) {
+        final selected = <String>{};
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final selectedCount = selected.length;
+            final total = _asDouble(currentAmount) * selectedCount;
+            final balanceAfter = _asDouble(currentBalance) - total;
+            final insufficient = selectedCount > 0 &&
+                (_asDouble(currentAmount) <= 0 || balanceAfter < 0);
+            final allSelected = selectedCount == eligible.length;
+
+            return AlertDialog(
+              title: Text('$programName Bulk Disbursement'),
+              content: SizedBox(
+                width: 720,
+                height: 540,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Only approved, verified, linked, unpaid beneficiaries are shown.',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    _organizationDetailRow(
+                      'Eligible beneficiaries',
+                      eligible.length.toString(),
+                    ),
+                    _organizationDetailRow(
+                      'Configured amount per beneficiary',
+                      money(currentAmount),
+                    ),
+                    _organizationDetailRow(
+                      'Selected beneficiaries',
+                      selectedCount.toString(),
+                    ),
+                    _organizationDetailRow(
+                      'Total payout amount',
+                      money(total),
+                    ),
+                    _organizationDetailRow(
+                      'Current program balance',
+                      money(currentBalance),
+                    ),
+                    _organizationDetailRow(
+                      'Projected balance after payout',
+                      money(balanceAfter),
+                    ),
+                    if (insufficient)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Program funding is insufficient for this selection.',
+                          style: TextStyle(
+                            color: Color(0xFFB42318),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    CheckboxListTile(
+                      value: allSelected,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selected
+                            ..clear()
+                            ..addAll(
+                              value == true
+                                  ? eligible.map(_beneficiaryId)
+                                  : const <String>[],
+                            );
+                        });
+                      },
+                      title: const Text('Select All Eligible'),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: eligible.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, index) {
+                          final beneficiary = eligible[index];
+                          final id = _beneficiaryId(beneficiary);
+                          final name = _beneficiaryValue(
+                            beneficiary,
+                            const ['fullName', 'name', 'phone'],
+                            fallback: 'Beneficiary',
+                          );
+                          final account = _beneficiaryValue(
+                            beneficiary,
+                            const [
+                              'servicePayAccount',
+                              'accountNumber',
+                              'phone',
+                              'email',
+                            ],
+                          );
+                          return CheckboxListTile(
+                            value: selected.contains(id),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  selected.add(id);
+                                } else {
+                                  selected.remove(id);
+                                }
+                              });
+                            },
+                            title: Text(name),
+                            subtitle: Text('ServicePay account: $account'),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: selected.isEmpty || insufficient
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(
+                            selected.toList()..sort(),
+                          ),
+                  child: const Text('Review & Continue'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (selectedIds == null || selectedIds.isEmpty || !mounted) {
+      return;
+    }
+
+    final total = _asDouble(currentAmount) * selectedIds.length;
+    final balanceAfter = _asDouble(currentBalance) - total;
+    if (balanceAfter < 0 || _asDouble(currentAmount) <= 0) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm bulk disbursement'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _organizationDetailRow('Program', programName),
+                _organizationDetailRow(
+                  'Number of beneficiaries',
+                  selectedIds.length.toString(),
+                ),
+                _organizationDetailRow(
+                  'Amount per beneficiary',
+                  money(currentAmount),
+                ),
+                _organizationDetailRow(
+                  'Total amount to disburse',
+                  money(total),
+                ),
+                _organizationDetailRow(
+                  'Current program balance',
+                  money(currentBalance),
+                ),
+                _organizationDetailRow(
+                  'Balance after disbursement',
+                  money(balanceAfter),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Amounts are controlled by the program configuration. '
+                  'The production API will revalidate every beneficiary and '
+                  'the current program balance before any wallet is credited.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.payments_rounded),
+            label: const Text('Confirm Bulk Disbursement'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    final beneficiaryNames = {
+      for (final beneficiary in eligible)
+        _beneficiaryId(beneficiary): _beneficiaryValue(
+          beneficiary,
+          const ['fullName', 'name', 'phone'],
+          fallback: 'Beneficiary',
+        ),
+    };
+    final response = await _bulkDisburseBeneficiaries(
+      programId: programId,
+      beneficiaryIds: selectedIds,
+    );
+    if (response != null && mounted) {
+      await _showBulkDisbursementResult(
+        response: response,
+        beneficiaryNames: beneficiaryNames,
+      );
+    }
   }
 
   Future<void> _showBeneficiaryDetails(
@@ -3810,6 +4365,14 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                       ),
               ),
               actions: [
+                if (isHeadOffice)
+                  OutlinedButton.icon(
+                    onPressed: isDisbursing
+                        ? null
+                        : () => Navigator.of(dialogContext).pop('bulk'),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Bulk Disbursement'),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Close'),
@@ -3821,6 +4384,28 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
         if (!mounted || selectedAction == null) {
           return;
+        }
+
+        if (selectedAction == 'bulk') {
+          await _openBulkDisbursementDialog(
+            programId: programId,
+            programName: programName,
+          );
+          try {
+            currentProgram = await _loadEmpowermentProgram(programId);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Program balance could not be refreshed: '
+                    '${e.toString().replaceFirst('Exception: ', '')}',
+                  ),
+                ),
+              );
+            }
+          }
+          continue;
         }
 
         final wantsDisbursement = selectedAction.startsWith('disburse:');

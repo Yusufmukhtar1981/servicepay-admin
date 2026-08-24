@@ -342,19 +342,120 @@ void main() {
         );
         expect(client.lastPatchHeaders['authorization'], 'Bearer test-admin-token');
         expect(client.getCount, greaterThanOrEqualTo(2));
-        expect(find.text('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
-        expect(find.text('Head Office Admin'), findsOneWidget);
+        expect(find.textContaining('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
+        expect(find.textContaining('Head Office Admin'), findsOneWidget);
         expect(find.text('2026-08-24T12:00:00.000Z'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'does not call the server or report success for invalid identifiers',
+      'Head Office can manually verify without NIN or BVN',
+      (tester) async {
+        final client = KycRecordingHttpClient(
+          records: [
+            kycRecord(nin: '', bvn: ''),
+          ],
+          refreshedRecords: [
+            verifiedKycRecord(nin: '', bvn: ''),
+          ],
+        );
+
+        await pumpKycScreen(tester, client);
+        await tester.tap(find.text('Jane Customer'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Manual Verify / Approve'),
+          500,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.tap(find.text('Manual Verify / Approve'));
+        await tester.pumpAndSettle();
+
+        expect(client.patchCount, 1);
+        expect(
+          client.lastPatchPayload,
+          {'status': 'VERIFIED', 'manualOverride': true},
+        );
+        expect(find.textContaining('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
+        expect(find.text('NIN: Not provided'), findsOneWidget);
+        expect(find.text('BVN: Not provided'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Head Office can manually verify with only NIN',
+      (tester) async {
+        final client = KycRecordingHttpClient(
+          records: [
+            kycRecord(bvn: ''),
+          ],
+          refreshedRecords: [
+            verifiedKycRecord(bvn: ''),
+          ],
+        );
+
+        await pumpKycScreen(tester, client);
+        await tester.tap(find.text('Jane Customer'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Manual Verify / Approve'),
+          500,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.tap(find.text('Manual Verify / Approve'));
+        await tester.pumpAndSettle();
+
+        expect(client.patchCount, 1);
+        expect(find.textContaining('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
+        expect(find.text('NIN: 12345678901'), findsOneWidget);
+        expect(find.text('BVN: Not provided'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Head Office can manually verify with only BVN',
+      (tester) async {
+        final client = KycRecordingHttpClient(
+          records: [
+            kycRecord(nin: ''),
+          ],
+          refreshedRecords: [
+            verifiedKycRecord(nin: ''),
+          ],
+        );
+
+        await pumpKycScreen(tester, client);
+        await tester.tap(find.text('Jane Customer'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Manual Verify / Approve'),
+          500,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.tap(find.text('Manual Verify / Approve'));
+        await tester.pumpAndSettle();
+
+        expect(client.patchCount, 1);
+        expect(find.textContaining('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
+        expect(find.text('NIN: Not provided'), findsOneWidget);
+        expect(find.text('BVN: 10987654321'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'does not block Head Office override for invalid identifiers',
       (tester) async {
         final client = KycRecordingHttpClient(
           records: [
             kycRecord(
               nin: '1234567890',
+              bvn: '1098765432',
+            ),
+          ],
+          refreshedRecords: [
+            verifiedKycRecord(
+              nin: '1234567890',
+              bvn: '1098765432',
             ),
           ],
         );
@@ -370,13 +471,12 @@ void main() {
         await tester.tap(find.text('Manual Verify / Approve'));
         await tester.pumpAndSettle();
 
-        expect(client.patchCount, 0);
+        expect(client.patchCount, 1);
         expect(
-          find.text(
-            'Manual verification requires both NIN and BVN to be exactly 11 digits.',
-          ),
-          findsOneWidget,
+          client.lastPatchPayload,
+          {'status': 'VERIFIED', 'manualOverride': true},
         );
+        expect(find.textContaining('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
       },
     );
 
@@ -470,6 +570,40 @@ void main() {
     );
 
     testWidgets(
+      'does not report approval when refreshed metadata omits manual audit fields',
+      (tester) async {
+        final incompleteRefresh = verifiedKycRecord()
+          ..remove('verificationMethod')
+          ..remove('verifiedBy')
+          ..remove('verifiedAt');
+        final client = KycRecordingHttpClient(
+          records: [kycRecord()],
+          refreshedRecords: [incompleteRefresh],
+        );
+
+        await pumpKycScreen(tester, client);
+        await tester.tap(find.text('Jane Customer'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Manual Verify / Approve'),
+          500,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.tap(find.text('Manual Verify / Approve'));
+        await tester.pumpAndSettle();
+
+        expect(client.patchCount, 1);
+        expect(
+          find.text(
+            'KYC was updated, but the refreshed record does not confirm manual verification. Please refresh and reconcile it before continuing.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Manual Verify / Approve'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'submits only one manual override while an approval is in progress',
       (tester) async {
         final client = KycRecordingHttpClient(
@@ -518,6 +652,29 @@ void main() {
         expect(find.text('Search customers'), findsNothing);
         expect(find.text('Manual Verify / Approve'), findsNothing);
         expect(client.getCount, 0);
+      },
+    );
+
+    testWidgets(
+      'does not allow a non-Head-Office role to override KYC',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'auth_token': 'test-admin-token',
+          'user_role': 'STATE_MANAGER',
+        });
+        final client = KycRecordingHttpClient(records: [kycRecord()]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AdminKycScreen(httpClient: client),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Head Office access is required for KYC review.'), findsOneWidget);
+        expect(find.text('Manual Verify / Approve'), findsNothing);
+        expect(client.getCount, 0);
+        expect(client.patchCount, 0);
       },
     );
   });
@@ -575,10 +732,15 @@ Map<String, dynamic> kycRecord({
   };
 }
 
-Map<String, dynamic> verifiedKycRecord() {
+Map<String, dynamic> verifiedKycRecord({
+  String nin = '12345678901',
+  String bvn = '10987654321',
+}) {
   return {
     ...kycRecord(),
     'status': 'VERIFIED',
+    'nin': nin,
+    'bvn': bvn,
     'verificationMethod': 'MANUAL_ADMIN_OVERRIDE',
     'verifiedBy': 'Head Office Admin',
     'verifiedAt': '2026-08-24T12:00:00.000Z',

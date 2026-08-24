@@ -324,26 +324,6 @@ class _AdminKycScreenState extends State<AdminKycScreen> {
       return false;
     }
 
-    final nin = _value(
-      item,
-      const ['nin', 'ninNumber', 'ninValue', 'submittedNin', 'submittedNIN'],
-      fallback: '',
-    );
-    final bvn = _value(
-      item,
-      const ['bvn', 'bvnNumber', 'bvnValue', 'submittedBvn', 'submittedBVN'],
-      fallback: '',
-    );
-
-    if (!RegExp(r'^\d{11}$').hasMatch(nin) ||
-        !RegExp(r'^\d{11}$').hasMatch(bvn)) {
-      _message(
-        'Manual verification requires both NIN and BVN to be exactly 11 digits.',
-        error: true,
-      );
-      return false;
-    }
-
     final id = _id(item);
     if (id.isEmpty) {
       _message('KYC customer ID was not returned by the server.', error: true);
@@ -384,7 +364,19 @@ class _AdminKycScreenState extends State<AdminKycScreen> {
       const ['verificationMethod', 'method'],
       fallback: '',
     ).toUpperCase();
-    return method.isEmpty || method == 'MANUAL_ADMIN_OVERRIDE';
+    final verifiedBy = _value(
+      refreshed,
+      const ['verifiedBy', 'verificationBy', 'verifiedByName'],
+      fallback: '',
+    );
+    final verifiedAt = _value(
+      refreshed,
+      const ['verifiedAt', 'verificationDate', 'verifiedDate'],
+      fallback: '',
+    );
+    return method == 'MANUAL_ADMIN_OVERRIDE' &&
+        verifiedBy.isNotEmpty &&
+        verifiedAt.isNotEmpty;
   }
 
   void _message(String message, {bool error = false}) {
@@ -697,7 +689,10 @@ class _AdminKycScreenState extends State<AdminKycScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Text(
-                              'Manual verification is allowed only when both submitted NIN and BVN contain exactly 11 numeric digits.',
+                              'Head Office manual override may verify this record '
+                              'without requiring NIN, BVN, or optional KYC fields. '
+                              'Any submitted identifiers are preserved and missing '
+                              'values are never fabricated.',
                             ),
                           ),
                         ],

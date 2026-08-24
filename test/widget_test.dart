@@ -345,6 +345,295 @@ void main() {
     );
 
     testWidgets(
+      'Head Office funds a program through the protected funding endpoint',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [
+            program(
+              status: 'APPROVED',
+              totalFunded: 25000,
+              remainingBalance: 25000,
+            ),
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Create and manage empowerment programs'),
+          400,
+        );
+        await tester.tap(find.text('Create and manage empowerment programs'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Add Funds'), findsOneWidget);
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+        expect(find.text('Fund Youth Grant'), findsOneWidget);
+
+        await tester.enterText(find.byType(TextField), '50000');
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+
+        expect(client.fundingCount, 1);
+        expect(
+          client.lastFundingRequest.url.path,
+          '/api/empowerment/programs/program-1/funding',
+        );
+        expect(client.lastFundingPayload, {'amount': 50000.0});
+        expect(
+          client.lastFundingHeaders['authorization'],
+          'Bearer test-admin-token',
+        );
+        expect(
+          client.lastFundingHeaders['idempotency-key']!.length,
+          greaterThanOrEqualTo(12),
+        );
+        expect(find.textContaining('Total Funded: ₦75,000'), findsOneWidget);
+        expect(
+          find.textContaining('Remaining Balance: ₦75,000'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'blocks an eligible beneficiary payment when program funding is insufficient',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [
+            program(
+              status: 'APPROVED',
+              totalFunded: 0,
+              remainingBalance: 0,
+            ),
+          ],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        expect(find.text('Pay Beneficiary'), findsOneWidget);
+        await tester.tap(find.text('Pay Beneficiary'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(
+            'Program funding is insufficient. Fund this program before disbursement.',
+          ),
+          findsWidgets,
+        );
+        expect(client.disburseCount, 0);
+      },
+    );
+
+    testWidgets(
+      'funding enables payout and refreshes the persisted remaining balance',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [
+            program(
+              status: 'APPROVED',
+              totalFunded: 0,
+              remainingBalance: 0,
+            ),
+          ],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+          refreshedBeneficiaries: [
+            beneficiary(
+              applicationStatus: 'PAID',
+              verificationStatus: 'VERIFIED',
+              paymentStatus: 'PAID',
+              paymentReference: 'EMP-PAID-002',
+            ),
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Create and manage empowerment programs'),
+          400,
+        );
+        await tester.tap(find.text('Create and manage empowerment programs'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '25000');
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Close'));
+        await tester.pumpAndSettle();
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Pay Beneficiary'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Pay Beneficiary').last);
+        await tester.pumpAndSettle();
+
+        final financials =
+            client.programs.first['financials'] as Map<String, dynamic>;
+        expect(client.fundingCount, 1);
+        expect(client.disburseCount, 1);
+        expect(financials['totalFundedAmount'], 25000);
+        expect(financials['totalDisbursedAmount'], 25000);
+        expect(financials['availableFundingAmount'], 0);
+        expect(client.programGetCount, greaterThanOrEqualTo(1));
+      },
+    );
+
+    testWidgets(
+      'renders persisted program funding audit activity',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          auditTrail: [
+            {
+              'action': 'PROGRAM_FUNDED',
+              'description': '₦25,000 funded for Youth Grant',
+              'createdAt': '2026-08-24T18:00:00.000Z',
+            },
+          ],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(find.text('Audit Trail'), 400);
+        await tester.tap(find.text('Audit Trail'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('PROGRAM_FUNDED'), findsOneWidget);
+        expect(
+          find.text('₦25,000 funded for Youth Grant'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'reuses the funding idempotency key when a funding response is uncertain',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          fundingStatusCode: 500,
+          fundingResponse: {
+            'success': false,
+            'message': 'Temporary funding response failure.',
+          },
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Create and manage empowerment programs'),
+          400,
+        );
+        await tester.tap(find.text('Create and manage empowerment programs'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '50000');
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+        final firstIdempotencyKey =
+            client.lastFundingHeaders['idempotency-key'];
+
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '50000');
+        await tester.tap(find.text('Add Funds'));
+        await tester.pumpAndSettle();
+
+        expect(client.fundingCount, 2);
+        expect(client.lastFundingHeaders['idempotency-key'], firstIdempotencyKey);
+      },
+    );
+
+    testWidgets(
+      'does not expose program funding outside Head Office',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'auth_token': 'test-admin-token',
+          'user_role': 'STATE_MANAGER',
+        });
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+        );
+
+        await pumpAdminScreen(tester, client);
+        await tester.scrollUntilVisible(
+          find.text('Create and manage empowerment programs'),
+          400,
+        );
+        await tester.tap(find.text('Create and manage empowerment programs'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Add Funds'), findsNothing);
+        expect(client.fundingCount, 0);
+      },
+    );
+
+    testWidgets(
+      'does not expose payout when the program is not approved',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'OPEN')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+        );
+
+        await openBeneficiaryDetails(tester, client);
+
+        expect(find.text('Pay Beneficiary'), findsNothing);
+        expect(client.disburseCount, 0);
+      },
+    );
+
+    testWidgets(
+      'fails closed when current program funding cannot be refreshed',
+      (tester) async {
+        final client = RecordingHttpClient(
+          organizations: const [],
+          programs: [program(status: 'APPROVED')],
+          beneficiaries: [
+            beneficiary(
+              applicationStatus: 'APPROVED',
+              verificationStatus: 'VERIFIED',
+            ),
+          ],
+          programGetStatusCode: 500,
+        );
+
+        await openBeneficiaryDetails(tester, client);
+        await tester.tap(find.text('Pay Beneficiary'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Unable to confirm current program funding.'),
+          findsOneWidget,
+        );
+        expect(find.text('Confirm wallet payment'), findsNothing);
+        expect(client.disburseCount, 0);
+      },
+    );
+
+    testWidgets(
       'shows Pay Beneficiary for an approved verified unpaid production record',
       (tester) async {
         final productionBeneficiary = beneficiary(
@@ -1136,12 +1425,20 @@ Map<String, dynamic> organization(
 Map<String, dynamic> program({
   String status = 'OPEN',
   num amountPerBeneficiary = 25000,
+  num totalFunded = 25000,
+  num totalDisbursed = 0,
+  num remainingBalance = 25000,
 }) {
   return {
     '_id': 'program-1',
     'name': 'Youth Grant',
     'status': status,
     'amountPerBeneficiary': amountPerBeneficiary,
+    'financials': {
+      'totalFundedAmount': totalFunded,
+      'totalDisbursedAmount': totalDisbursed,
+      'availableFundingAmount': remainingBalance,
+    },
   };
 }
 
@@ -1265,8 +1562,12 @@ class RecordingHttpClient extends http.BaseClient {
     this.beneficiaries = const [],
     this.refreshedBeneficiaries,
     this.disbursements = const [],
+    this.auditTrail = const [],
     this.disburseStatusCode = 201,
     this.disburseResponse,
+    this.fundingStatusCode = 201,
+    this.fundingResponse,
+    this.programGetStatusCode = 200,
   });
 
   final List<Map<String, dynamic>> organizations;
@@ -1274,11 +1575,17 @@ class RecordingHttpClient extends http.BaseClient {
   final List<Map<String, dynamic>> beneficiaries;
   final List<Map<String, dynamic>>? refreshedBeneficiaries;
   final List<Map<String, dynamic>> disbursements;
+  final List<Map<String, dynamic>> auditTrail;
   final int disburseStatusCode;
   final Map<String, dynamic>? disburseResponse;
+  final int fundingStatusCode;
+  final Map<String, dynamic>? fundingResponse;
+  final int programGetStatusCode;
   final List<RecordedRequest> requests = [];
   int disburseCount = 0;
+  int fundingCount = 0;
   int disbursementHistoryGetCount = 0;
+  int programGetCount = 0;
 
   String? get lastPatchPath {
     for (final request in requests.reversed) {
@@ -1323,6 +1630,64 @@ class RecordingHttpClient extends http.BaseClient {
     };
   }
 
+  RecordedRequest get lastFundingRequest {
+    return requests.lastWhere(
+      (request) =>
+          request.method == 'POST' && request.url.path.endsWith('/funding'),
+    );
+  }
+
+  Map<String, dynamic> get lastFundingPayload {
+    return jsonDecode(lastFundingRequest.body) as Map<String, dynamic>;
+  }
+
+  Map<String, String> get lastFundingHeaders {
+    return {
+      for (final entry in lastFundingRequest.headers.entries)
+        entry.key.toLowerCase(): entry.value,
+    };
+  }
+
+  Map<String, dynamic> _currentProgramFinancials() {
+    if (programs.isEmpty) return <String, dynamic>{};
+    final program = programs.first;
+    final financials = program['financials'];
+    return financials is Map
+        ? Map<String, dynamic>.from(financials)
+        : <String, dynamic>{};
+  }
+
+  void _saveProgramFinancials(Map<String, dynamic> financials) {
+    if (programs.isEmpty) return;
+    programs.first['financials'] = financials;
+  }
+
+  void _applyFunding(num amount) {
+    final current = _currentProgramFinancials();
+    _saveProgramFinancials({
+      ...current,
+      'totalFundedAmount':
+          (current['totalFundedAmount'] as num? ?? 0) + amount,
+      'availableFundingAmount':
+          (current['availableFundingAmount'] as num? ?? 0) + amount,
+      'totalDisbursedAmount': current['totalDisbursedAmount'] as num? ?? 0,
+    });
+  }
+
+  void _applyDisbursement() {
+    if (programs.isEmpty) return;
+    final current = _currentProgramFinancials();
+    final amount = programs.first['amountPerBeneficiary'] as num? ?? 0;
+    _saveProgramFinancials({
+      ...current,
+      'totalFundedAmount': current['totalFundedAmount'] as num? ?? 0,
+      'availableFundingAmount':
+          (current['availableFundingAmount'] as num? ?? 0) - amount,
+      'totalDisbursedAmount':
+          (current['totalDisbursedAmount'] as num? ?? 0) + amount,
+    });
+  }
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = request is http.Request ? request.body : '';
@@ -1339,7 +1704,22 @@ class RecordingHttpClient extends http.BaseClient {
     dynamic responseBody;
     var statusCode = 200;
 
-    if (request.url.path.endsWith('/empowerment/organizations')) {
+    if (request.method == 'GET' &&
+        RegExp(r'/empowerment/programs/[^/]+$')
+            .hasMatch(request.url.path)) {
+      programGetCount++;
+      statusCode = programGetStatusCode;
+      responseBody = statusCode >= 200 && statusCode < 300
+          ? {
+              'success': true,
+              'program': programs.isEmpty ? null : programs.first,
+              'financials': _currentProgramFinancials(),
+            }
+          : {
+              'success': false,
+              'message': 'Unable to refresh program funding.',
+            };
+    } else if (request.url.path.endsWith('/empowerment/organizations')) {
       responseBody = {'organizations': organizations};
     } else if (request.url.path.endsWith('/empowerment/programs')) {
       responseBody = {'programs': programs};
@@ -1348,6 +1728,9 @@ class RecordingHttpClient extends http.BaseClient {
         request.url.path.endsWith('/disbursements')) {
       disbursementHistoryGetCount++;
       responseBody = {'success': true, 'batches': disbursements};
+    } else if (request.method == 'GET' &&
+        request.url.path.endsWith('/empowerment/audit-trail')) {
+      responseBody = {'success': true, 'activities': auditTrail};
     } else if (request.url.path.contains('/programs/') &&
         request.url.path.endsWith('/beneficiaries')) {
       responseBody = {
@@ -1374,10 +1757,32 @@ class RecordingHttpClient extends http.BaseClient {
         'message': 'Beneficiary updated successfully.',
       };
     } else if (request.method == 'POST' &&
+        request.url.path.endsWith('/funding')) {
+      fundingCount++;
+      statusCode = fundingStatusCode;
+      final requestPayload = jsonDecode(body) as Map<String, dynamic>;
+      final amount = requestPayload['amount'] as num? ?? 0;
+      if (statusCode >= 200 && statusCode < 300) {
+        _applyFunding(amount);
+      }
+      responseBody = fundingResponse ??
+          {
+            'success': statusCode >= 200 && statusCode < 300,
+            'idempotent': false,
+            'financials': _currentProgramFinancials(),
+          };
+    } else if (request.method == 'POST' &&
         request.url.path.contains('/beneficiaries/') &&
         request.url.path.endsWith('/disbursement')) {
       disburseCount++;
       statusCode = disburseStatusCode;
+      if (statusCode >= 200 &&
+          statusCode < 300 &&
+          (disburseResponse == null ||
+              (disburseResponse!['success'] != false &&
+                  disburseResponse!['idempotent'] != true))) {
+        _applyDisbursement();
+      }
       responseBody = disburseResponse ??
           {
             'success': true,

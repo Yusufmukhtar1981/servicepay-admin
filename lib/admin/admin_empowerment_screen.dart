@@ -2262,21 +2262,54 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
   String _beneficiaryVerificationStatus(Map<String, dynamic> beneficiary) {
     final verification = _beneficiaryMap(beneficiary['verification']);
-    final value = beneficiary['verificationStatus'] ??
-        beneficiary['verification_status'] ??
-        beneficiary['kycStatus'] ??
-        verification['status'] ??
-        beneficiary['isVerified'] ??
-        beneficiary['verified'];
+    final kyc = _beneficiaryMap(beneficiary['kyc']);
+    final user = _beneficiaryMap(beneficiary['user']);
+    final customer = _beneficiaryMap(beneficiary['customer']);
+    final customerKyc = _beneficiaryMap(customer['kyc']);
+    final userKyc = _beneficiaryMap(user['kyc']);
+    final values = [
+      beneficiary['verificationStatus'],
+      beneficiary['verification_status'],
+      beneficiary['kycStatus'],
+      verification['status'],
+      verification['verificationStatus'],
+      kyc['status'],
+      kyc['verificationStatus'],
+      kyc['kycStatus'],
+      customer['verificationStatus'],
+      customer['kycStatus'],
+      customer['kycVerified'],
+      customerKyc['status'],
+      customerKyc['verificationStatus'],
+      customerKyc['kycStatus'],
+      customerKyc['verified'],
+      user['verificationStatus'],
+      user['kycStatus'],
+      user['kycVerified'],
+      userKyc['status'],
+      userKyc['verificationStatus'],
+      userKyc['kycStatus'],
+      userKyc['verified'],
+      beneficiary['isVerified'],
+      beneficiary['verified'],
+    ];
 
-    if (value is bool) {
-      return value ? 'VERIFIED' : 'PENDING';
+    for (final value in values) {
+      if (value is bool && value) {
+        return 'VERIFIED';
+      }
+      final status = value?.toString().trim().toUpperCase() ?? '';
+      if (const ['VERIFIED', 'SUCCESS', 'SUCCESSFUL'].contains(status)) {
+        return 'VERIFIED';
+      }
     }
 
+    final value = values.firstWhere(
+      (value) => value != null && value.toString().trim().isNotEmpty,
+      orElse: () => null,
+    );
+    if (value is bool) return 'PENDING';
     final status = value?.toString().trim().toUpperCase() ?? '';
-    if (const ['VERIFIED', 'SUCCESS', 'SUCCESSFUL'].contains(status)) {
-      return 'VERIFIED';
-    }
     if (status.isEmpty || status == 'UNVERIFIED') {
       return 'PENDING';
     }
@@ -2317,6 +2350,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       _beneficiaryMap(beneficiary['application']),
       _beneficiaryMap(beneficiary['verification']),
       _beneficiaryMap(beneficiary['kyc']),
+      _beneficiaryMap(beneficiary['customer']),
     ];
 
     for (final source in sources) {

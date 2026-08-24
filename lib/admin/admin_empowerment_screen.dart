@@ -2161,6 +2161,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   Future<bool> _fundProgram({
     required String programId,
     required double amount,
+    String reference = '',
+    String note = '',
   }) async {
     if (!isHeadOffice) {
       if (mounted) {
@@ -2198,7 +2200,12 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
 
     try {
       final headers = await _empowermentHeaders();
-      final requestKey = '$programId:${amount.toStringAsFixed(2)}';
+      final requestKey = [
+        programId,
+        amount.toStringAsFixed(2),
+        reference.trim(),
+        note.trim(),
+      ].join(':');
       final idempotencyKey = _fundingIdempotencyKeys.putIfAbsent(
         requestKey,
         () =>
@@ -2207,9 +2214,13 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       headers['Idempotency-Key'] = idempotencyKey;
       final response = await _httpClient
           .post(
-            Uri.parse('$baseUrl/empowerment/programs/$programId/funding'),
+            Uri.parse('$baseUrl/empowerment/programs/$programId/fund'),
             headers: headers,
-            body: jsonEncode({'amount': amount}),
+            body: jsonEncode({
+              'amount': amount,
+              if (reference.trim().isNotEmpty) 'reference': reference.trim(),
+              if (note.trim().isNotEmpty) 'note': note.trim(),
+            }),
           )
           .timeout(const Duration(seconds: 45));
 
@@ -2293,9 +2304,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     final programName = (program['name'] ?? 'Empowerment Program').toString();
     final financials = _programFinancials(program);
     final amountController = TextEditingController();
+    final referenceController = TextEditingController();
+    final noteController = TextEditingController();
 
     try {
-      final amount = await showDialog<double>(
+      final funding = await showDialog<Map<String, String>>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) {
@@ -2335,10 +2348,26 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
+                        TextField(
+                          controller: referenceController,
+                          decoration: const InputDecoration(
+                            labelText: 'Reference (optional)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: noteController,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Note (optional)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         const Text(
-                          'Funding debits the Head Office wallet and updates '
-                          'this program’s persisted balance. It does not pay '
-                          'beneficiaries directly.',
+                          'Funds are reserved directly for this program. '
+                          'They remain available only for eligible beneficiary payouts.',
                           style: TextStyle(
                             color: Color(0xFF667085),
                             height: 1.4,
@@ -2364,7 +2393,11 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                         });
                         return;
                       }
-                      Navigator.of(dialogContext).pop(parsedAmount);
+                       Navigator.of(dialogContext).pop({
+                         'amount': parsedAmount.toString(),
+                         'reference': referenceController.text.trim(),
+                         'note': noteController.text.trim(),
+                       });
                     },
                     icon: const Icon(Icons.account_balance_wallet_outlined),
                     label: const Text('Add Funds'),
@@ -2376,16 +2409,20 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         },
       );
 
-      if (amount == null || !mounted) {
+      if (funding == null || !mounted) {
         return;
       }
 
       await _fundProgram(
         programId: programId,
-        amount: amount,
+        amount: double.parse(funding['amount']!),
+        reference: funding['reference'] ?? '',
+        note: funding['note'] ?? '',
       );
     } finally {
       amountController.dispose();
+      referenceController.dispose();
+      noteController.dispose();
     }
   }
 
@@ -3144,7 +3181,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
           .post(
             Uri.parse(
               '$baseUrl/empowerment/programs/$programId/beneficiaries/'
-              '$beneficiaryId/disbursement',
+              '$beneficiaryId/pay',
             ),
             headers: headers,
             body: jsonEncode(<String, dynamic>{}),
@@ -3165,7 +3202,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         response.statusCode,
         body,
         fallback: success
-            ? 'Beneficiary wallet credited successfully.'
+            ? 'Beneficiary payment recorded successfully.'
             : 'Unable to disburse to this beneficiary.',
       );
       final duplicate = response.statusCode == 409 &&
@@ -3249,6 +3286,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     final currentFinancials = _programFinancials(currentProgram);
     final currentRemainingBalance =
         currentFinancials['availableFundingAmount'];
+    final balanceAfterPayment =
+        _asDouble(currentRemainingBalance) - _asDouble(currentAmount);
 
     if (currentProgramStatus != 'APPROVED') {
       return false;
@@ -3287,7 +3326,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Confirm wallet payment'),
+          title: const Text('Confirm beneficiary payment'),
           content: SizedBox(
             width: 520,
             child: SingleChildScrollView(
@@ -3302,8 +3341,12 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                      money(currentAmount),
                   ),
                    _organizationDetailRow(
-                     'Program remaining balance',
+                     'Current program balance',
                      money(currentRemainingBalance),
+                   ),
+                   _organizationDetailRow(
+                     'Program balance after payment',
+                     money(balanceAfterPayment),
                    ),
                   _organizationDetailRow(
                     'ServicePay account',
@@ -3318,7 +3361,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Text(
-                      'This payment will credit the beneficiary wallet. '
+                      'This payment uses the program’s reserved balance. '
                       'The amount is controlled by the program configuration '
                       'and cannot be edited here.',
                       style: TextStyle(
@@ -3848,7 +3891,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   Future<void> _openAuditTrailManager() async {
     try {
       final activities = await _loadEmpowermentList(
-        '/empowerment/audit-trail',
+        '/empowerment/audit',
         'activities',
       );
 

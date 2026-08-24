@@ -5,7 +5,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminEmpowermentScreen extends StatefulWidget {
-  const AdminEmpowermentScreen({super.key});
+  const AdminEmpowermentScreen({
+    super.key,
+    this.httpClient,
+  });
+
+  final http.Client? httpClient;
 
   @override
   State<AdminEmpowermentScreen> createState() => _AdminEmpowermentScreenState();
@@ -13,6 +18,8 @@ class AdminEmpowermentScreen extends StatefulWidget {
 
 class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
+
+  late final http.Client _httpClient;
 
   bool isLoading = true;
   String errorMessage = '';
@@ -23,7 +30,16 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
   @override
   void initState() {
     super.initState();
+    _httpClient = widget.httpClient ?? http.Client();
     loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    if (widget.httpClient == null) {
+      _httpClient.close();
+    }
+    super.dispose();
   }
 
   Future<String> _getToken() async {
@@ -98,7 +114,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         );
       }
 
-      final response = await http.get(
+      final response = await _httpClient.get(
         Uri.parse(
           '$baseUrl/empowerment/dashboard-summary',
         ),
@@ -217,7 +233,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         payload['rejectionReason'] = rejectionReason.trim();
       }
 
-      final response = await http
+      final response = await _httpClient
           .patch(
             Uri.parse('$baseUrl$path'),
             headers: <String, String>{
@@ -684,7 +700,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
       throw Exception('Authentication token not found.');
     }
 
-    final response = await http.get(
+    final response = await _httpClient.get(
       Uri.parse('$baseUrl$path'),
       headers: {
         'Authorization': 'Bearer $token',
@@ -1067,7 +1083,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                             try {
                               final headers = await _empowermentHeaders();
 
-                              final response = await http
+                              final response = await _httpClient
                                   .post(
                                     Uri.parse(
                                       '$baseUrl/empowerment/organizations',
@@ -1787,7 +1803,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                                   await SharedPreferences.getInstance();
                               final token = prefs.getString('auth_token') ?? '';
 
-                              final response = await http.post(
+                              final response = await _httpClient.post(
                                 Uri.parse('$baseUrl/empowerment/programs'),
                                 headers: {
                                   'Content-Type': 'application/json',

@@ -274,6 +274,12 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
         : status.toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
   }
 
+  bool _isPayoutEligibleProgramStatus(String status) {
+    return const {'APPROVED', 'DISBURSING'}.contains(
+      status.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'),
+    );
+  }
+
   bool _hasSufficientProgramFunding({
     required dynamic remainingBalance,
     required dynamic amountPerBeneficiary,
@@ -3331,7 +3337,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     final balanceAfterPayment =
         _asDouble(currentRemainingBalance) - _asDouble(currentAmount);
 
-    if (currentProgramStatus != 'APPROVED') {
+    if (!_isPayoutEligibleProgramStatus(currentProgramStatus)) {
       return false;
     }
 
@@ -3679,12 +3685,12 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     }
 
     final programStatus = _programStatus(currentProgram);
-    if (programStatus != 'APPROVED') {
+    if (!_isPayoutEligibleProgramStatus(programStatus)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Program must be approved before bulk disbursement.',
+              'Program must be approved and active for disbursement.',
             ),
           ),
         );

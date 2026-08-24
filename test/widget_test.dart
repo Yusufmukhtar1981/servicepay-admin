@@ -316,13 +316,15 @@ void main() {
         await tester.tap(find.text('Pay Beneficiary'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Confirm wallet payment'), findsOneWidget);
+        expect(find.text('Confirm beneficiary payment'), findsOneWidget);
         expect(find.text('Beneficiary'), findsOneWidget);
         expect(find.text('Youth Grant'), findsOneWidget);
         expect(find.text('₦25,000'), findsOneWidget);
+        expect(find.text('Current program balance'), findsOneWidget);
+        expect(find.text('Program balance after payment'), findsOneWidget);
         expect(find.text('SPW-1234'), findsOneWidget);
         expect(
-          find.textContaining('This payment will credit the beneficiary wallet.'),
+          find.textContaining('This payment uses the program’s reserved balance.'),
           findsOneWidget,
         );
 
@@ -332,7 +334,7 @@ void main() {
         expect(
           client.lastPostPath,
           '/api/empowerment/programs/program-1/beneficiaries/'
-          'beneficiary-1/disbursement',
+           'beneficiary-1/pay',
         );
         expect(client.lastPostHeaders['authorization'], 'Bearer test-admin-token');
         expect(
@@ -372,15 +374,19 @@ void main() {
         expect(find.text('Fund Youth Grant'), findsOneWidget);
 
         await tester.enterText(find.byType(TextField), '50000');
+        await tester.enterText(find.byType(TextField).at(1), 'FY26-RESERVE');
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
 
         expect(client.fundingCount, 1);
         expect(
           client.lastFundingRequest.url.path,
-          '/api/empowerment/programs/program-1/funding',
+          '/api/empowerment/programs/program-1/fund',
         );
-        expect(client.lastFundingPayload, {'amount': 50000.0});
+        expect(
+          client.lastFundingPayload,
+          {'amount': 50000.0, 'reference': 'FY26-RESERVE'},
+        );
         expect(
           client.lastFundingHeaders['authorization'],
           'Bearer test-admin-token',
@@ -628,7 +634,7 @@ void main() {
           find.textContaining('Unable to confirm current program funding.'),
           findsOneWidget,
         );
-        expect(find.text('Confirm wallet payment'), findsNothing);
+        expect(find.text('Confirm beneficiary payment'), findsNothing);
         expect(client.disburseCount, 0);
       },
     );
@@ -755,7 +761,7 @@ void main() {
         await tester.tap(payButton);
         await tester.pumpAndSettle();
 
-        expect(find.text('Confirm wallet payment'), findsOneWidget);
+        expect(find.text('Confirm beneficiary payment'), findsOneWidget);
       },
     );
 
@@ -1435,8 +1441,11 @@ Map<String, dynamic> program({
     'status': status,
     'amountPerBeneficiary': amountPerBeneficiary,
     'financials': {
+      'totalFunded': totalFunded,
       'totalFundedAmount': totalFunded,
+      'totalDisbursed': totalDisbursed,
       'totalDisbursedAmount': totalDisbursed,
+      'remainingBalance': remainingBalance,
       'availableFundingAmount': remainingBalance,
     },
   };
@@ -1632,8 +1641,7 @@ class RecordingHttpClient extends http.BaseClient {
 
   RecordedRequest get lastFundingRequest {
     return requests.lastWhere(
-      (request) =>
-          request.method == 'POST' && request.url.path.endsWith('/funding'),
+      (request) => request.method == 'POST' && request.url.path.endsWith('/fund'),
     );
   }
 
@@ -1668,9 +1676,13 @@ class RecordingHttpClient extends http.BaseClient {
       ...current,
       'totalFundedAmount':
           (current['totalFundedAmount'] as num? ?? 0) + amount,
+      'totalFunded': (current['totalFunded'] as num? ?? 0) + amount,
       'availableFundingAmount':
           (current['availableFundingAmount'] as num? ?? 0) + amount,
+      'remainingBalance':
+          (current['remainingBalance'] as num? ?? 0) + amount,
       'totalDisbursedAmount': current['totalDisbursedAmount'] as num? ?? 0,
+      'totalDisbursed': current['totalDisbursed'] as num? ?? 0,
     });
   }
 
@@ -1681,10 +1693,15 @@ class RecordingHttpClient extends http.BaseClient {
     _saveProgramFinancials({
       ...current,
       'totalFundedAmount': current['totalFundedAmount'] as num? ?? 0,
+      'totalFunded': current['totalFunded'] as num? ?? 0,
       'availableFundingAmount':
           (current['availableFundingAmount'] as num? ?? 0) - amount,
+      'remainingBalance':
+          (current['remainingBalance'] as num? ?? 0) - amount,
       'totalDisbursedAmount':
           (current['totalDisbursedAmount'] as num? ?? 0) + amount,
+      'totalDisbursed':
+          (current['totalDisbursed'] as num? ?? 0) + amount,
     });
   }
 
@@ -1729,7 +1746,7 @@ class RecordingHttpClient extends http.BaseClient {
       disbursementHistoryGetCount++;
       responseBody = {'success': true, 'batches': disbursements};
     } else if (request.method == 'GET' &&
-        request.url.path.endsWith('/empowerment/audit-trail')) {
+        request.url.path.endsWith('/empowerment/audit')) {
       responseBody = {'success': true, 'activities': auditTrail};
     } else if (request.url.path.contains('/programs/') &&
         request.url.path.endsWith('/beneficiaries')) {
@@ -1757,7 +1774,7 @@ class RecordingHttpClient extends http.BaseClient {
         'message': 'Beneficiary updated successfully.',
       };
     } else if (request.method == 'POST' &&
-        request.url.path.endsWith('/funding')) {
+        request.url.path.endsWith('/fund')) {
       fundingCount++;
       statusCode = fundingStatusCode;
       final requestPayload = jsonDecode(body) as Map<String, dynamic>;
@@ -1773,7 +1790,7 @@ class RecordingHttpClient extends http.BaseClient {
           };
     } else if (request.method == 'POST' &&
         request.url.path.contains('/beneficiaries/') &&
-        request.url.path.endsWith('/disbursement')) {
+        request.url.path.endsWith('/pay')) {
       disburseCount++;
       statusCode = disburseStatusCode;
       if (statusCode >= 200 &&

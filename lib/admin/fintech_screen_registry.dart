@@ -21,12 +21,23 @@ import 'admin_business_withdrawals_screen.dart';
 
 import 'admin_bank_reconciliation_screen.dart';
 import 'admin_transaction_requery_screen.dart';
+import 'admin_fintech_operations_screen.dart';
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
 
 Widget? fintechScreenForTitle(String title) {
   switch (title) {
+    case 'Account Restrictions':
+    case 'Wallet Holds & Releases':
+    case 'Failed Transactions':
+    case 'Virtual Accounts':
+    case 'Fraud Monitoring':
+    case 'Blacklist / Watchlist':
+    case 'Device & Login Risk':
+    case 'Refunds':
+    case 'Reversals':
+      return AdminFintechOperationsScreen(module: title);
     case 'Transaction Requery':
       return const AdminTransactionRequeryScreen();
 

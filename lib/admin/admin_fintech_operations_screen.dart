@@ -34,6 +34,12 @@ class _AdminFintechOperationsScreenState
         return '/admin/fintech-operations/failed-transactions';
       case 'Virtual Accounts':
         return '/admin/fintech-operations/virtual-accounts';
+      case 'Dedicated Accounts':
+        return '/admin/fintech-operations/dedicated-accounts';
+      case 'Bank Partners':
+        return '/admin/fintech-operations/bank-partners';
+      case 'Switching / Routing':
+        return '/admin/fintech-operations/routing-status';
       case 'Fraud Monitoring':
         return '/admin/fintech-operations/fraud-alerts';
       case 'Blacklist / Watchlist':
@@ -43,6 +49,8 @@ class _AdminFintechOperationsScreenState
       case 'Refunds':
       case 'Reversals':
         return '/admin/fintech-operations/financial-actions';
+      case 'Disputes':
+        return '/admin/fintech-operations/disputes';
       default:
         return '/admin/fintech-operations/customers';
     }
@@ -57,13 +65,20 @@ class _AdminFintechOperationsScreenState
       case 'Failed Transactions':
         return 'transactions';
       case 'Virtual Accounts':
+      case 'Dedicated Accounts':
         return 'accounts';
+      case 'Bank Partners':
+        return 'providers';
+      case 'Switching / Routing':
+        return 'routes';
       case 'Fraud Monitoring':
         return 'alerts';
       case 'Blacklist / Watchlist':
         return 'entries';
       case 'Device & Login Risk':
         return 'events';
+      case 'Disputes':
+        return 'disputes';
       default:
         return 'actions';
     }
@@ -79,6 +94,12 @@ class _AdminFintechOperationsScreenState
         return 'Review live failed or pending transactions before requery or financial correction.';
       case 'Virtual Accounts':
         return 'Inspect provisioned customer virtual accounts from the current provider integration.';
+      case 'Dedicated Accounts':
+        return 'Review real customer dedicated-account records without creating unsupported provider accounts.';
+      case 'Bank Partners':
+        return 'Review safe configuration status and supported capabilities for real payment integrations.';
+      case 'Switching / Routing':
+        return 'Inspect the current code-backed service routes. Automatic switching is not represented where it is not implemented.';
       case 'Fraud Monitoring':
         return 'Review live fraud-risk alerts and document controlled investigation decisions.';
       case 'Blacklist / Watchlist':
@@ -89,6 +110,8 @@ class _AdminFintechOperationsScreenState
         return 'Issue only an eligible, idempotent refund after confirming the failed wallet debit.';
       case 'Reversals':
         return 'Correct an eligible failed wallet debit through a separate audited reversal workflow.';
+      case 'Disputes':
+        return 'Open and resolve operational disputes against real ServicePay transactions without moving money automatically.';
       default:
         return '';
     }
@@ -192,13 +215,20 @@ class _AdminFintechOperationsScreenState
       case 'Failed Transactions':
         return _text(item['reference']);
       case 'Virtual Accounts':
+      case 'Dedicated Accounts':
         return _text((item['virtualAccount'] as Map?)?['accountNumber']);
+      case 'Bank Partners':
+        return _text(item['name']);
+      case 'Switching / Routing':
+        return _text(item['service']);
       case 'Fraud Monitoring':
         return _text(item['rule']);
       case 'Blacklist / Watchlist':
         return _text(item['identifierDisplay'], _text(item['identifierValue']));
       case 'Device & Login Risk':
         return _text(item['identifier']);
+      case 'Disputes':
+        return _text(item['reference']);
       default:
         return _text(item['reference']);
     }
@@ -213,14 +243,21 @@ class _AdminFintechOperationsScreenState
       case 'Failed Transactions':
         return '${_text(item['serviceType'])} · ${_money(item['amount'])} · ${_text((item['customerId'] as Map?)?['fullName'])}';
       case 'Virtual Accounts':
+      case 'Dedicated Accounts':
         final account = item['virtualAccount'] as Map? ?? const {};
         return '${_text(account['accountName'])} · ${_text(account['bankName'])} · ${_text(account['provider'])}';
+      case 'Bank Partners':
+        return ((item['capabilities'] as List?) ?? const []).join(' · ');
+      case 'Switching / Routing':
+        return '${_text(item['provider'])} · ${_text(item['detail'])}';
       case 'Fraud Monitoring':
         return '${_text((item['user'] as Map?)?['fullName'])} · ${_text(item['details'])}';
       case 'Blacklist / Watchlist':
         return '${_text(item['identifierType'])} · ${_text(item['reason'])}';
       case 'Device & Login Risk':
         return '${_text((item['user'] as Map?)?['fullName'])} · ${_text(item['userAgent'], 'No device agent stored')}';
+      case 'Disputes':
+        return '${_text((item['customer'] as Map?)?['fullName'])} · ${_money(item['amount'])} · ${_text(item['category'])}';
       default:
         final transaction = item['originalTransaction'] as Map? ?? const {};
         return '${_text(transaction['reference'])} · ${_money(item['amount'])} · ${_text((item['customer'] as Map?)?['fullName'])}';
@@ -228,7 +265,7 @@ class _AdminFintechOperationsScreenState
   }
 
   String _status(Map item) {
-    if (widget.module == 'Virtual Accounts') return _text((item['virtualAccount'] as Map?)?['status']);
+    if (widget.module == 'Virtual Accounts' || widget.module == 'Dedicated Accounts') return _text((item['virtualAccount'] as Map?)?['status']);
     if (widget.module == 'Device & Login Risk') return _text(item['outcome']);
     if (widget.module == 'Fraud Monitoring') return '${_text(item['riskLevel'])} · ${_text(item['status'])}';
     if (widget.module == 'Account Restrictions') return _text(item['status']);
@@ -337,12 +374,60 @@ class _AdminFintechOperationsScreenState
     }
   }
 
+  Future<void> _updateDispute(Map item) async {
+    final note = TextEditingController();
+    var status = _text(item['status'], 'OPEN');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Update ${_text(item['reference'])}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: const ['OPEN', 'IN_REVIEW', 'RESOLVED', 'REJECTED', 'CLOSED'].contains(status) ? status : 'OPEN',
+                decoration: const InputDecoration(labelText: 'Resolution status', border: OutlineInputBorder()),
+                items: const ['OPEN', 'IN_REVIEW', 'RESOLVED', 'REJECTED', 'CLOSED'].map((value) => DropdownMenuItem(value: value, child: Text(value.replaceAll('_', ' ')))).toList(),
+                onChanged: (value) => setDialogState(() => status = value ?? status),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Review note (minimum 5 characters)', border: OutlineInputBorder())),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (saved != true || note.text.trim().length < 5) {
+      if (saved == true && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a review note with at least 5 characters.')));
+      return;
+    }
+    try {
+      await _post('/admin/fintech-operations/disputes/${_id(item)}', {'status': status, 'note': note.text.trim()});
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dispute updated and audited.')));
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
   Future<void> _addAction() async {
     final userId = TextEditingController();
     final amount = TextEditingController();
     final detail = TextEditingController();
     final extra = TextEditingController();
-    String selection = widget.module == 'Account Restrictions' ? 'BLOCK_OUTGOING_TRANSFERS' : 'WATCHLIST';
+    String selection = widget.module == 'Account Restrictions'
+        ? 'BLOCK_OUTGOING_TRANSFERS'
+        : widget.module == 'Disputes'
+            ? 'UNRECOGNISED'
+            : 'WATCHLIST';
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -381,8 +466,18 @@ class _AdminFintechOperationsScreenState
                       onChanged: (value) => setDialogState(() => selection = value ?? selection),
                     ),
                   ],
-                  if (widget.module == 'Refunds' || widget.module == 'Reversals')
-                    TextField(controller: userId, decoration: const InputDecoration(labelText: 'Original transaction ID', border: OutlineInputBorder())),
+                  if (widget.module == 'Refunds' || widget.module == 'Reversals' || widget.module == 'Disputes') ...[
+                    TextField(controller: userId, decoration: InputDecoration(labelText: widget.module == 'Disputes' ? 'Related transaction ID' : 'Original transaction ID', border: const OutlineInputBorder())),
+                    if (widget.module == 'Disputes') ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: selection,
+                        decoration: const InputDecoration(labelText: 'Dispute category', border: OutlineInputBorder()),
+                        items: const ['UNRECOGNISED', 'SERVICE_NOT_RECEIVED', 'DUPLICATE_CHARGE', 'INCORRECT_AMOUNT', 'OTHER'].map((item) => DropdownMenuItem(value: item, child: Text(item.replaceAll('_', ' ')))).toList(),
+                        onChanged: (value) => setDialogState(() => selection = value ?? selection),
+                      ),
+                    ],
+                  ],
                   const SizedBox(height: 12),
                   TextField(controller: detail, maxLines: 3, decoration: const InputDecoration(labelText: 'Reason (minimum 5 characters)', border: OutlineInputBorder())),
                 ],
@@ -401,6 +496,8 @@ class _AdminFintechOperationsScreenState
                     await _post('/admin/fintech-operations/wallet-holds', {'userId': userId.text.trim(), 'amount': double.tryParse(amount.text.trim()), 'linkedReference': extra.text.trim(), 'reason': detail.text.trim()}, idempotent: true);
                   } else if (widget.module == 'Blacklist / Watchlist') {
                     await _post('/admin/fintech-operations/watchlist', {'identifierType': 'PHONE', 'identifierValue': userId.text.trim(), 'identifierDisplay': userId.text.trim(), 'status': selection, 'severity': 'MEDIUM', 'reason': detail.text.trim()});
+                  } else if (widget.module == 'Disputes') {
+                    await _post('/admin/fintech-operations/disputes', {'transactionId': userId.text.trim(), 'category': selection, 'reason': detail.text.trim()});
                   } else {
                     await _post('/admin/fintech-operations/financial-actions/${widget.module == 'Refunds' ? 'REFUND' : 'REVERSAL'}', {'transactionId': userId.text.trim(), 'reason': detail.text.trim()}, idempotent: true);
                   }
@@ -425,11 +522,12 @@ class _AdminFintechOperationsScreenState
       case 'Blacklist / Watchlist': return 'Add risk identifier';
       case 'Refunds': return 'Initiate refund';
       case 'Reversals': return 'Initiate reversal';
+      case 'Disputes': return 'Open dispute';
       default: return 'New action';
     }
   }
 
-  bool get _canAdd => const ['Account Restrictions', 'Wallet Holds & Releases', 'Blacklist / Watchlist', 'Refunds', 'Reversals'].contains(widget.module);
+  bool get _canAdd => const ['Account Restrictions', 'Wallet Holds & Releases', 'Blacklist / Watchlist', 'Refunds', 'Reversals', 'Disputes'].contains(widget.module);
 
   void _showDetails(Map item) {
     showModalBottomSheet<void>(
@@ -485,6 +583,11 @@ class _AdminFintechOperationsScreenState
                       child: const Text('Mark for investigation'),
                     ),
                   ]),
+                if (widget.module == 'Disputes')
+                  FilledButton(
+                    onPressed: () => _updateDispute(item),
+                    child: const Text('Review / resolve dispute'),
+                  ),
               ],
             ),
           ),
@@ -524,7 +627,7 @@ class _AdminFintechOperationsScreenState
             Row(children: [
               Expanded(child: _summaryCard('Live records', '$_total', Icons.assessment_outlined)),
               const SizedBox(width: 12),
-              Expanded(child: _summaryCard('Access', 'HEAD OFFICE', Icons.admin_panel_settings_outlined)),
+                Expanded(child: _summaryCard('Security', 'Protected', Icons.admin_panel_settings_outlined)),
             ]),
             const SizedBox(height: 16),
             TextField(

@@ -884,19 +884,19 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                         runSpacing: 12,
                         children: const [
                           _FintechStatusCard(
-                            icon: Icons.check_circle_outline,
-                            label: 'Module Status',
-                            value: 'ACTIVE',
+                            icon: Icons.info_outline,
+                            label: 'Capability',
+                            value: 'NOT CONFIGURED',
                           ),
                           _FintechStatusCard(
                             icon: Icons.security_outlined,
-                            label: 'Access',
-                            value: 'HEAD OFFICE',
+                            label: 'Availability',
+                            value: 'NO LIVE WORKSPACE',
                           ),
                           _FintechStatusCard(
                             icon: Icons.shield_outlined,
-                            label: 'Control',
-                            value: 'ADMIN',
+                            label: 'Action',
+                            value: 'NONE',
                           ),
                         ],
                       ),
@@ -924,7 +924,7 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '$title is now opened directly from the Fintech Control Center.',
+                              'A verified live workspace for $title is not configured in the current backend.',
                               style: TextStyle(
                                 color: Colors.grey.shade700,
                                 height: 1.5,
@@ -951,7 +951,7 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                                   SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
-                                      'Direct Fintech Control Center navigation is active. The old placeholder popup has been removed.',
+                                      'This module is intentionally unavailable until a real backend capability is connected. It does not claim to be live.',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                         height: 1.4,

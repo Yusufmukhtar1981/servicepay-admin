@@ -293,6 +293,50 @@ class _AdminFintechOperationsScreenState
     }
   }
 
+  Future<void> _releaseHold(Map item) async {
+    final amount = TextEditingController(
+      text: ((item['remainingAmount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2),
+    );
+    final reason = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Release wallet hold'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Remaining held amount: ${_money(item['remainingAmount'])}'),
+            const SizedBox(height: 12),
+            TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Release amount (NGN)', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: reason, maxLines: 3, decoration: const InputDecoration(labelText: 'Reason (minimum 5 characters)', border: OutlineInputBorder())),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Release')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final requested = double.tryParse(amount.text.trim());
+    final remaining = (item['remainingAmount'] as num?)?.toDouble() ?? 0;
+    if (requested == null || requested <= 0 || requested > remaining || reason.text.trim().length < 5) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid amount up to the held balance and a clear reason.')));
+      return;
+    }
+    try {
+      await _post('/admin/fintech-operations/wallet-holds/${_id(item)}/release', {'amount': requested, 'reason': reason.text.trim()}, idempotent: true);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hold release completed and audited.')));
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
   Future<void> _addAction() async {
     final userId = TextEditingController();
     final amount = TextEditingController();
@@ -413,12 +457,8 @@ class _AdminFintechOperationsScreenState
                   ),
                 if (widget.module == 'Wallet Holds & Releases' && const ['ACTIVE', 'PARTIALLY_RELEASED'].contains(_text(item['status'])))
                   FilledButton(
-                    onPressed: () => _confirmAction(title: 'Release wallet hold', action: 'Release', submit: (reason) async {
-                      final remaining = (item['remainingAmount'] as num?)?.toDouble() ?? 0;
-                      await _post('/admin/fintech-operations/wallet-holds/${_id(item)}/release', {'amount': remaining, 'reason': reason}, idempotent: true);
-                      if (mounted) Navigator.pop(context);
-                    }),
-                    child: const Text('Release remaining hold'),
+                    onPressed: () => _releaseHold(item),
+                    child: const Text('Release hold'),
                   ),
                 if (widget.module == 'Blacklist / Watchlist' && _text(item['status']) != 'CLEARED')
                   FilledButton(

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin_partner_reconciliation_screen.dart';
+
 class AdminPartnerScreen extends StatefulWidget {
   const AdminPartnerScreen({super.key});
 
@@ -1078,7 +1080,9 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
 
     final visiblePartners = filteredPartners;
 
-    return Scaffold(
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Partner Management'),
         actions: [
@@ -1089,8 +1093,16 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
           ),
           const SizedBox(width: 8),
         ],
+        bottom: const TabBar(
+          tabs: <Widget>[
+            Tab(text: 'Partner API Management'),
+            Tab(text: 'Partner API Reconciliation'),
+          ],
+        ),
       ),
-      body: SafeArea(
+      body: TabBarView(
+        children: <Widget>[
+          SafeArea(
         child: RefreshIndicator(
           onRefresh: loadPartners,
           child: ListView(
@@ -1193,6 +1205,10 @@ class _AdminPartnerScreenState extends State<AdminPartnerScreen> {
             ],
           ),
         ),
+      ),
+          const AdminPartnerReconciliationView(),
+        ],
+      ),
       ),
     );
   }

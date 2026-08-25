@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:servicepay_app/admin/admin_empowerment_screen.dart';
 import 'package:servicepay_app/admin/admin_kyc_screen.dart';
+import 'package:servicepay_app/admin/admin_platform_configuration_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -1510,6 +1512,135 @@ void main() {
         expect(find.text('Manual Verify / Approve'), findsNothing);
         expect(client.getCount, 0);
         expect(client.patchCount, 0);
+      },
+    );
+  });
+
+  group('Admin fintech control response contract', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'head-office-test-token',
+        'user_role': 'HEAD_OFFICE',
+      });
+    });
+
+    testWidgets(
+      'parses the canonical fintech-control response contract',
+      (tester) async {
+        final client = MockClient((request) async {
+          expect(
+            request.url.path,
+            '/api/settings/admin/fintech-control',
+          );
+          expect(
+            request.headers['authorization'],
+            'Bearer head-office-test-token',
+          );
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'data': <String, dynamic>{
+                'maintenance': <String, dynamic>{
+                  'enabled': true,
+                  'customerAppEnabled': true,
+                  'apiEnabled': false,
+                  'message': 'Scheduled verification window.',
+                },
+                'serviceLimits': <String, dynamic>{
+                  'tier1Daily': 2500,
+                  'tier1PerTransaction': 500,
+                  'tier2Daily': 0,
+                  'tier2PerTransaction': 0,
+                  'tier3Daily': 0,
+                  'tier3PerTransaction': 0,
+                  'servicepayTransfer': 0,
+                  'bankTransfer': 0,
+                  'walletFunding': 0,
+                  'withdrawal': 0,
+                },
+                'transactionFees': <String, dynamic>{},
+                'legalPolicies': <String, dynamic>{},
+                'featureToggles': <String, dynamic>{'airtime': true},
+              },
+            }),
+            200,
+          );
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AdminPlatformConfigurationScreen(client: client),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Maintenance Mode'), findsWidgets);
+        expect(
+          find.text('Scheduled verification window.'),
+          findsOneWidget,
+        );
+        final maintenanceSwitch = tester.widget<SwitchListTile>(
+          find.widgetWithText(SwitchListTile, 'Global Maintenance'),
+        );
+        final apiSwitch = tester.widget<SwitchListTile>(
+          find.widgetWithText(SwitchListTile, 'API Enabled'),
+        );
+        expect(maintenanceSwitch.value, isTrue);
+        expect(apiSwitch.value, isFalse);
+
+        await tester.tap(find.text('Service Limits').first);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<TextField>(
+                find.widgetWithText(TextField, 'Tier 1 Daily'),
+              )
+              .controller!
+              .text,
+          '2500',
+        );
+        expect(
+          tester
+              .widget<TextField>(
+                find.widgetWithText(
+                  TextField,
+                  'Tier 1 Per Transaction',
+                ),
+              )
+              .controller!
+              .text,
+          '500',
+        );
+      },
+    );
+
+    testWidgets(
+      'blocks fintech controls before a non-Head Office request',
+      (tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          'auth_token': 'staff-test-token',
+          'user_role': 'STAFF',
+        });
+        var requests = 0;
+        final client = MockClient((request) async {
+          requests += 1;
+          return http.Response('{}', 200);
+        });
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AdminPlatformConfigurationScreen(client: client),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(
+            'Head Office access is required for Fintech Control settings.',
+          ),
+          findsOneWidget,
+        );
+        expect(requests, 0);
       },
     );
   });

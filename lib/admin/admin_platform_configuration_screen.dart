@@ -6,10 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminPlatformConfigurationScreen extends StatefulWidget {
   final String initialSection;
+  final http.Client? client;
 
   const AdminPlatformConfigurationScreen({
     super.key,
     this.initialSection = 'Maintenance Mode',
+    this.client,
   });
 
   @override
@@ -495,10 +497,14 @@ class _AdminPlatformConfigurationScreenState
       throw Exception('Admin login token not found. Please login again.');
     }
 
-    final response = await http.get(
+    final response = await (widget.client?.get(
+          Uri.parse('$_baseUrl$_endpoint'),
+          headers: _headers(token),
+        ) ??
+        http.get(
       Uri.parse('$_baseUrl$_endpoint'),
       headers: _headers(token),
-    );
+      ));
 
     dynamic decoded;
 
@@ -642,11 +648,16 @@ class _AdminPlatformConfigurationScreenState
   ) async {
     final token = await _token();
 
-    final response = await http.put(
+    final response = await (widget.client?.put(
+          Uri.parse('$_baseUrl$_endpoint'),
+          headers: _headers(token),
+          body: jsonEncode(payload),
+        ) ??
+        http.put(
       Uri.parse('$_baseUrl$_endpoint'),
       headers: _headers(token),
       body: jsonEncode(payload),
-    );
+      ));
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return true;

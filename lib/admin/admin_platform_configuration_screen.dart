@@ -31,6 +31,7 @@ class _AdminPlatformConfigurationScreenState
   bool _maintenanceEnabled = false;
   bool _customerAppEnabled = true;
   bool _apiEnabled = true;
+  bool _headOffice = false;
 
   final Map<String, TextEditingController> _c = {};
 
@@ -408,28 +409,25 @@ class _AdminPlatformConfigurationScreenState
       ],
     );
 
-    const limitKeys = <String>[
-      'tier1Daily',
-      'tier1PerTransaction',
-      'tier2Daily',
-      'tier2PerTransaction',
-      'tier3Daily',
-      'tier3PerTransaction',
-      'servicepayTransfer',
-      'bankTransfer',
-      'walletFunding',
-      'withdrawal',
-      'merchantPayment',
-      'airtime',
-      'data',
-    ];
+    const limitKeys = <String, String>{
+      'tier1Daily': 'tier1Daily',
+      'tier1PerTransaction': 'tier1PerTransaction',
+      'tier2Daily': 'tier2Daily',
+      'tier2PerTransaction': 'tier2PerTransaction',
+      'tier3Daily': 'tier3Daily',
+      'tier3PerTransaction': 'tier3PerTransaction',
+      'servicepayTransfer': 'servicepayTransferLimit',
+      'bankTransfer': 'bankTransferLimit',
+      'walletFunding': 'walletFundingLimit',
+      'withdrawal': 'withdrawalLimit',
+    };
 
-    for (final key in limitKeys) {
+    for (final entry in limitKeys.entries) {
       setField(
-        key,
+        entry.value,
         [
-          limits[key],
-          fc[key],
+          limits[entry.key],
+          fc[entry.key],
         ],
       );
     }
@@ -467,20 +465,20 @@ class _AdminPlatformConfigurationScreenState
       }
     }
 
-    const legalKeys = <String>[
-      'privacyPolicyUrl',
-      'termsUrl',
-      'kycAmlPolicyUrl',
-      'complaintsPolicyUrl',
-      'dataProtectionPolicyUrl',
-    ];
+    const legalKeys = <String, String>{
+      'privacyPolicyUrl': 'privacyPolicyUrl',
+      'termsAndConditionsUrl': 'termsUrl',
+      'amlPolicyUrl': 'kycAmlPolicyUrl',
+      'complaintsPolicyUrl': 'complaintsPolicyUrl',
+      'dataProtectionPolicyUrl': 'dataProtectionPolicyUrl',
+    };
 
-    for (final key in legalKeys) {
+    for (final entry in legalKeys.entries) {
       setField(
-        key,
+        entry.value,
         [
-          legal[key],
-          fc[key],
+          legal[entry.key],
+          fc[entry.key],
         ],
       );
     }
@@ -534,6 +532,18 @@ class _AdminPlatformConfigurationScreenState
     }
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final role = (prefs.getString('user_role') ??
+              prefs.getString('admin_role') ??
+              prefs.getString('role') ??
+              '')
+          .trim()
+          .toUpperCase()
+          .replaceAll(RegExp(r'[\s-]+'), '_');
+      if (role != 'HEAD_OFFICE') {
+        throw Exception('Head Office access is required for Fintech Control settings.');
+      }
+      _headOffice = true;
       final fc = await _fetch();
 
       if (!mounted) return;
@@ -648,6 +658,31 @@ class _AdminPlatformConfigurationScreenState
   Future<void> _save() async {
     if (_saving) return;
 
+    if (!_headOffice) {
+      setState(() {
+        _error = 'Head Office access is required for Fintech Control settings.';
+      });
+      return;
+    }
+
+    final numericFields = <String>[
+      'tier1Daily', 'tier1PerTransaction', 'tier2Daily',
+      'tier2PerTransaction', 'tier3Daily', 'tier3PerTransaction',
+      'servicepayTransferLimit', 'bankTransferLimit', 'walletFundingLimit',
+      'withdrawalLimit', 'servicepayTransferFee', 'bankTransferFee',
+      'walletFundingFee', 'withdrawalFee', 'merchantPaymentFee',
+      'airtimeFee', 'dataFee',
+    ];
+    for (final key in numericFields) {
+      final raw = _c[key]?.text.trim() ?? '';
+      if (raw.isNotEmpty && _number(key) == null) {
+        setState(() {
+          _error = 'Enter a non-negative numeric value for $key.';
+        });
+        return;
+      }
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -656,21 +691,10 @@ class _AdminPlatformConfigurationScreenState
     try {
       final fc = _buildFintechControl();
 
-      bool saved = await _sendPayload({
+      final saved = await _sendPayload({
         'fintechControl': fc,
+        'reason': 'Head Office Fintech Control update',
       });
-
-      if (!saved) {
-        saved = await _sendPayload(fc);
-      }
-
-      if (!saved) {
-        saved = await _sendPayload({
-          'settings': {
-            'fintechControl': fc,
-          },
-        });
-      }
 
       if (!saved) {
         throw Exception(

@@ -25,9 +25,10 @@ class _AdminTransactionRequeryScreenState
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
 
-    return prefs.getString('auth_token') ??
+    final raw = prefs.getString('auth_token') ??
         prefs.getString('token') ??
         prefs.getString('admin_token');
+    return raw?.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '').trim();
   }
 
   Future<void> _requery() async {
@@ -101,6 +102,18 @@ class _AdminTransactionRequeryScreenState
           _extractMessage(
             decoded,
             fallback: 'Requery failed with HTTP ${response.statusCode}.',
+          ),
+        );
+      }
+
+      final manualReview = decoded is Map && decoded['manualReviewRequired'] == true;
+      final requestStillProcessing =
+          decoded is Map && decoded['code'] == 'REQUERY_ALREADY_PROCESSING';
+      if (manualReview || requestStillProcessing) {
+        throw Exception(
+          _extractMessage(
+            decoded,
+            fallback: 'Manual review is required. No balance change was made.',
           ),
         );
       }

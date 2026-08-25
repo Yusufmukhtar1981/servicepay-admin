@@ -12,7 +12,9 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  int _selectedIndex = 0;
+  // The published Admin entry point opens the completed Fintech Control
+  // Center. The legacy dashboard remains available through its tab.
+  int _selectedIndex = 1;
   String _search = '';
 
   static const Color _primary = Color(0xFF08783E);

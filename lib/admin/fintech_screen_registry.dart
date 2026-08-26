@@ -23,6 +23,7 @@ import 'admin_bank_reconciliation_screen.dart';
 import 'admin_transaction_requery_screen.dart';
 import 'admin_fintech_operations_screen.dart';
 import 'admin_cards_screen.dart';
+import 'admin_solar_screen.dart';
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
@@ -46,7 +47,8 @@ Widget? fintechScreenForTitle(String title) {
     case 'Cards Management':
       return const AdminCardsScreen();
     case 'Transaction Limits':
-      return const AdminPlatformConfigurationScreen(initialSection: 'Service Limits');
+      return const AdminPlatformConfigurationScreen(
+          initialSection: 'Service Limits');
     case 'Transaction Requery':
       return const AdminTransactionRequeryScreen();
 
@@ -61,6 +63,8 @@ Widget? fintechScreenForTitle(String title) {
       return AdminTransactionsScreen();
     case 'Amana':
       return AdminAmanaScreen();
+    case 'ServicePay Solar':
+      return const AdminSolarScreen();
     case 'Commissions':
       return AdminProductCommissionScreen();
     case 'Commissions Setup':

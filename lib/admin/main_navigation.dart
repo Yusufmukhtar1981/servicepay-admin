@@ -26,6 +26,7 @@ import 'admin_cards_screen.dart';
 
 import 'admin_marketplace_screen.dart';
 import 'admin_data_pricing_screen.dart';
+import 'admin_solar_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -149,6 +150,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    /*
+     * =====================================================
+     * SERVICEPAY SOLAR - HEAD OFFICE ONLY
+     * =====================================================
+     */
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminSolarScreen(),
+        icon: Icons.solar_power_outlined,
+        activeIcon: Icons.solar_power_rounded,
+        label: 'ServicePay Solar',
       );
     }
 

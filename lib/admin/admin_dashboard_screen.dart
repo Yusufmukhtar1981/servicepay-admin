@@ -72,6 +72,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('Airtime', Icons.phone_android_outlined),
         _FintechItem('Data', Icons.wifi_outlined),
         _FintechItem('Electricity', Icons.electric_bolt_outlined),
+        _FintechItem('ServicePay Solar', Icons.solar_power_outlined),
         _FintechItem('Cable TV', Icons.tv_outlined),
         _FintechItem('Exam PIN', Icons.school_outlined),
         _FintechItem('Airtime To Cash', Icons.currency_exchange_outlined),
@@ -763,6 +764,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (linkedScreen != null) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
+          settings: RouteSettings(
+            name: title == 'ServicePay Solar' ? '/admin/solar' : null,
+          ),
           builder: (_) => linkedScreen,
         ),
       );

@@ -239,9 +239,6 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       ),
     );
     if (save != true) {
-      for (final TextEditingController controller in fields.values) {
-        controller.dispose();
-      }
       return;
     }
     try {
@@ -277,10 +274,6 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       await _load();
     } on _SolarAdminException catch (error) {
       _notice(error.message, error: true);
-    } finally {
-      for (final TextEditingController controller in fields.values) {
-        controller.dispose();
-      }
     }
   }
 
@@ -381,12 +374,10 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       ),
     );
     if (confirmed != true) {
-      price.dispose();
-      note.dispose();
       return;
     }
     try {
-      await _api.post('/applications/${_id(application)}/approve', body: {
+      await _api.patch('/applications/${_id(application)}/approve', body: {
         'approvedPrice': price.text.trim(),
         'note': note.text.trim(),
       });
@@ -394,9 +385,6 @@ class _AdminSolarScreenState extends State<AdminSolarScreen> {
       await _load();
     } on _SolarAdminException catch (error) {
       _notice(error.message, error: true);
-    } finally {
-      price.dispose();
-      note.dispose();
     }
   }
 

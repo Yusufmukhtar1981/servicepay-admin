@@ -26,6 +26,7 @@ import 'admin_cards_screen.dart';
 
 import 'admin_marketplace_screen.dart';
 import 'admin_data_pricing_screen.dart';
+import 'admin_phone_financing_screen.dart';
 import 'admin_solar_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
@@ -164,6 +165,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.solar_power_outlined,
         activeIcon: Icons.solar_power_rounded,
         label: 'ServicePay Solar',
+      );
+
+      addNavigationPage(
+        page: const AdminPhoneFinancingScreen(),
+        icon: Icons.phone_android_outlined,
+        activeIcon: Icons.phone_android_rounded,
+        label: 'Phone Financing',
       );
     }
 

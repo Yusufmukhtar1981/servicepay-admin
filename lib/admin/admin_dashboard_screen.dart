@@ -760,6 +760,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _moduleInfo(String title) {
     // SERVICEPAY_VERIFIED_FINTECH_NAVIGATION
+    if (title == 'Phone Financing') {
+      Navigator.of(context).pushNamed('/phone-financing');
+      return;
+    }
+
     final linkedScreen = fintechScreenForTitle(title);
 
     if (linkedScreen != null) {

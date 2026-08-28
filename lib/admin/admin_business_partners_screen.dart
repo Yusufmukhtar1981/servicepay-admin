@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_business_partners_api.dart';
 
@@ -21,6 +22,9 @@ class _AdminBusinessPartnersScreenState
   late final AdminBusinessPartnersApi _api;
   final _search = TextEditingController();
   bool _loading = true;
+  bool _accessLoaded = false;
+  bool _isHeadOffice = false;
+  Set<String> _permissions = <String>{};
   String _error = '';
   String _status = '';
   Map<String, dynamic> _counts = {};
@@ -30,7 +34,7 @@ class _AdminBusinessPartnersScreenState
   void initState() {
     super.initState();
     _api = widget.api ?? AdminBusinessPartnersApi();
-    _load();
+    _loadAccess();
   }
 
   @override
@@ -58,7 +62,41 @@ class _AdminBusinessPartnersScreenState
   String _partnerStatus(Map<String, dynamic> partner) =>
       _text(partner['status'], 'ACTIVE').toUpperCase();
 
+  bool _hasPermission(String permission) =>
+      _isHeadOffice || _permissions.contains(permission.toLowerCase());
+
+  Future<void> _loadAccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('user_role') ??
+            prefs.getString('admin_role') ??
+            prefs.getString('role') ??
+            '')
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
+    final permissions = (prefs.getStringList('staff_permissions') ?? const [])
+        .map((permission) => permission.trim().toLowerCase())
+        .where((permission) => permission.isNotEmpty)
+        .toSet();
+    if (!mounted) return;
+    setState(() {
+      _isHeadOffice = role == 'HEAD_OFFICE';
+      _permissions = permissions;
+      _accessLoaded = true;
+    });
+    if (!_hasPermission('business_partners.view')) {
+      setState(() {
+        _loading = false;
+        _error =
+            'You do not have permission to view ServicePay Business Partners.';
+      });
+      return;
+    }
+    await _load();
+  }
+
   Future<void> _load() async {
+    if (!_accessLoaded || !_hasPermission('business_partners.view')) return;
     if (mounted) {
       setState(() {
         _loading = true;
@@ -123,12 +161,14 @@ class _AdminBusinessPartnersScreenState
                 tooltip: 'Refresh')
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _editor(),
-          backgroundColor: _bpGreen,
-          icon: const Icon(Icons.add_business_outlined),
-          label: const Text('New partner'),
-        ),
+        floatingActionButton: _hasPermission('business_partners.create')
+            ? FloatingActionButton.extended(
+                onPressed: () => _editor(),
+                backgroundColor: _bpGreen,
+                icon: const Icon(Icons.add_business_outlined),
+                label: const Text('New partner'),
+              )
+            : null,
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error.isNotEmpty

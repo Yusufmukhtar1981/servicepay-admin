@@ -21,6 +21,7 @@ import 'admin_kyc_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_partner_screen.dart';
 import 'admin_partner_applications_screen.dart';
+import 'admin_business_partners_screen.dart';
 
 import 'admin_cards_screen.dart';
 
@@ -340,7 +341,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     // ================================================================
-    // PARTNER MANAGEMENT - HEAD OFFICE ONLY
+    // BUSINESS PARTNER MANAGEMENT
+    if (isHeadOffice ||
+        hasPermission(
+          'business_partners.view',
+        )) {
+      addNavigationPage(
+        page: const AdminBusinessPartnersScreen(),
+        icon: Icons.domain_outlined,
+        activeIcon: Icons.domain_rounded,
+        label: 'ServicePay Business Partner',
+      );
+    }
+
+    // PARTNER API MANAGEMENT - HEAD OFFICE ONLY
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminPartnerScreen(),

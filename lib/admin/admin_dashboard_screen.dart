@@ -165,6 +165,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       title: 'ServicePay Business',
       icon: Icons.domain_rounded,
       items: [
+        _FintechItem('Business Partners', Icons.domain_outlined),
         _FintechItem('Business Accounts', Icons.business_outlined),
         _FintechItem('Merchants', Icons.storefront_outlined),
         _FintechItem('Empowerment', Icons.volunteer_activism_outlined),

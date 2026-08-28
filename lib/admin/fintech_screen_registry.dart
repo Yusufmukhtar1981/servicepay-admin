@@ -18,6 +18,7 @@ import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
 import 'admin_partner_screen.dart';
 import 'admin_business_withdrawals_screen.dart';
+import 'admin_business_partners_screen.dart';
 
 import 'admin_bank_reconciliation_screen.dart';
 import 'admin_transaction_requery_screen.dart';
@@ -121,6 +122,9 @@ Widget? fintechScreenForTitle(String title) {
 
     case 'Business Wallets':
       return AdminPartnerScreen();
+    case 'Business Partners':
+    case 'Business Accounts':
+      return const AdminBusinessPartnersScreen();
 
     case 'Wallet Credit / Debit':
       return AdminControlCenterScreen();

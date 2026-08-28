@@ -34,6 +34,16 @@ class AdminPhoneFinancingApi {
         if (search.trim().isNotEmpty) 'q': search.trim(),
         if (status.isNotEmpty) 'status': status,
       });
+  Future<Map<String, dynamic>> officers({String search = ''}) => get(
+        '/admin/officers',
+        query: <String, String>{
+          if (search.trim().isNotEmpty) 'q': search.trim(),
+        },
+      );
+  Future<Map<String, dynamic>> createOfficer(Map<String, dynamic> body) =>
+      post('/admin/officers', body);
+  Future<Map<String, dynamic>> setOfficerStatus(String id, String status) =>
+      patch('/admin/officers/$id/status', <String, dynamic>{'status': status});
   Future<Map<String, dynamic>> createProduct(Map<String, dynamic> body) =>
       post('/admin/products', body);
   Future<Map<String, dynamic>> updateProduct(

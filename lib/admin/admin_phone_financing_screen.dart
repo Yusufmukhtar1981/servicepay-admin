@@ -25,16 +25,22 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
       _applications = [],
       _devices = [],
       _finance = [];
+  List<Map<String, dynamic>> _officers = [];
+  bool _officersLoading = false;
   final _search = TextEditingController();
+  final _officerSearch = TextEditingController();
   int _tab = 0;
 
   @override
   void initState() {
     super.initState();
     _api = widget.api ?? AdminPhoneFinancingApi();
-    _tabs = TabController(length: 8, vsync: this)
+    _tabs = TabController(length: 9, vsync: this)
       ..addListener(() {
-        if (!_tabs.indexIsChanging) setState(() => _tab = _tabs.index);
+        if (!_tabs.indexIsChanging) {
+          setState(() => _tab = _tabs.index);
+          if (_tab == 8) _loadOfficers();
+        }
       });
     _load();
   }
@@ -112,6 +118,7 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
   void dispose() {
     _tabs.dispose();
     _search.dispose();
+    _officerSearch.dispose();
     _api.close();
     super.dispose();
   }
@@ -147,6 +154,7 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
             Tab(text: 'Overdue'),
             Tab(text: 'Repayments'),
             Tab(text: 'Completed'),
+            Tab(text: 'Officers'),
           ],
         ),
       ),
@@ -163,6 +171,7 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
                   _financeView(true),
                   _repaymentsView(),
                   _completedView(),
+                   _officersView(),
                 ]),
       floatingActionButton: _tab == 1
           ? FloatingActionButton.extended(
@@ -176,6 +185,12 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
                   backgroundColor: _green,
                   icon: const Icon(Icons.qr_code_2),
                   label: const Text('Add device'))
+          : _tab == 8
+              ? FloatingActionButton.extended(
+                  onPressed: _officerDialog,
+                  backgroundColor: _green,
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('New officer'))
               : null,
     );
   }
@@ -409,6 +424,149 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
           .toList(),
     );
   }
+
+  Future<void> _loadOfficers() async {
+    if (mounted) setState(() => _officersLoading = true);
+    try {
+      final result = await _api.officers(search: _officerSearch.text);
+      if (mounted) {
+        setState(() {
+          _officers = _list(result['officers']);
+          _officersLoading = false;
+        });
+      }
+    } on AdminPhoneFinancingException catch (error) {
+      if (mounted) {
+        setState(() => _officersLoading = false);
+        _notice(error.message, error: true);
+      }
+    }
+  }
+
+  Widget _officersView() => RefreshIndicator(
+        onRefresh: _loadOfficers,
+        child: ListView(padding: const EdgeInsets.all(20), children: [
+          Row(children: [
+            const Text('Phone Financing Officers',
+                style: TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w800, color: _ink)),
+            const Spacer(),
+            Chip(label: Text('${_officers.length}')),
+          ]),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _officerSearch,
+            onSubmitted: (_) => _loadOfficers(),
+            decoration: InputDecoration(
+              labelText: 'Search name, phone, email or state',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                  onPressed: _loadOfficers,
+                  icon: const Icon(Icons.arrow_forward)),
+              filled: true,
+              fillColor: Colors.white,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_officersLoading)
+            const Center(child: Padding(
+                padding: EdgeInsets.all(28), child: CircularProgressIndicator()))
+          else if (_officers.isEmpty)
+            const _EmptyState(text: 'No Phone Financing Officers found.')
+          else
+            ..._officers.map((officer) {
+              final status = _s(officer['status'], 'ACTIVE');
+              final staffId = _s(officer['staffId'], 'No staff reference');
+              return _card(
+                title: '${_s(officer['fullName'])} · $staffId',
+                subtitle:
+                    '${_s(officer['phone'])} · ${_s(officer['email'])}\n${_s(officer['state'])} / ${_s(officer['lga'])} · ${_s(officer['assignedApplicationsCount'] ?? officer['assignedCount'], '0')} assigned · ${_s(officer['completedVerificationsCount'] ?? officer['completedVerificationCount'], '0')} completed verifications',
+                badge: status,
+                trailing: Switch(
+                  value: status.toUpperCase() == 'ACTIVE',
+                  activeColor: _green,
+                  onChanged: (bool active) => _setOfficerStatus(
+                      officer, active ? 'ACTIVE' : 'INACTIVE'),
+                ),
+              );
+            }),
+        ]),
+      );
+
+  Future<void> _setOfficerStatus(
+      Map<String, dynamic> officer, String status) async {
+    try {
+      await _api.setOfficerStatus(_id(officer), status);
+      _notice('Officer status changed to $status.');
+      await _loadOfficers();
+    } on AdminPhoneFinancingException catch (error) {
+      _notice(error.message, error: true);
+    }
+  }
+
+  Future<void> _officerDialog() async {
+    final fields = <String, TextEditingController>{
+      for (final key in <String>[
+        'fullName', 'phone', 'email', 'password', 'staffId', 'state', 'lga',
+        'address'
+      ])
+        key: TextEditingController(),
+    };
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Create Phone Financing Officer'),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final entry in fields.entries)
+                _input(entry.value,
+                    entry.key.replaceAll(RegExp(r'([A-Z])'), r' $1')),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: const Text('Create officer')),
+        ],
+      ),
+    );
+    if (save == true) {
+      try {
+        await _api.createOfficer(<String, dynamic>{
+          for (final entry in fields.entries) entry.key: entry.value.text.trim(),
+        });
+        _notice('Phone Financing Officer created.');
+        await _loadOfficers();
+      } on AdminPhoneFinancingException catch (error) {
+        _notice(error.message, error: true);
+      }
+    }
+    for (final controller in fields.values) {
+      controller.dispose();
+    }
+  }
+
+  Widget _input(TextEditingController controller, String label,
+          {int lines = 1}) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TextField(
+          controller: controller,
+          maxLines: lines,
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+      );
 
   Widget _listPage(
           {required String title,
@@ -815,6 +973,8 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
     final profile = _map(detail['profileSnapshot']);
     final input = _map(detail['applicationInput']);
     final officer = _map(detail['assignedOfficer']);
+    final verification =
+        _map(detail['verification'] ?? detail['verificationReport']);
     final history = detail['statusHistory'] is List
         ? detail['statusHistory'] as List
         : <dynamic>[];
@@ -856,6 +1016,15 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
                 'Refund evidence: ${_s(detail['refundPayment'])} · refunded ${_s(detail['refundedAt'])}',
                 'Total payable ${_money(detail['totalPayable'])} · outstanding ${_money(detail['outstandingBalance'])}',
               ]),
+              if (verification.isNotEmpty)
+                _detailSection('Officer verification', [
+                  'Recommendation: ${_s(verification['recommendation'])}',
+                  'Income assessment: ${_s(verification['incomeAssessment'])}',
+                  'Notes: ${_s(verification['notes'])}',
+                  'Guarantor: ${_s(verification['guarantorDetails'])}',
+                  'Verified: ${_s(verification['verifiedAt'])}',
+                  'Checklist: ${_canonicalFindings(verification['checklist'] ?? verification['findings'])}',
+                ]),
               _detailSection(
                   'Status timeline',
                   history.map((h) {
@@ -887,8 +1056,7 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
     } else if (action == 'ACTIONS') {
       await _applicationActions(a);
     } else {
-      final officerId =
-          await _ask('Assign officer', 'Validated officer user ID');
+      final officerId = await _selectOfficer();
       if (!mounted || officerId == null || officerId.isEmpty) return;
       try {
         await _api.assignOfficer(_id(a), officerId);
@@ -899,6 +1067,105 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
         if (mounted) _notice('$e', error: true);
       }
     }
+  }
+
+  String _canonicalFindings(dynamic value) {
+    final findings = _map(value);
+    if (findings.isEmpty) return 'Not recorded';
+    return findings.entries.map((entry) {
+      final label =
+          entry.key.replaceAllMapped(
+              RegExp(r'([A-Z])'), (Match match) => ' ${match.group(1)}');
+      final result = entry.value == true
+          ? 'Confirmed'
+          : entry.value == false
+              ? 'Not confirmed'
+              : _s(entry.value);
+      return '$label: $result';
+    }).join(' · ');
+  }
+
+  Future<String?> _selectOfficer() async {
+    List<Map<String, dynamic>> officers;
+    try {
+      officers = _list((await _api.officers())['officers'])
+          .where((Map<String, dynamic> officer) =>
+              _s(officer['status'], 'ACTIVE').toUpperCase() == 'ACTIVE')
+          .toList();
+    } catch (error) {
+      if (!mounted) return null;
+      _notice('$error', error: true);
+      return null;
+    }
+    if (!mounted) return null;
+    if (officers.isEmpty) {
+      _notice('No active Phone Financing Officers are available.', error: true);
+      return null;
+    }
+    String filter = '';
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          final visible = officers.where((Map<String, dynamic> officer) {
+            final user = _map(officer['user']);
+            final candidate = [
+              user['fullName'], officer['fullName'], user['phone'],
+              officer['phone'], officer['state'], officer['lga'],
+              officer['staffId'],
+            ].join(' ').toLowerCase();
+            return candidate.contains(filter.toLowerCase());
+          }).toList();
+          return AlertDialog(
+            title: const Text('Assign Phone Financing Officer'),
+            content: SizedBox(
+              width: 560,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Search name, phone, state or reference',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (String value) =>
+                      setDialogState(() => filter = value),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: visible.map((Map<String, dynamic> officer) {
+                      final user = _map(officer['user']);
+                      final name = _s(user['fullName'], _s(officer['fullName']));
+                      final phone = _s(user['phone'], _s(officer['phone']));
+                      final reference = _s(officer['staffId']);
+                      return ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.badge_outlined)),
+                        title: Text(name),
+                        subtitle: Text('$phone • ${_s(officer['state'])} / ${_s(officer['lga'])}\n$reference'),
+                        isThreeLine: true,
+                        onTap: () => Navigator.pop(dialogContext, _id(officer)),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                if (visible.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('No active officers match that search.'),
+                  ),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   bool _refundEligible(Map<String, dynamic> application) =>

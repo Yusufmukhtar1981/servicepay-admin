@@ -73,6 +73,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('Data', Icons.wifi_outlined),
         _FintechItem('Electricity', Icons.electric_bolt_outlined),
         _FintechItem('ServicePay Solar', Icons.solar_power_outlined),
+        _FintechItem('Phone Financing', Icons.phone_android_rounded),
         _FintechItem('Cable TV', Icons.tv_outlined),
         _FintechItem('Exam PIN', Icons.school_outlined),
         _FintechItem('Airtime To Cash', Icons.currency_exchange_outlined),

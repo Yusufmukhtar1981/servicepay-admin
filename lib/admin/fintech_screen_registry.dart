@@ -24,6 +24,7 @@ import 'admin_transaction_requery_screen.dart';
 import 'admin_fintech_operations_screen.dart';
 import 'admin_cards_screen.dart';
 import 'admin_solar_screen.dart';
+import 'admin_phone_financing_screen.dart';
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
@@ -65,6 +66,8 @@ Widget? fintechScreenForTitle(String title) {
       return AdminAmanaScreen();
     case 'ServicePay Solar':
       return const AdminSolarScreen();
+    case 'Phone Financing':
+      return const AdminPhoneFinancingScreen();
     case 'Commissions':
       return AdminProductCommissionScreen();
     case 'Commissions Setup':

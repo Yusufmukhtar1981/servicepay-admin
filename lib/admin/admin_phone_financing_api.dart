@@ -41,8 +41,18 @@ class AdminPhoneFinancingApi {
       patch('/admin/products/$id', body);
   Future<Map<String, dynamic>> setProductActive(String id, bool active) =>
       patch('/admin/products/$id/${active ? 'activate' : 'deactivate'}', {});
-  Future<Map<String, dynamic>> createDevice(Map<String, dynamic> body) =>
-      post('/admin/devices', body);
+  Future<Map<String, dynamic>> createDevice({
+    required String phoneProductId,
+    required String imei1,
+    String imei2 = '',
+    required String serialNumber,
+  }) =>
+      post('/admin/devices', {
+        'phoneProductId': phoneProductId.trim(),
+        'imei1': imei1.trim(),
+        if (imei2.trim().isNotEmpty) 'imei2': imei2.trim(),
+        'serialNumber': serialNumber.trim(),
+      });
   Future<Map<String, dynamic>> transition(
           String id, String status, String note) =>
       patch('/admin/applications/$id/status', {'status': status, 'note': note});

@@ -605,65 +605,84 @@ class _AdminPhoneFinancingScreenState extends State<AdminPhoneFinancingScreen>
       for (final k in ['imei1', 'imei2', 'serialNumber'])
         k: TextEditingController()
     };
-    String? productId;
+    String? phoneProductId;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Receive device into inventory'),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: productId,
-                decoration: const InputDecoration(labelText: 'Product'),
-                items: _products
-                    .map((p) => DropdownMenuItem<String>(
-                          value: _id(p),
-                          child: Text(
-                              '${_s(p['name'])} · stock ${_s(p['stock'], '0')}'),
-                        ))
-                    .toList(),
-                onChanged: (value) => (productId = value),
-              ),
-              ...c.entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: TextField(
-                      controller: e.value,
-                      decoration: InputDecoration(
-                        labelText: e.key == 'productId' ? 'Product ID' : e.key,
-                      ),
-                    ),
-                  )),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Receive device into inventory'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: phoneProductId,
+                  decoration: const InputDecoration(labelText: 'Phone product'),
+                  items: _products
+                      .map((p) => DropdownMenuItem<String>(
+                            value: _id(p),
+                            child: Text(
+                                '${_s(p['name'])} · stock ${_s(p['stock'], '0')}'),
+                          ))
+                      .toList(),
+                  onChanged: (value) =>
+                      setDialogState(() => phoneProductId = value),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: c['imei1'],
+                  decoration: const InputDecoration(labelText: 'IMEI 1'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: c['imei2'],
+                  decoration:
+                      const InputDecoration(labelText: 'IMEI 2 (optional)'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: c['serialNumber'],
+                  decoration: const InputDecoration(labelText: 'Serial number'),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Add device')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Add device')),
-        ],
       ),
     );
+    final selectedPhoneProductId = phoneProductId?.trim() ?? '';
+    final imei1 = c['imei1']!.text.trim();
+    final imei2 = c['imei2']!.text.trim();
+    final serialNumber = c['serialNumber']!.text.trim();
     if (ok != true) return;
-    if (productId == null ||
-        c['imei1']!.text.trim().isEmpty ||
-        c['serialNumber']!.text.trim().isEmpty) {
-      _notice('Product ID, IMEI 1 and serial number are required.',
-          error: true);
+    if (selectedPhoneProductId.isEmpty) {
+      _notice('Please select a phone product.', error: true);
+      return;
+    }
+    if (imei1.isEmpty) {
+      _notice('IMEI 1 is required.', error: true);
+      return;
+    }
+    if (serialNumber.isEmpty) {
+      _notice('Serial number is required.', error: true);
       return;
     }
     try {
-      await _api.createDevice({
-        'productId': productId,
-        'imei1': c['imei1']!.text.trim(),
-        'imei2': c['imei2']!.text.trim(),
-        'serialNumber': c['serialNumber']!.text.trim()
-      });
+      await _api.createDevice(
+        phoneProductId: selectedPhoneProductId,
+        imei1: imei1,
+        imei2: imei2,
+        serialNumber: serialNumber,
+      );
       _notice('Device added to stock.');
       await _load();
     } catch (e) {

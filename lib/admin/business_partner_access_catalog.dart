@@ -14,6 +14,7 @@ const Map<String, String> businessPartnerServicePermissions = <String, String>{
 
 const Set<String> businessPartnerPermissionCatalog = <String>{
   ...businessPartnerViewPermissions,
+  'OFFICER_MANAGEMENT',
   'SOLAR_ASSIGNMENT',
   'PHONE_ASSIGNMENT',
   'VERIFICATION_REVIEW',
@@ -38,6 +39,7 @@ Map<String, List<String>> businessPartnerAccessForServices(
     ..sort();
   final permissions = <String>{
     ...businessPartnerViewPermissions,
+    if (services.isNotEmpty) 'OFFICER_MANAGEMENT',
     for (final service in services)
       if (businessPartnerServicePermissions[service] case final permission?)
         permission,

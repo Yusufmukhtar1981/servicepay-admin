@@ -124,6 +124,7 @@ void main() {
       'APPLICATIONS',
       'REPAYMENTS',
       'REPORTS',
+      'OFFICER_MANAGEMENT',
       'PHONE_ASSIGNMENT',
       'SOLAR_ASSIGNMENT',
     ]);
@@ -135,6 +136,7 @@ void main() {
 
     expect(access['services'], <String>['SOLAR']);
     expect(access['permissions'], contains('SOLAR_ASSIGNMENT'));
+    expect(access['permissions'], contains('OFFICER_MANAGEMENT'));
     expect(access['permissions'], isNot(contains('SOLAR')));
     expect(
       access['permissions']!.every(businessPartnerPermissionCatalog.contains),
@@ -148,6 +150,7 @@ void main() {
 
     expect(access['services'], <String>['PHONE']);
     expect(access['permissions'], contains('PHONE_ASSIGNMENT'));
+    expect(access['permissions'], contains('OFFICER_MANAGEMENT'));
     expect(access['permissions'], isNot(contains('PHONE')));
     expect(
       access['permissions']!.every(businessPartnerPermissionCatalog.contains),

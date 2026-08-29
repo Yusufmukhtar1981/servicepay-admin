@@ -2870,7 +2870,7 @@ class _AdminDeliveryScreenState
                       ),
                       DropdownButtonFormField<
                           String>(
-                        initialValue:
+                        value:
                             commissionType,
                         decoration:
                             InputDecoration(
@@ -3007,7 +3007,7 @@ class _AdminDeliveryScreenState
                       ),
                       DropdownButtonFormField<
                           String>(
-                        initialValue:
+                        value:
                             paymentStatus,
                         decoration:
                             InputDecoration(
@@ -3456,7 +3456,7 @@ class _AdminDeliveryScreenState
               content:
                   DropdownButtonFormField<
                       String>(
-                initialValue:
+                value:
                     newStatus,
                 decoration:
                     InputDecoration(

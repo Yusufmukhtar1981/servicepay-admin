@@ -2097,7 +2097,7 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
           );
 
           final Widget statusField = DropdownButtonFormField<String>(
-            initialValue: _selectedStatus,
+            value: _selectedStatus,
             isExpanded: true,
             decoration: InputDecoration(
               labelText: 'Status',
@@ -2131,7 +2131,7 @@ class _AdminAmanaScreenState extends State<AdminAmanaScreen> {
           );
 
           final Widget categoryField = DropdownButtonFormField<String>(
-            initialValue: _selectedCategory,
+            value: _selectedCategory,
             isExpanded: true,
             decoration: InputDecoration(
               labelText: 'Category',

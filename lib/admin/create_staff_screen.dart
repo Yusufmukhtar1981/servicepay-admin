@@ -688,7 +688,7 @@ class _CreateStaffScreenState
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue:
+                    value:
                         selectedRoleId.isEmpty
                             ? null
                             : selectedRoleId,

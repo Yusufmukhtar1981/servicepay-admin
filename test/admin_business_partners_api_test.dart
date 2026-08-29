@@ -6,12 +6,14 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/admin/admin_business_partners_api.dart';
 import 'package:servicepay_app/admin/admin_business_partners_screen.dart';
+import 'package:servicepay_app/admin/business_partner_access_catalog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{
       'auth_token': 'head-office-token',
+      'user_role': 'HEAD_OFFICE',
     });
   });
 
@@ -107,14 +109,68 @@ void main() {
         'states': <String>['Lagos'],
         'lgas': <String>['Ikeja'],
       },
-      'services': <String>['SOLAR', 'PHONE_ASSIGNMENT'],
+      ...businessPartnerAccessForServices(<String>['SOLAR', 'PHONE']),
     };
 
     await api.create(body);
 
     expect(payload, body);
     expect(payload.containsKey('apiSecret'), isFalse);
+    expect(payload['services'], <String>['PHONE', 'SOLAR']);
+    expect(payload['permissions'], <String>[
+      'DASHBOARD',
+      'OFFICERS',
+      'CUSTOMERS',
+      'APPLICATIONS',
+      'REPAYMENTS',
+      'REPORTS',
+      'PHONE_ASSIGNMENT',
+      'SOLAR_ASSIGNMENT',
+    ]);
     api.close();
+  });
+
+  test('Solar service produces only canonical Solar access permissions', () {
+    final access = businessPartnerAccessForServices(<String>['SOLAR']);
+
+    expect(access['services'], <String>['SOLAR']);
+    expect(access['permissions'], contains('SOLAR_ASSIGNMENT'));
+    expect(access['permissions'], isNot(contains('SOLAR')));
+    expect(
+      access['permissions']!.every(businessPartnerPermissionCatalog.contains),
+      isTrue,
+    );
+  });
+
+  test('Phone Financing service produces only canonical Phone permissions', () {
+    final access =
+        businessPartnerAccessForServices(<String>['PHONE_FINANCING']);
+
+    expect(access['services'], <String>['PHONE']);
+    expect(access['permissions'], contains('PHONE_ASSIGNMENT'));
+    expect(access['permissions'], isNot(contains('PHONE')));
+    expect(
+      access['permissions']!.every(businessPartnerPermissionCatalog.contains),
+      isTrue,
+    );
+  });
+
+  test('Solar and Phone services never become permission values', () {
+    final access = businessPartnerAccessForServices(<String>['SOLAR', 'PHONE']);
+
+    expect(access['services'], <String>['PHONE', 'SOLAR']);
+    expect(
+        access['permissions'],
+        containsAll(<String>[
+          'SOLAR_ASSIGNMENT',
+          'PHONE_ASSIGNMENT',
+        ]));
+    expect(access['permissions'], isNot(contains('SOLAR')));
+    expect(access['permissions'], isNot(contains('PHONE')));
+    expect(
+      access['permissions']!.every(businessPartnerPermissionCatalog.contains),
+      isTrue,
+    );
   });
 
   testWidgets('detail renders scoped Solar, Phone, and repayment sections',

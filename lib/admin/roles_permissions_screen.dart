@@ -553,7 +553,7 @@ class _RolesPermissionsScreenState
                         ),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<String>(
-                          initialValue:
+                          value:
                               selectedStatus,
                           decoration:
                               const InputDecoration(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_business_partners_api.dart';
+import 'business_partner_access_catalog.dart';
 
 const _bpGreen = Color(0xFF08783E);
 const _bpInk = Color(0xFF17352B);
@@ -49,6 +50,12 @@ class _AdminBusinessPartnersScreenState
   List<Map<String, dynamic>> _list(dynamic value) => value is List
       ? value.whereType<Map>().map((item) => _map(item)).toList()
       : [];
+  List<String> _strings(dynamic value) => value is List
+      ? value
+          .map((item) => item.toString().trim().toUpperCase())
+          .where((item) => item.isNotEmpty)
+          .toList()
+      : <String>[];
   String _id(Map<String, dynamic> value) =>
       '${value['_id'] ?? value['id'] ?? ''}'.trim();
   String _text(dynamic value, [String fallback = '—']) {
@@ -329,6 +336,16 @@ class _AdminBusinessPartnersScreenState
 
   Future<void> _editor([Map<String, dynamic>? existing]) async {
     final territory = _map(existing?['territory']);
+    final existingPermissions = _strings(existing?['permissions']);
+    final selectedServices = <String>{
+      ..._strings(existing?['services']).map(
+        normalizeBusinessPartnerService,
+      ),
+      if (existingPermissions.contains('SOLAR_ASSIGNMENT')) 'SOLAR',
+      if (existingPermissions.contains('PHONE_ASSIGNMENT')) 'PHONE',
+    }..removeWhere(
+        (service) => !businessPartnerServicePermissions.containsKey(service),
+      );
     final fields = <String, TextEditingController>{
       'fullName': TextEditingController(
           text: _text(
@@ -354,48 +371,74 @@ class _AdminBusinessPartnersScreenState
       'address': TextEditingController(text: _text(existing?['address'], '')),
       'territory':
           TextEditingController(text: _text(territory['description'], '')),
-      'services': TextEditingController(
-          text: _list(existing?['services'] ?? existing?['permissions'])
-              .join(', ')),
     };
     final save = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-              title: Text(existing == null
-                  ? 'Create business partner'
-                  : 'Edit business partner'),
-              content: SizedBox(
-                  width: 500,
-                  child: SingleChildScrollView(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    for (final entry in fields.entries)
-                      Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: TextField(
-                            controller: entry.value,
-                            maxLines: entry.key == 'address' ? 2 : 1,
-                            keyboardType: entry.key == 'email'
-                                ? TextInputType.emailAddress
-                                : entry.key == 'phone'
-                                    ? TextInputType.phone
-                                    : TextInputType.text,
-                            obscureText: entry.key == 'password',
-                            decoration: InputDecoration(
-                                labelText: entry.key
-                                    .replaceAllMapped(RegExp(r'([A-Z])'),
-                                        (m) => ' ${m.group(1)}')
-                                    .trim(),
-                                border: const OutlineInputBorder()),
-                          )),
-                  ]))),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel')),
-                FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: Text(existing == null ? 'Create' : 'Save changes'))
-              ],
+        builder: (ctx) => StatefulBuilder(
+              builder: (ctx, setDialogState) => AlertDialog(
+                title: Text(existing == null
+                    ? 'Create business partner'
+                    : 'Edit business partner'),
+                content: SizedBox(
+                    width: 500,
+                    child: SingleChildScrollView(
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                          for (final entry in fields.entries)
+                            Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: TextField(
+                                  controller: entry.value,
+                                  maxLines: entry.key == 'address' ? 2 : 1,
+                                  keyboardType: entry.key == 'email'
+                                      ? TextInputType.emailAddress
+                                      : entry.key == 'phone'
+                                          ? TextInputType.phone
+                                          : TextInputType.text,
+                                  obscureText: entry.key == 'password',
+                                  decoration: InputDecoration(
+                                      labelText: entry.key
+                                          .replaceAllMapped(RegExp(r'([A-Z])'),
+                                              (m) => ' ${m.group(1)}')
+                                          .trim(),
+                                      border: const OutlineInputBorder()),
+                                )),
+                          const Text('Services',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          Wrap(spacing: 8, runSpacing: 8, children: [
+                            for (final service
+                                in businessPartnerServicePermissions.keys)
+                              FilterChip(
+                                label: Text(service == 'PHONE'
+                                    ? 'Phone Financing'
+                                    : 'Solar'),
+                                selected: selectedServices.contains(service),
+                                onSelected: (selected) => setDialogState(() {
+                                  selected
+                                      ? selectedServices.add(service)
+                                      : selectedServices.remove(service);
+                                }),
+                              ),
+                          ]),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Service labels are stored separately. Access permissions are generated from the approved Business Partner permission catalog.',
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xFF64748B)),
+                          ),
+                        ]))),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(existing == null ? 'Create' : 'Save changes'))
+                ],
+              ),
             ));
     if (save == true) {
       final body = <String, dynamic>{
@@ -407,14 +450,9 @@ class _AdminBusinessPartnersScreenState
       body['companyName'] = body['companyName'].toString().isEmpty
           ? body['businessName']
           : body['companyName'];
-      final services = body['services']
-          .toString()
-          .split(',')
-          .map((service) => service.trim().toUpperCase())
-          .where((service) => service.isNotEmpty)
-          .toList();
-      body['services'] = services;
-      body['permissions'] = services;
+      final access = businessPartnerAccessForServices(selectedServices);
+      body['services'] = access['services'];
+      body['permissions'] = access['permissions'];
       body['territory'] = {
         'states':
             body['state'].toString().isEmpty ? <String>[] : [body['state']],

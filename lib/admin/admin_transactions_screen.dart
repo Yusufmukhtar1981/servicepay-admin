@@ -998,7 +998,7 @@ class _AdminTransactionsScreenState
               final Widget statusDropdown =
                   DropdownButtonFormField<
                       String>(
-                initialValue: selectedStatus,
+                value: selectedStatus,
                 decoration: InputDecoration(
                   labelText: 'Status',
                   border: OutlineInputBorder(
@@ -1035,7 +1035,7 @@ class _AdminTransactionsScreenState
               final Widget serviceDropdown =
                   DropdownButtonFormField<
                       String>(
-                initialValue: selectedService,
+                value: selectedService,
                 decoration: InputDecoration(
                   labelText: 'Service',
                   border: OutlineInputBorder(

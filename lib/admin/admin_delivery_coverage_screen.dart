@@ -438,7 +438,7 @@ class _AdminDeliveryCoverageScreenState
                             : 'Customers cannot create deliveries in this state.',
                       ),
                       value: isLive,
-                      activeThumbColor: primaryColor,
+                      activeColor: primaryColor,
                       onChanged: (
                         bool value,
                       ) {

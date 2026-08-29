@@ -502,7 +502,7 @@ class _AdminProductCommissionScreenState
                           MainAxisSize.min,
                       children: [
                         DropdownButtonFormField<String>(
-                          initialValue:
+                          value:
                               selectedProductCode,
                           decoration:
                               const InputDecoration(

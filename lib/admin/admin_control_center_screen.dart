@@ -522,7 +522,7 @@ class _AdminControlCenterScreenState extends State<AdminControlCenterScreen> {
                 enabled ? 'Visible to customers' : 'Hidden from customers',
               ),
               value: enabled,
-              activeThumbColor: primaryGreen,
+              activeColor: primaryGreen,
               onChanged: (bool value) {
                 setState(() {
                   services[entry.key] = value;
@@ -570,7 +570,7 @@ class _AdminControlCenterScreenState extends State<AdminControlCenterScreen> {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          initialValue: walletAction,
+          value: walletAction,
           decoration: const InputDecoration(
             labelText: 'Action',
             border: OutlineInputBorder(),

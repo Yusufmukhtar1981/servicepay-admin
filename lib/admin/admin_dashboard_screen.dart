@@ -209,7 +209,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('SMS', Icons.sms_outlined),
         _FintechItem('Push Notifications', Icons.notifications_active_outlined),
         _FintechItem('Announcements', Icons.campaign_outlined),
-        _FintechItem('Customer Support', Icons.headset_mic_outlined),
+        _FintechItem('Support / Tickets', Icons.headset_mic_outlined),
       ],
     ),
     _FintechSection(

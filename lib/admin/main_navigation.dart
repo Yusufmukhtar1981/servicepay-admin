@@ -29,6 +29,7 @@ import 'admin_marketplace_screen.dart';
 import 'admin_data_pricing_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_solar_screen.dart';
+import 'admin_customer_support_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({
@@ -302,6 +303,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_balance_wallet_outlined,
         activeIcon: Icons.account_balance_wallet_rounded,
         label: 'Wallet',
+      );
+    }
+
+    /*
+     * =====================================================
+     * SUPPORT / TICKETS
+     * =====================================================
+     */
+    if (isHeadOffice || hasPermission('support.view')) {
+      addNavigationPage(
+        page: const AdminCustomerSupportScreen(),
+        icon: Icons.support_agent_outlined,
+        activeIcon: Icons.support_agent_rounded,
+        label: 'Support / Tickets',
       );
     }
 

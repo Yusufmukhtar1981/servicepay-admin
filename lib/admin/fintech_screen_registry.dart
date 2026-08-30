@@ -26,12 +26,17 @@ import 'admin_fintech_operations_screen.dart';
 import 'admin_cards_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_phone_financing_screen.dart';
+import 'admin_customer_support_screen.dart';
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
 
 Widget? fintechScreenForTitle(String title) {
   switch (title) {
+    case 'Customer Support':
+    case 'Support / Tickets':
+    case 'Complaints':
+      return const AdminCustomerSupportScreen();
     case 'Account Restrictions':
     case 'Wallet Holds & Releases':
     case 'Failed Transactions':

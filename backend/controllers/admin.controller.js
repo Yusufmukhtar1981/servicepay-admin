@@ -3,6 +3,11 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
+const {
+  getExecutiveDashboard,
+} = require("../services/adminDashboard.service");
+
+exports.getAdminExecutiveDashboard = getExecutiveDashboard;
 
 const DELIVERY_STATUSES = [
   "PENDING",

@@ -8,6 +8,7 @@ const {
   getAdminUsers,
   createAdminUser,
   updateAdminUserStatus,
+  getAdminExecutiveDashboard,
 } = require("../controllers/admin.controller");
 
 const {
@@ -23,6 +24,16 @@ const MANAGEMENT_ROLES = [
   "STATE_MANAGER",
 ];
 
+const dashboardPermission = (req, res, next) => {
+  const role = String(req.user?.role || "").toUpperCase();
+  if (role !== "STAFF") return next();
+  return res.status(403).json({
+    success: false,
+    message:
+      "Executive dashboard access requires a server-defined management scope.",
+  });
+};
+
 /*
  * Management dashboard.
  *
@@ -35,6 +46,22 @@ router.get(
   protect,
   adminOnly(...MANAGEMENT_ROLES),
   getAdminDashboard
+);
+
+router.get(
+  "/dashboard/executive",
+  protect,
+  adminOnly(
+    "HEAD_OFFICE",
+    "ADMIN",
+    "SUPER_ADMIN",
+    "HEAD_OFFICE_ADMIN",
+    "ZONAL_MANAGER",
+    "STATE_MANAGER",
+    "STAFF",
+  ),
+  dashboardPermission,
+  getAdminExecutiveDashboard,
 );
 
 /*

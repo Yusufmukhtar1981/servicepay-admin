@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -751,35 +754,349 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-              width: items.length * 76.0,
-              child: BottomNavigationBar(
-                currentIndex: safeIndex,
-                type: BottomNavigationBarType.fixed,
-                selectedItemColor: const Color(
-                  0xFF0F766E,
-                ),
-                unselectedItemColor: const Color(
-                  0xFF94A3B8,
-                ),
-                backgroundColor: Colors.white,
-                selectedFontSize: 10,
-                unselectedFontSize: 9,
-                onTap: (
-                  int index,
-                ) {
-                  if (index < 0 || index >= pages.length) {
-                    return;
-                  }
+        child: LayoutBuilder(
+          builder: (
+            BuildContext context,
+            BoxConstraints constraints,
+          ) {
+            void selectModule(int index) {
+              if (index < 0 || index >= pages.length) {
+                return;
+              }
 
-                  setState(() {
-                    currentIndex = index;
-                  });
-                },
+              setState(() {
+                currentIndex = index;
+              });
+            }
+
+            final bool isDesktop = kIsWeb ||
+                defaultTargetPlatform == TargetPlatform.windows ||
+                defaultTargetPlatform == TargetPlatform.macOS ||
+                defaultTargetPlatform == TargetPlatform.linux;
+            if (isDesktop && constraints.maxWidth >= 700) {
+              return AdminDesktopModuleNavigation(
                 items: items,
-              )),
+                currentIndex: safeIndex,
+                onTap: selectModule,
+              );
+            }
+
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: items.length * 76.0,
+                child: BottomNavigationBar(
+                  currentIndex: safeIndex,
+                  type: BottomNavigationBarType.fixed,
+                  selectedItemColor: const Color(
+                    0xFF0F766E,
+                  ),
+                  unselectedItemColor: const Color(
+                    0xFF94A3B8,
+                  ),
+                  backgroundColor: Colors.white,
+                  selectedFontSize: 10,
+                  unselectedFontSize: 9,
+                  onTap: selectModule,
+                  items: items,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class AdminDesktopModuleNavigation extends StatefulWidget {
+  const AdminDesktopModuleNavigation({
+    super.key,
+    required this.items,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  final List<BottomNavigationBarItem> items;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  State<AdminDesktopModuleNavigation> createState() =>
+      _AdminDesktopModuleNavigationState();
+}
+
+class _AdminDesktopModuleNavigationState
+    extends State<AdminDesktopModuleNavigation> {
+  static const double _itemWidth = 76.0;
+  static const double _scrollStep = 304.0;
+  static const Duration _scrollDuration = Duration(milliseconds: 260);
+
+  final ScrollController _scrollController = ScrollController();
+  bool _isAnimating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureSelectedVisible(animate: false);
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(AdminDesktopModuleNavigation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentIndex != widget.currentIndex ||
+        oldWidget.items.length != widget.items.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _ensureSelectedVisible();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  bool get _canScrollLeft =>
+      _scrollController.hasClients && _scrollController.offset > 0.5;
+
+  bool get _canScrollRight =>
+      _scrollController.hasClients &&
+      _scrollController.offset <
+          _scrollController.position.maxScrollExtent - 0.5;
+
+  Future<void> scrollBy(double delta) async {
+    if (!_scrollController.hasClients || _isAnimating) {
+      return;
+    }
+
+    final ScrollPosition position = _scrollController.position;
+    final double target = (position.pixels + delta).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    if ((target - position.pixels).abs() < 0.5) {
+      return;
+    }
+
+    _isAnimating = true;
+    try {
+      await _scrollController.animateTo(
+        target,
+        duration: _scrollDuration,
+        curve: Curves.easeOutCubic,
+      );
+    } finally {
+      _isAnimating = false;
+    }
+  }
+
+  void _ensureSelectedVisible({bool animate = true}) {
+    if (!_scrollController.hasClients ||
+        widget.currentIndex < 0 ||
+        widget.currentIndex >= widget.items.length) {
+      return;
+    }
+
+    final ScrollPosition position = _scrollController.position;
+    final double itemStart = widget.currentIndex * _itemWidth;
+    final double itemEnd = itemStart + _itemWidth;
+    double target = position.pixels;
+
+    if (itemStart < position.pixels) {
+      target = itemStart;
+    } else if (itemEnd > position.pixels + position.viewportDimension) {
+      target = itemEnd - position.viewportDimension;
+    }
+
+    target = target.clamp(0.0, position.maxScrollExtent);
+    if ((target - position.pixels).abs() < 0.5) {
+      return;
+    }
+
+    if (animate) {
+      _scrollController.animateTo(
+        target,
+        duration: _scrollDuration,
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _scrollController.jumpTo(target);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 12,
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          children: <Widget>[
+            _ModuleScrollArrow(
+              key: const Key('admin-modules-scroll-left'),
+              icon: Icons.chevron_left_rounded,
+              tooltip: 'Previous modules',
+              enabled: _canScrollLeft,
+              onScroll: () => scrollBy(-_scrollStep),
+            ),
+            Expanded(
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  key: const Key('admin-modules-scroll-view'),
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: widget.items.length * _itemWidth,
+                    child: BottomNavigationBar(
+                      currentIndex: widget.currentIndex,
+                      type: BottomNavigationBarType.fixed,
+                      selectedItemColor: const Color(0xFF0F766E),
+                      unselectedItemColor: const Color(0xFF94A3B8),
+                      backgroundColor: Colors.white,
+                      selectedFontSize: 10,
+                      unselectedFontSize: 9,
+                      onTap: widget.onTap,
+                      items: widget.items,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            _ModuleScrollArrow(
+              key: const Key('admin-modules-scroll-right'),
+              icon: Icons.chevron_right_rounded,
+              tooltip: 'More modules',
+              enabled: _canScrollRight,
+              onScroll: () => scrollBy(_scrollStep),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModuleScrollArrow extends StatefulWidget {
+  const _ModuleScrollArrow({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.enabled,
+    required this.onScroll,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool enabled;
+  final VoidCallback onScroll;
+
+  @override
+  State<_ModuleScrollArrow> createState() => _ModuleScrollArrowState();
+}
+
+class _ModuleScrollArrowState extends State<_ModuleScrollArrow> {
+  Timer? _repeatTimer;
+  bool _isHovered = false;
+
+  void _startRepeating() {
+    if (!widget.enabled) {
+      return;
+    }
+    widget.onScroll();
+    _repeatTimer?.cancel();
+    _repeatTimer = Timer.periodic(
+      const Duration(milliseconds: 320),
+      (_) {
+        if (widget.enabled) {
+          widget.onScroll();
+        } else {
+          _stopRepeating();
+        }
+      },
+    );
+  }
+
+  void _stopRepeating() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _stopRepeating();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: widget.enabled
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
+        onEnter: (_) {
+          if (widget.enabled) {
+            setState(() {
+              _isHovered = true;
+            });
+          }
+        },
+        onExit: (_) {
+          if (_isHovered) {
+            setState(() {
+              _isHovered = false;
+            });
+          }
+        },
+        child: GestureDetector(
+          onTap: widget.enabled ? widget.onScroll : null,
+          onLongPressStart: widget.enabled ? (_) => _startRepeating() : null,
+          onLongPressEnd: widget.enabled ? (_) => _stopRepeating() : null,
+          onLongPressCancel: widget.enabled ? _stopRepeating : null,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: widget.enabled ? 1 : 0.35,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 52,
+              height: double.infinity,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _isHovered ? const Color(0xFFE8F5F1) : Colors.white,
+                border: const Border(
+                  left: BorderSide(color: Color(0xFFE6EFEB)),
+                  right: BorderSide(color: Color(0xFFE6EFEB)),
+                ),
+              ),
+              child: Icon(
+                widget.icon,
+                size: 27,
+                color: widget.enabled
+                    ? const Color(0xFF0F766E)
+                    : const Color(0xFF98A2B3),
+              ),
+            ),
+          ),
         ),
       ),
     );

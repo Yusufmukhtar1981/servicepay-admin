@@ -34,6 +34,7 @@ import 'admin_data_pricing_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_customer_support_screen.dart';
+import 'admin_customer_360_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 
@@ -164,6 +165,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    if (isHeadOffice || hasPermission(AdminPermissions.customer360View)) {
+      addNavigationPage(
+        page: const AdminCustomer360Screen(),
+        icon: Icons.person_search_outlined,
+        activeIcon: Icons.person_search_rounded,
+        label: 'Customer 360',
       );
     }
 

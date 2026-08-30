@@ -16,6 +16,10 @@ abstract final class AdminPermissions {
   static const rolesAssignPermissions = 'roles.assign_permissions';
   static const rolesEnable = 'roles.enable';
   static const usersView = 'users.view';
+  static const customer360View = 'customer360.view';
+  static const customer360Financial = 'customer360.financial';
+  static const customer360Kyc = 'customer360.kyc';
+  static const customer360Security = 'customer360.security';
   static const transactionsView = 'transactions.view';
   static const walletsView = 'wallets.view';
   static const fundingView = 'funding.view';

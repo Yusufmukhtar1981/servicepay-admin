@@ -5,6 +5,7 @@ import 'fintech_screen_registry.dart';
 import 'admin_executive_dashboard_screen.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_customer_support_screen.dart';
+import 'admin_customer_360_screen.dart';
 import 'admin_delivery_management_screen.dart';
 import 'admin_kyc_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
@@ -32,6 +33,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       title: 'Customers & Identity',
       icon: Icons.people_alt_rounded,
       items: [
+        _FintechItem('Customer 360', Icons.person_search_outlined),
         _FintechItem('Customers', Icons.people_alt_outlined),
         _FintechItem('KYC Management', Icons.verified_user_outlined),
         _FintechItem('KYB / Business Verification', Icons.business_outlined),
@@ -307,6 +309,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
 
     final Widget? page = switch (module) {
+      'customer360' => const AdminCustomer360Screen(),
       'users' => const AdminUsersScreen(),
       'transactions' => const AdminTransactionsScreen(),
       'kyc' => const AdminKycScreen(),

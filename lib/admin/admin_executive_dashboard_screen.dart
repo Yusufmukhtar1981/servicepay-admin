@@ -976,9 +976,9 @@ class _AdminExecutiveDashboardScreenState
         'module': 'withdrawals'
       },
       {
-        'label': 'Search Customer',
-        'permission': AdminPermissions.usersView,
-        'module': 'users'
+        'label': 'Find Customer',
+        'permission': AdminPermissions.customer360View,
+        'module': 'customer360'
       },
       {
         'label': 'View Transactions',

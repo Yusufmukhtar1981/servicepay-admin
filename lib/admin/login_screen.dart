@@ -12,15 +12,18 @@ class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
 
   @override
-  State<AdminLoginScreen> createState() => _AdminLoginScreenState();
+  State<AdminLoginScreen> createState() =>
+      _AdminLoginScreenState();
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  final TextEditingController emailController = TextEditingController();
+  final TextEditingController emailController =
+      TextEditingController();
 
-  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController passwordController =
+      TextEditingController();
 
   bool hidePassword = true;
   bool isLoading = false;
@@ -45,8 +48,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           content: Text(message),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
-          backgroundColor:
-              isError ? Colors.red.shade700 : Colors.green.shade700,
+          backgroundColor: isError
+              ? Colors.red.shade700
+              : Colors.green.shade700,
         ),
       );
   }
@@ -94,14 +98,17 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   String extractToken(
     Map<String, dynamic> result,
   ) {
-    final Map<String, dynamic> data = mapFromDynamic(result['data']);
+    final Map<String, dynamic> data =
+        mapFromDynamic(result['data']);
 
     final Map<String, dynamic> authentication =
         mapFromDynamic(result['authentication']);
 
-    final Map<String, dynamic> auth = mapFromDynamic(result['auth']);
+    final Map<String, dynamic> auth =
+        mapFromDynamic(result['auth']);
 
-    final dynamic tokenValue = result['token'] ??
+    final dynamic tokenValue =
+        result['token'] ??
         result['accessToken'] ??
         result['access_token'] ??
         result['jwt'] ??
@@ -126,21 +133,25 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   Map<String, dynamic> extractUser(
     Map<String, dynamic> result,
   ) {
-    final Map<String, dynamic> directUser = mapFromDynamic(result['user']);
+    final Map<String, dynamic> directUser =
+        mapFromDynamic(result['user']);
 
     if (directUser.isNotEmpty) {
       return directUser;
     }
 
-    final Map<String, dynamic> data = mapFromDynamic(result['data']);
+    final Map<String, dynamic> data =
+        mapFromDynamic(result['data']);
 
-    final Map<String, dynamic> nestedUser = mapFromDynamic(data['user']);
+    final Map<String, dynamic> nestedUser =
+        mapFromDynamic(data['user']);
 
     if (nestedUser.isNotEmpty) {
       return nestedUser;
     }
 
-    final bool dataLooksLikeUser = data.containsKey('_id') ||
+    final bool dataLooksLikeUser =
+        data.containsKey('_id') ||
         data.containsKey('id') ||
         data.containsKey('email') ||
         data.containsKey('phone') ||
@@ -171,8 +182,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       'user_role',
       'user_status',
       'wallet_balance',
-      'admin_effective_permissions',
-      'admin_access_scope',
     ];
 
     for (final String key in loginKeys) {
@@ -190,7 +199,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       );
     }
 
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs =
+        await SharedPreferences.getInstance();
 
     await clearOldLoginData(prefs);
 
@@ -207,7 +217,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
     await prefs.setString(
       'user_id',
-      user['_id']?.toString() ?? user['id']?.toString() ?? '',
+      user['_id']?.toString() ??
+          user['id']?.toString() ??
+          '',
     );
 
     await prefs.setString(
@@ -220,7 +232,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
     await prefs.setString(
       'user_phone',
-      user['phone']?.toString() ?? user['phoneNumber']?.toString() ?? '',
+      user['phone']?.toString() ??
+          user['phoneNumber']?.toString() ??
+          '',
     );
 
     await prefs.setString(
@@ -230,18 +244,21 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
     await prefs.setString(
       'user_role',
-      user['role']?.toString().toUpperCase() ?? 'ADMIN',
+      user['role']?.toString().toUpperCase() ??
+          'ADMIN',
     );
 
     await prefs.setString(
       'user_status',
-      user['status']?.toString().toUpperCase() ?? 'ACTIVE',
+      user['status']?.toString().toUpperCase() ??
+          'ACTIVE',
     );
-    await AdminSessionStore.saveAccess(AdminAccess.fromUser(user));
 
-    final String? savedToken = prefs.getString('auth_token');
+    final String? savedToken =
+        prefs.getString('auth_token');
 
-    if (savedToken == null || savedToken.trim().isEmpty) {
+    if (savedToken == null ||
+        savedToken.trim().isEmpty) {
       throw Exception(
         'The admin login session could not be saved.',
       );
@@ -258,7 +275,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     });
 
     try {
-      final Uri endpoint = Uri.parse('$baseUrl/auth/login');
+      final Uri endpoint =
+          Uri.parse('$baseUrl/auth/login');
 
       final http.Response response = await http
           .post(
@@ -268,7 +286,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               'Accept': 'application/json',
             },
             body: jsonEncode({
-              'email': emailController.text.trim().toLowerCase(),
+              'email':
+                  emailController.text.trim().toLowerCase(),
               'password': passwordController.text,
             }),
           )
@@ -276,7 +295,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
             const Duration(seconds: 30),
           );
 
-      final String responseBody = response.body.trim();
+      final String responseBody =
+          response.body.trim();
 
       if (responseBody.isEmpty) {
         showMessage(
@@ -285,7 +305,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
 
-      final dynamic decodedResponse = jsonDecode(responseBody);
+      final dynamic decodedResponse =
+          jsonDecode(responseBody);
 
       if (decodedResponse is! Map) {
         showMessage(
@@ -294,13 +315,16 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
 
-      final Map<String, dynamic> result = Map<String, dynamic>.from(
+      final Map<String, dynamic> result =
+          Map<String, dynamic>.from(
         decodedResponse,
       );
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
         showMessage(
-          result['message']?.toString().trim().isNotEmpty == true
+          result['message']?.toString().trim().isNotEmpty ==
+                  true
               ? result['message'].toString()
               : 'Incorrect admin email or password.',
         );
@@ -308,16 +332,19 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       }
 
       final bool successValue =
-          result['success'] == true || result['success'] == null;
+          result['success'] == true ||
+          result['success'] == null;
 
       if (!successValue) {
         showMessage(
-          result['message']?.toString() ?? 'Admin login was not successful.',
+          result['message']?.toString() ??
+              'Admin login was not successful.',
         );
         return;
       }
 
-      final String token = extractToken(result);
+      final String token =
+          extractToken(result);
 
       if (token.isEmpty) {
         showMessage(
@@ -326,7 +353,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
 
-      final Map<String, dynamic> user = extractUser(result);
+      final Map<String, dynamic> user =
+          extractUser(result);
 
       if (user.isEmpty) {
         showMessage(
@@ -335,16 +363,22 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
 
-      final String role =
-          user['role']?.toString().trim().toUpperCase() ?? 'CUSTOMER';
+      final String role = user['role']
+              ?.toString()
+              .trim()
+              .toUpperCase() ??
+          'CUSTOMER';
 
-      final String status =
-          user['status']?.toString().trim().toUpperCase() ?? 'ACTIVE';
+      final String status = user['status']
+              ?.toString()
+              .trim()
+              .toUpperCase() ??
+          'ACTIVE';
 
       const Set<String> allowedAdminRoles = {
+        'HEAD_OFFICE',
         'ADMIN',
         'SUPER_ADMIN',
-        'HEAD_OFFICE',
         'HEAD_OFFICE_ADMIN',
         'STAFF',
         'ZONAL_MANAGER',
@@ -353,7 +387,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       if (!allowedAdminRoles.contains(role)) {
         showMessage(
-          'This account is not authorized to access the Admin Dashboard.',
+          'Only Head Office and authorized ServicePay staff can access this portal.',
         );
         return;
       }
@@ -370,6 +404,79 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         user,
       );
 
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+
+      final dynamic rawStaffRole =
+          user['staffRole'];
+
+      final Map<String, dynamic> staffRole =
+          rawStaffRole is Map
+              ? Map<String, dynamic>.from(
+                  rawStaffRole,
+                )
+              : <String, dynamic>{};
+
+      final dynamic rawPermissions =
+          user['permissions'] ??
+          staffRole['permissions'];
+
+      final List<String> permissions =
+          rawPermissions is List
+              ? rawPermissions
+                  .map(
+                    (dynamic item) =>
+                        item.toString().trim(),
+                  )
+                  .where(
+                    (String item) =>
+                        item.isNotEmpty,
+                  )
+                  .toSet()
+                  .toList()
+              : <String>[];
+
+      await preferences.setString(
+        'staff_id',
+        user['staffId']?.toString() ?? '',
+      );
+
+      await preferences.setString(
+        'staff_role_name',
+        staffRole['name']?.toString() ?? '',
+      );
+
+      await preferences.setString(
+        'staff_role_display_name',
+        staffRole['displayName']?.toString() ?? '',
+      );
+
+      await preferences.setString(
+        'staff_department',
+        user['department']?.toString() ??
+            staffRole['department']?.toString() ??
+            '',
+      );
+
+      await preferences.setStringList(
+        'staff_permissions',
+        permissions,
+      );
+
+      await preferences.setBool(
+        'must_change_password',
+        user['mustChangePassword'] == true,
+      );
+
+      await preferences.setBool(
+        'is_staff',
+        user['isStaff'] == true,
+      );
+
+      await AdminSessionStore.saveAccess(
+        AdminAccess.fromUser(user),
+      );
+
       if (!mounted) return;
 
       showMessage(
@@ -380,7 +487,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (_) => const AdminMainNavigation(),
+          builder: (_) =>
+              const AdminMainNavigation(),
         ),
         (Route<dynamic> route) => false,
       );
@@ -429,13 +537,15 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                 shadowColor: Colors.black12,
                 color: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius:
+                      BorderRadius.circular(24),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(28),
                   child: AutofillGroup(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.stretch,
                       children: [
                         Center(
                           child: Container(
@@ -448,7 +558,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
-                              Icons.admin_panel_settings_rounded,
+                              Icons
+                                  .admin_panel_settings_rounded,
                               color: Colors.green,
                               size: 50,
                             ),
@@ -486,8 +597,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                         const SizedBox(height: 30),
                         TextField(
                           controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
+                          keyboardType:
+                              TextInputType.emailAddress,
+                          textInputAction:
+                              TextInputAction.next,
                           autofillHints: const [
                             AutofillHints.email,
                             AutofillHints.username,
@@ -500,19 +613,27 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                               Icons.email_outlined,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor:
+                                const Color(0xFFF8FAFC),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius:
+                                  BorderRadius.circular(14),
                             ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
+                            enabledBorder:
+                                OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                              borderSide:
+                                  const BorderSide(
                                 color: Color(0xFFE2E8F0),
                               ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
+                            focusedBorder:
+                                OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                              borderSide:
+                                  const BorderSide(
                                 color: Colors.green,
                                 width: 2,
                               ),
@@ -523,7 +644,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                         TextField(
                           controller: passwordController,
                           obscureText: hidePassword,
-                          textInputAction: TextInputAction.done,
+                          textInputAction:
+                              TextInputAction.done,
                           autofillHints: const [
                             AutofillHints.password,
                           ],
@@ -539,19 +661,27 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                               Icons.lock_outline,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor:
+                                const Color(0xFFF8FAFC),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius:
+                                  BorderRadius.circular(14),
                             ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
+                            enabledBorder:
+                                OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                              borderSide:
+                                  const BorderSide(
                                 color: Color(0xFFE2E8F0),
                               ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
+                            focusedBorder:
+                                OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                              borderSide:
+                                  const BorderSide(
                                 color: Colors.green,
                                 width: 2,
                               ),
@@ -561,13 +691,16 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                   ? null
                                   : () {
                                       setState(() {
-                                        hidePassword = !hidePassword;
+                                        hidePassword =
+                                            !hidePassword;
                                       });
                                     },
                               icon: Icon(
                                 hidePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
+                                    ? Icons
+                                        .visibility_off_outlined
+                                    : Icons
+                                        .visibility_outlined,
                               ),
                             ),
                           ),
@@ -576,22 +709,27 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                         SizedBox(
                           height: 54,
                           child: ElevatedButton.icon(
-                            onPressed: isLoading ? null : loginAdmin,
+                            onPressed: isLoading
+                                ? null
+                                : loginAdmin,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green,
                               foregroundColor: Colors.white,
-                              disabledBackgroundColor: Colors.green.withValues(
+                              disabledBackgroundColor:
+                                  Colors.green.withValues(
                                 alpha: 0.45,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius:
+                                    BorderRadius.circular(14),
                               ),
                             ),
                             icon: isLoading
                                 ? const SizedBox(
                                     width: 22,
                                     height: 22,
-                                    child: CircularProgressIndicator(
+                                    child:
+                                        CircularProgressIndicator(
                                       strokeWidth: 2.5,
                                       color: Colors.white,
                                     ),
@@ -600,10 +738,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                                     Icons.login,
                                   ),
                             label: Text(
-                              isLoading ? 'Signing in...' : 'Sign in as Admin',
+                              isLoading
+                                  ? 'Signing in...'
+                                  : 'Sign in as Admin',
                               style: const TextStyle(
                                 fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                                fontWeight:
+                                    FontWeight.bold,
                               ),
                             ),
                           ),
@@ -615,10 +756,12 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                             color: Colors.orange.withValues(
                               alpha: 0.08,
                             ),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius:
+                                BorderRadius.circular(12),
                           ),
                           child: const Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.security_outlined,

@@ -9,6 +9,7 @@ import 'admin_delivery_management_screen.dart';
 import 'admin_keke_fare_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_bulk_email_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_riders_screen.dart';
 import 'staff_management_screen.dart';
@@ -345,6 +346,43 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.notifications_outlined,
         activeIcon: Icons.notifications_rounded,
         label: 'Notifications',
+      );
+    }
+
+    /*
+     * =====================================================
+     * COMMUNICATIONS / CUSTOMER EMAIL
+     * =====================================================
+     */
+    if (isHeadOffice ||
+        hasAnyPermission(
+          const <String>[
+            'communications.view',
+            'email_campaign.create',
+            'email_campaign.send',
+            'email_campaign.history_view',
+            'notifications.view',
+            'notifications.create',
+            'notifications.send',
+          ],
+        )) {
+      addNavigationPage(
+        page: const AdminBulkEmailScreen(),
+        icon: Icons.forum_outlined,
+        activeIcon: Icons.forum_rounded,
+        label: 'Communications',
+      );
+      addNavigationPage(
+        page: const AdminBulkEmailScreen(),
+        icon: Icons.mark_email_unread_outlined,
+        activeIcon: Icons.mark_email_unread_rounded,
+        label: 'Customer Email',
+      );
+      addNavigationPage(
+        page: const AdminBulkEmailScreen(),
+        icon: Icons.history_outlined,
+        activeIcon: Icons.history_rounded,
+        label: 'Email History',
       );
     }
 

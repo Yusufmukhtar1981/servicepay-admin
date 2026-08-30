@@ -33,6 +33,14 @@ abstract final class AdminPermissions {
   static const trustView = 'trust.view';
   static const notificationsView = 'notifications.view';
   static const notificationsCreate = 'notifications.create';
+  static const notificationsSend = 'notifications.send';
+  static const communicationsView = 'communications.view';
+  static const emailCampaignCreate = 'email_campaign.create';
+  static const emailCampaignSend = 'email_campaign.send';
+  static const emailCampaignHistoryView = 'email_campaign.history_view';
+  static const emailCampaignManage = 'email_campaign.manage';
+  static const settingsView = 'settings.view';
+  static const settingsUpdate = 'settings.update';
   static const auditView = 'audit.view';
 }
 
@@ -58,8 +66,19 @@ class AdminAccess {
       _fullAccessRoles.contains(role.toUpperCase()) ||
       permissions.contains('*');
 
-  bool has(String permission) =>
-      isFullAccess || permissions.contains(permission);
+  bool has(String permission) {
+    if (isFullAccess || permissions.contains(permission)) return true;
+    const Map<String, String> legacy = <String, String>{
+      AdminPermissions.communicationsView: AdminPermissions.notificationsView,
+      AdminPermissions.emailCampaignCreate:
+          AdminPermissions.notificationsCreate,
+      AdminPermissions.emailCampaignSend: AdminPermissions.notificationsSend,
+      AdminPermissions.emailCampaignHistoryView:
+          AdminPermissions.notificationsView,
+      AdminPermissions.emailCampaignManage: AdminPermissions.notificationsSend,
+    };
+    return permissions.contains(legacy[permission]);
+  }
 
   bool hasAny(Iterable<String> required) =>
       isFullAccess || required.any(permissions.contains);

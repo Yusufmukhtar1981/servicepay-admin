@@ -139,15 +139,34 @@ class _AdminBulkEmailScreenState extends State<AdminBulkEmailScreen> {
       _subject.text.trim().isNotEmpty &&
       _message.text.trim().isNotEmpty &&
       (_audience != 'SELECTED_CUSTOMERS' || _selected.isNotEmpty);
+  bool get _validTestEmail => RegExp(
+        r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
+      ).hasMatch(_testEmail.text.trim());
+
   Future<void> _test() async {
+    if (_sending) return;
     if (!_valid) {
-      setState(
-          () => _error = 'Enter a subject and message before sending a test.');
+      const message = 'Enter a subject and message before sending a test.';
+      setState(() => _error = message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(message)),
+      );
       return;
     }
-    setState(() => _sending = true);
+    if (!_validTestEmail) {
+      const message = 'Enter a valid test recipient email.';
+      setState(() => _error = message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(message)),
+      );
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = '';
+    });
     try {
-      final r = await _api.sendTest(
+      await _api.sendTest(
           subject: _subject.text,
           message: _message.text,
           heading: _heading.text,
@@ -155,12 +174,19 @@ class _AdminBulkEmailScreenState extends State<AdminBulkEmailScreen> {
           buttonUrl: _buttonUrl.text,
           email: _testEmail.text);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(r['message']?.toString() ??
-                'Test email accepted by the provider.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test email sent successfully')),
+        );
       }
     } catch (e) {
-      if (mounted) setState(() => _error = _clean(e));
+      if (mounted) {
+        setState(() => _error = 'Unable to send test email. Please try again.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to send test email. Please try again.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -373,7 +399,7 @@ class _AdminBulkEmailScreenState extends State<AdminBulkEmailScreen> {
                             controller: _testEmail,
                             keyboardType: TextInputType.emailAddress,
                             decoration: const InputDecoration(
-                                labelText: 'Test recipient email (optional)',
+                                labelText: 'Test recipient email',
                                 border: OutlineInputBorder())),
                         const SizedBox(height: 12),
                         Wrap(spacing: 8, runSpacing: 8, children: [

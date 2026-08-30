@@ -17,12 +17,21 @@ class ServicepayAdminApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Servicepay Admin',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF73D3BF),
+          brightness: Brightness.dark,
+          surface: const Color(0xFF102D3A),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF0B2029),
+      ),
+      themeMode: ThemeMode.system,
       home: const AdminLoginScreen(),
       routes: <String, WidgetBuilder>{
         '/phone-financing': (_) => const _PhoneFinancingRouteGate(),

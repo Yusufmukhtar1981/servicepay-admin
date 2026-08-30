@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 
 import 'fintech_screen_registry.dart';
 
-import 'admin_dashboard_legacy_screen.dart';
+import 'admin_executive_dashboard_screen.dart';
+import 'admin_bulk_email_screen.dart';
+import 'admin_customer_support_screen.dart';
+import 'admin_delivery_management_screen.dart';
+import 'admin_kyc_screen.dart';
+import 'admin_rider_withdrawals_screen.dart';
+import 'admin_transactions_screen.dart';
+import 'users_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -14,7 +21,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // The published Admin entry point opens the completed Fintech Control
   // Center. The legacy dashboard remains available through its tab.
-  int _selectedIndex = 1;
+  int _selectedIndex = 0;
   String _search = '';
 
   static const Color _primary = Color(0xFF08783E);
@@ -280,7 +287,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
-                  const LegacyAdminDashboardScreen(),
+                  AdminExecutiveDashboardScreen(
+                    onOpenModule: _openModule,
+                  ),
                   _fintechControlCenter(),
                 ],
               ),
@@ -288,6 +297,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _openModule(String module) {
+    if (module == 'control') {
+      setState(() => _selectedIndex = 1);
+      return;
+    }
+
+    final Widget? page = switch (module) {
+      'users' => const AdminUsersScreen(),
+      'transactions' => const AdminTransactionsScreen(),
+      'kyc' => const AdminKycScreen(),
+      'withdrawals' => const AdminRiderWithdrawalsScreen(),
+      'delivery' => const AdminDeliveryManagementScreen(),
+      'support' => const AdminCustomerSupportScreen(),
+      'email' => const AdminBulkEmailScreen(),
+      _ => null,
+    };
+
+    if (page == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => page),
     );
   }
 

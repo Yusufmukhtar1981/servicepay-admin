@@ -4,7 +4,7 @@ import 'admin_platform_configuration_screen.dart';
 import 'admin_airtime_to_cash_screen.dart';
 import 'admin_amana_screen.dart';
 import 'admin_data_pricing_screen.dart';
-import 'admin_delivery_screen.dart';
+import 'admin_delivery_management_screen.dart';
 import 'admin_empowerment_screen.dart';
 import 'admin_kyc_screen.dart';
 import 'admin_manual_funding_screen.dart';
@@ -79,7 +79,7 @@ Widget? fintechScreenForTitle(String title) {
     case 'Customer Wallets':
       return AdminUsersScreen();
     case 'Deliveries':
-      return AdminDeliveryScreen();
+      return AdminDeliveryManagementScreen();
     case 'Empowerment':
       return AdminEmpowermentScreen();
 

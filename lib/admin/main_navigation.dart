@@ -5,7 +5,7 @@ import '../login_screen.dart';
 
 import 'admin_amana_screen.dart';
 import 'admin_dashboard_screen.dart';
-import 'admin_delivery_screen.dart';
+import 'admin_delivery_management_screen.dart';
 import 'admin_keke_fare_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
@@ -214,7 +214,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           'delivery.view',
         )) {
       addNavigationPage(
-        page: const AdminDeliveryScreen(),
+        page: const AdminDeliveryManagementScreen(),
         icon: Icons.local_shipping_outlined,
         activeIcon: Icons.local_shipping_rounded,
         label: 'Delivery',

@@ -161,11 +161,19 @@ class _AdminBranchManagementScreenState
     setState(() => _saving = true);
     try {
       final branchId = existing == null ? '' : _id(existing);
+      final requestPayload = Map<String, dynamic>.from(payload)
+        ..remove('_status')
+        ..remove('_managerId')
+        ..remove('_removeManager');
       final response = existing == null
-          ? await _api.create(payload)
-          : await _api.update(branchId, payload);
-      final created = Map<String, dynamic>.from(
-          (response['branch'] ?? response['data']) as Map);
+          ? await _api.create(requestPayload)
+          : await _api.update(branchId, requestPayload);
+      final rawBranch = response['branch'] ?? response['data'] ?? response;
+      if (rawBranch is! Map) {
+        throw const AdminBranchException(
+            'The branch service returned an invalid branch record.');
+      }
+      final created = Map<String, dynamic>.from(rawBranch);
       final desiredStatus = payload['_status']?.toString() ?? 'DRAFT';
       final managerId = payload['_managerId']?.toString() ?? '';
       if (_statusOf(created) != desiredStatus) {
@@ -173,8 +181,8 @@ class _AdminBranchManagementScreenState
       }
       if (managerId.isNotEmpty) {
         await _api.assignManager(_id(created), managerId: managerId);
-      } else if (existing != null && existing['managerId'] != null) {
-        await _api.assignManager(_id(created));
+      } else if (existing != null && payload['_removeManager'] == true) {
+        await _api.removeManager(_id(created));
       }
       await _load();
       if (!mounted) return;
@@ -182,6 +190,15 @@ class _AdminBranchManagementScreenState
       _notice(existing == null
           ? 'Branch created successfully.'
           : 'Branch updated successfully.');
+      if (existing == null) {
+        final credentials = response['temporaryCredentials'] ??
+            response['credentials'] ??
+            created['_temporaryCredentials'];
+        if (credentials is Map && credentials.isNotEmpty) {
+          await _showTemporaryCredentials(
+              Map<String, dynamic>.from(credentials));
+        }
+      }
       await _showBranchDetail(created);
     } catch (error) {
       if (!mounted) return;
@@ -398,13 +415,18 @@ class _AdminBranchManagementScreenState
             : '${existing?['openingDate']}'.split('T').first);
     final notes =
         TextEditingController(text: existing?['notes']?.toString() ?? '');
+    final managerFullName = TextEditingController();
+    final managerEmail = TextEditingController();
+    final managerPhone = TextEditingController();
     var selectedModules = <String>[
       if (existing?['assignedModules'] is List)
         ...(existing!['assignedModules'] as List)
             .map((value) => '$value'.toUpperCase())
     ];
     var selectedStatus = _statusOf(existing ?? <String, dynamic>{});
-    var selectedManager = existing?['managerId']?.toString() ?? '';
+    var selectedManager = _idValue(existing?['managerId']);
+    final existingManagerId = TextEditingController(text: selectedManager);
+    var createNewManager = existing == null;
     final formKey = GlobalKey<FormState>();
 
     InputDecoration decoration(String label, {String? hint}) => InputDecoration(
@@ -432,6 +454,19 @@ class _AdminBranchManagementScreenState
                 ? '$label is required.'
                 : null
             : null,
+      );
+    }
+
+    Widget managerField(TextEditingController controller, String label,
+        {TextInputType? keyboardType}) {
+      return TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        decoration: decoration(label),
+        validator: (value) =>
+            createNewManager && (value == null || value.trim().isEmpty)
+                ? '$label is required when creating a manager.'
+                : null,
       );
     }
 
@@ -486,29 +521,6 @@ class _AdminBranchManagementScreenState
                           SizedBox(
                             width: width,
                             child: DropdownButtonFormField<String>(
-                              value: _managers
-                                      .any((m) => _id(m) == selectedManager)
-                                  ? selectedManager
-                                  : null,
-                              decoration: decoration('Branch Manager'),
-                              items: [
-                                const DropdownMenuItem<String>(
-                                    value: '', child: Text('Unassigned')),
-                                ..._managers.map((manager) => DropdownMenuItem(
-                                      value: _id(manager),
-                                      child: Text(_text(
-                                          manager['fullName'],
-                                          _text(manager['email'],
-                                              'Staff account'))),
-                                    )),
-                              ],
-                              onChanged: (value) => setDialogState(
-                                  () => selectedManager = value ?? ''),
-                            ),
-                          ),
-                          SizedBox(
-                            width: width,
-                            child: DropdownButtonFormField<String>(
                               value: selectedStatus,
                               decoration: decoration('Status'),
                               items: const <String>[
@@ -527,6 +539,89 @@ class _AdminBranchManagementScreenState
                         ],
                       );
                     }),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Branch Manager',
+                          style: Theme.of(context).textTheme.labelLarge),
+                    ),
+                    if (existing == null)
+                      Column(
+                        children: [
+                          RadioListTile<bool>(
+                            value: true,
+                            groupValue: createNewManager,
+                            onChanged: (value) => setDialogState(
+                                () => createNewManager = value ?? true),
+                            title: const Text('Create a new manager'),
+                            subtitle: const Text(
+                                'ServicePay generates a one-time temporary password.'),
+                          ),
+                          RadioListTile<bool>(
+                            value: false,
+                            groupValue: createNewManager,
+                            onChanged: (value) => setDialogState(
+                                () => createNewManager = value ?? true),
+                            title: const Text('Assign an existing manager'),
+                          ),
+                        ],
+                      ),
+                    if (createNewManager)
+                      LayoutBuilder(builder: (_, constraints) {
+                        final width = constraints.maxWidth > 500
+                            ? (constraints.maxWidth - 12) / 2
+                            : constraints.maxWidth;
+                        return Wrap(spacing: 12, runSpacing: 12, children: [
+                          SizedBox(
+                              width: width,
+                              child:
+                                  managerField(managerFullName, 'Full Name')),
+                          SizedBox(
+                              width: width,
+                              child: managerField(managerEmail, 'Manager Email',
+                                  keyboardType: TextInputType.emailAddress)),
+                          SizedBox(
+                              width: width,
+                              child: managerField(managerPhone, 'Manager Phone',
+                                  keyboardType: TextInputType.phone)),
+                        ]);
+                      })
+                    else
+                      Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value:
+                                _managers.any((m) => _id(m) == selectedManager)
+                                    ? selectedManager
+                                    : null,
+                            decoration: decoration(
+                                'Select existing manager (optional)'),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                  value: '', child: Text('Unassigned')),
+                              ..._managers.map((manager) => DropdownMenuItem(
+                                    value: _id(manager),
+                                    child: Text(_text(
+                                        manager['fullName'],
+                                        _text(manager['email'],
+                                            'Staff account'))),
+                                  )),
+                            ],
+                            onChanged: (value) => setDialogState(() {
+                              selectedManager = value ?? '';
+                              existingManagerId.text = selectedManager;
+                            }),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: existingManagerId,
+                            decoration: decoration('Existing Manager ID',
+                                hint: 'Enter an ID when not selecting above'),
+                            onChanged: (value) =>
+                                selectedManager = value.trim(),
+                          ),
+                        ],
+                      ),
                     const SizedBox(height: 12),
                     field(address, 'Address', required: true, maxLines: 2),
                     const SizedBox(height: 12),
@@ -593,7 +688,21 @@ class _AdminBranchManagementScreenState
                   'assignedModules': selectedModules,
                   'notes': notes.text.trim(),
                   '_status': selectedStatus,
-                  '_managerId': selectedManager,
+                  if (existing == null && createNewManager)
+                    'manager': <String, dynamic>{
+                      'fullName': managerFullName.text.trim(),
+                      'email': managerEmail.text.trim().toLowerCase(),
+                      'phone': managerPhone.text.trim(),
+                    }
+                  else if (existing == null &&
+                      existingManagerId.text.trim().isNotEmpty)
+                    'managerId': existingManagerId.text.trim()
+                  else if (existing != null)
+                    '_managerId': existingManagerId.text.trim(),
+                  if (existing != null &&
+                      existingManagerId.text.trim().isEmpty &&
+                      _idValue(existing['managerId']).isNotEmpty)
+                    '_removeManager': true,
                 });
               },
               child: Text(existing == null ? 'Create Branch' : 'Save Changes'),
@@ -611,7 +720,48 @@ class _AdminBranchManagementScreenState
     email.dispose();
     openingDate.dispose();
     notes.dispose();
+    managerFullName.dispose();
+    managerEmail.dispose();
+    managerPhone.dispose();
+    existingManagerId.dispose();
     return result;
+  }
+
+  String _idValue(dynamic value) => value is Map
+      ? _id(Map<String, dynamic>.from(value))
+      : '$value' == 'null'
+          ? ''
+          : '$value';
+
+  Future<void> _showTemporaryCredentials(
+      Map<String, dynamic> credentials) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Temporary manager credentials'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Save these now. For security, they are only shown once.'),
+            const SizedBox(height: 12),
+            SelectableText(
+              'Login identifier: ${_text(credentials['identifier'] ?? credentials['email'] ?? credentials['username'] ?? credentials['phone'])}\n'
+              'Phone: ${_text(credentials['phone'] ?? credentials['identifier'])}\n'
+              'Temporary password: ${_text(credentials['temporaryPassword'] ?? credentials['password'])}',
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('I have saved these credentials'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _detailGrid(Map<String, dynamic> branch) {

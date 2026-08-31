@@ -48,6 +48,10 @@ class AdminBranchManagementApi {
               'jobTitle': jobTitle.trim(),
           });
 
+  /// Removes the branch assignment only; it does not delete the staff user.
+  Future<Map<String, dynamic>> removeManager(String branchId) =>
+      _request('DELETE', '$baseUrl/${Uri.encodeComponent(branchId)}/manager');
+
   Future<List<Map<String, dynamic>>> managers() async {
     final result = await _request('GET', usersUrl, query: <String, String>{
       'role': 'STAFF',
@@ -94,6 +98,9 @@ class AdminBranchManagementApi {
       case 'PUT':
         response =
             await _client.put(uri, headers: headers, body: jsonEncode(body));
+        break;
+      case 'DELETE':
+        response = await _client.delete(uri, headers: headers);
         break;
       default:
         response = await _client.get(uri, headers: headers);

@@ -38,6 +38,7 @@ import 'admin_customer_360_screen.dart';
 import 'admin_transaction_intelligence_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
+import 'admin_branch_management_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
@@ -141,6 +142,34 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    /* Branch administration uses the backend's branches.* permission family. */
+    if (isHeadOffice ||
+        hasAnyPermission(const <String>[
+          'branches.view',
+          'branches.manage',
+          'branch.dashboard.view',
+        ])) {
+      addNavigationPage(
+        page: AdminBranchManagementScreen(
+          canManage: isHeadOffice || hasPermission('branches.manage'),
+          canViewReports: isHeadOffice ||
+              hasAnyPermission(const <String>[
+                'branches.reports.view',
+                'branch.reports.view',
+              ]),
+          canViewApprovals: isHeadOffice ||
+              hasAnyPermission(const <String>[
+                'branches.approvals.view',
+                'branches.approvals.manage',
+                'branch.approvals.view',
+              ]),
+        ),
+        icon: Icons.account_tree_outlined,
+        activeIcon: Icons.account_tree_rounded,
+        label: 'Branch Management',
       );
     }
 

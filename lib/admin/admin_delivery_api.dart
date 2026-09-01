@@ -31,7 +31,7 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
   AdminDeliveryApi({
     http.Client? client,
     this.baseUrl = 'https://api.servicepay.ng/api/admin',
-    this.requestTimeout = const Duration(seconds: 30),
+    this.requestTimeout = const Duration(seconds: 12),
     this.tokenLoader,
   }) : _client = client ?? http.Client();
 

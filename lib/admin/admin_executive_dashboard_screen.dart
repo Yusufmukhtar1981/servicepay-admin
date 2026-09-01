@@ -125,7 +125,7 @@ class _AdminExecutiveDashboardScreenState
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
       },
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 12));
 
     dynamic decoded;
     try {
@@ -133,18 +133,12 @@ class _AdminExecutiveDashboardScreenState
     } catch (_) {}
     final body = _map(decoded);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        body['message']?.toString() ??
-            'Unable to load the executive dashboard.',
-      );
+      throw Exception('Unable to load the executive dashboard right now.');
     }
 
     final data = _map(body['data']);
     if (body['success'] != true || data.isEmpty) {
-      throw Exception(
-        body['message']?.toString() ??
-            'The executive dashboard returned no data.',
-      );
+      throw Exception('The executive dashboard returned no data.');
     }
 
     if (!mounted || requestedRange != _range) return;

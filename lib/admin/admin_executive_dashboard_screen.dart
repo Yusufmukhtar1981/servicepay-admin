@@ -4,10 +4,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_permissions.dart';
-import 'dashboard_download_stub.dart'
-    if (dart.library.html) 'dashboard_download_web.dart';
 
 class AdminExecutiveDashboardScreen extends StatefulWidget {
   const AdminExecutiveDashboardScreen({
@@ -274,11 +273,13 @@ class _AdminExecutiveDashboardScreenState
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('The CSV report could not be downloaded.');
       }
-      downloadDashboardFile(
+      final report = Uri.dataFromBytes(
         response.bodyBytes,
-        'servicepay-executive-${_range.replaceAll(':', '-')}.csv',
-        'text/csv;charset=utf-8',
+        mimeType: 'text/csv',
       );
+      if (!await launchUrl(report, webOnlyWindowName: '_blank')) {
+        throw Exception('The browser could not open the CSV report.');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('CSV report downloaded.')),

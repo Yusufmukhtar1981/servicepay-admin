@@ -4,6 +4,7 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 
 void downloadDashboardFile(List<int> bytes, String filename, String mimeType) {
+  // The object URL is revoked immediately after the browser accepts the download.
   final blob = html.Blob(<dynamic>[Uint8List.fromList(bytes)], mimeType);
   final url = html.Url.createObjectUrlFromBlob(blob);
   final anchor = html.AnchorElement(href: url)

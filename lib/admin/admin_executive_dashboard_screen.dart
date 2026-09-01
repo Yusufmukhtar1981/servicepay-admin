@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_permissions.dart';
+import 'dashboard_download_stub.dart'
+    if (dart.library.html) 'dashboard_download_web.dart';
 
 class AdminExecutiveDashboardScreen extends StatefulWidget {
   const AdminExecutiveDashboardScreen({
@@ -233,6 +235,63 @@ class _AdminExecutiveDashboardScreenState
     if (value == null) return '';
     final direction = value >= 0 ? '↑' : '↓';
     return '$direction ${value.abs().toStringAsFixed(1)}% vs previous period';
+  }
+
+  String get _periodLabel {
+    if (_range == 'today') return 'Today’s';
+    if (_range == '7d') return '7-day';
+    if (_range == '30d') return '30-day';
+    return 'Selected period';
+  }
+
+  Future<void> _downloadCsv() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = (prefs.getString('auth_token') ??
+              prefs.getString('token') ??
+              prefs.getString('admin_token') ??
+              '')
+          .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
+          .trim();
+      if (token.isEmpty) throw Exception('Your login session was not found.');
+      final customParts =
+          _range.startsWith('custom:') ? _range.split(':') : const <String>[];
+      final query = customParts.length == 3
+          ? <String, String>{
+              'format': 'csv',
+              'startDate': '${customParts[1]}T00:00:00+01:00',
+              'endDate': '${customParts[2]}T23:59:59.999+01:00',
+            }
+          : <String, String>{'format': 'csv', 'range': _range};
+      final response = await http.get(
+        Uri.parse('$_baseUrl/admin/dashboard/executive/export')
+            .replace(queryParameters: query),
+        headers: <String, String>{
+          'Accept': 'text/csv',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 30));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('The CSV report could not be downloaded.');
+      }
+      downloadDashboardFile(
+        response.bodyBytes,
+        'servicepay-executive-${_range.replaceAll(':', '-')}.csv',
+        'text/csv;charset=utf-8',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('CSV report downloaded.')),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
   }
 
   String _time(dynamic value) {
@@ -554,11 +613,14 @@ class _AdminExecutiveDashboardScreenState
           _money(_metricValue('totalWalletBalance')),
           Icons.account_balance_wallet_outlined,
           const Color(0xFFB56B00)),
-      _kpiCard('Today’s Transaction Volume', _count('todayTransactionVolume'),
-          Icons.receipt_long_outlined, const Color(0xFF7C3AED),
+      _kpiCard(
+          '$_periodLabel Transaction Volume',
+          _count('todayTransactionVolume'),
+          Icons.receipt_long_outlined,
+          const Color(0xFF7C3AED),
           comparison: _comparison('transactionVolume')),
       _kpiCard(
-          'Today’s Transaction Value',
+          '$_periodLabel Transaction Value',
           _money(_metricValue('todayTransactionValue')),
           Icons.payments_outlined,
           const Color(0xFF8B5CF6),
@@ -706,7 +768,7 @@ class _AdminExecutiveDashboardScreenState
     final operations = <Map<String, dynamic>>[
       {
         'key': 'transactionsToday',
-        'title': 'Transactions Today',
+        'title': '$_periodLabel Transactions',
         'icon': Icons.receipt_long_outlined
       },
       {
@@ -1301,13 +1363,8 @@ class _AdminExecutiveDashboardScreenState
                   final label = export['label'] ?? export['name'] ?? 'Export';
                   final available = export['available'] != false;
                   return OutlinedButton.icon(
-                    onPressed: available
-                        ? () => ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(export['message']?.toString() ??
-                                    '$label is prepared by the reporting service.'),
-                              ),
-                            )
+                    onPressed: available && export['format'] == 'csv'
+                        ? _downloadCsv
                         : null,
                     icon: const Icon(Icons.file_download_outlined, size: 17),
                     label: Text('$label'),

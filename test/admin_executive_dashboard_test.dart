@@ -183,6 +183,21 @@ void main() {
     expect(opened, contains('transactions'));
   });
 
+  testWidgets('uses period-aware labels for multi-day reporting',
+      (tester) async {
+    await tester.pumpWidget(
+      harness(
+        loader: (_) async => executiveData(),
+        access: const AdminAccess(role: 'HEAD_OFFICE', permissions: <String>{}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('7 Days'));
+    await tester.pumpAndSettle();
+    expect(find.text('7-day Transaction Volume'), findsOneWidget);
+    expect(find.text('Today’s Transaction Volume'), findsNothing);
+  });
+
   testWidgets('restricted staff sees only permitted quick actions',
       (tester) async {
     await tester.pumpWidget(

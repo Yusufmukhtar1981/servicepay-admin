@@ -46,15 +46,7 @@ abstract final class AdminPermissions {
   static const settingsView = 'settings.view';
   static const settingsUpdate = 'settings.update';
   static const auditView = 'audit.view';
-  static const transactionIntelligenceView = 'transaction_intelligence.view';
-  static const transactionIntelligenceRequery =
-      'transaction_intelligence.requery';
-  static const transactionIntelligenceReconcile =
-      'transaction_intelligence.reconcile';
-  static const transactionIntelligenceExport =
-      'transaction_intelligence.export';
-  static const transactionIntelligenceProviderHealth =
-      'transaction_intelligence.provider_health';
+  static const reportsExport = 'reports.export';
 }
 
 class AdminAccess {
@@ -101,9 +93,9 @@ class AdminAccess {
         user['permissions'] ?? (user['staffRole'] as Map?)?['permissions'];
     final Set<String> permissions = rawPermissions is List
         ? rawPermissions
-              .map((dynamic value) => value.toString().trim())
-              .where((String value) => value.isNotEmpty)
-              .toSet()
+            .map((dynamic value) => value.toString().trim())
+            .where((String value) => value.isNotEmpty)
+            .toSet()
         : <String>{};
     final dynamic rawScope = user['accessScope'];
     return AdminAccess(

@@ -104,6 +104,9 @@ Map<String, dynamic> executiveData({
       'email': metric(null, available: false),
       'providers': metric(null, available: false),
     },
+    'exports': [
+      {'label': 'CSV executive report', 'format': 'csv', 'available': true},
+    ],
   };
 }
 
@@ -217,6 +220,22 @@ void main() {
     expect(find.text('Review KYC'), findsNothing);
     expect(find.text('Support Tickets'), findsNothing);
     expect(find.text('Send Customer Email'), findsNothing);
+  });
+
+  testWidgets('delegated report exporter sees CSV without audit permission',
+      (tester) async {
+    await tester.pumpWidget(
+      harness(
+        loader: (_) async => executiveData(restricted: true),
+        access: const AdminAccess(
+          role: 'STAFF',
+          permissions: {'dashboard.view', 'reports.export'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await scrollTo(tester, find.text('CSV executive report'));
+    expect(find.text('CSV executive report'), findsOneWidget);
   });
 
   testWidgets('renders empty and safe unavailable states', (tester) async {

@@ -1322,7 +1322,8 @@ class _AdminExecutiveDashboardScreenState
     final canConfigure = _access.isFullAccess ||
         _can(AdminPermissions.settingsView) ||
         _can(AdminPermissions.settingsUpdate);
-    final canExport = _access.isFullAccess || _can(AdminPermissions.auditView);
+    final canExport =
+        _access.isFullAccess || _can(AdminPermissions.reportsExport);
     return _panel(
       title: 'Configuration & Exports',
       subtitle: 'Head Office controls and server-prepared reporting outputs.',

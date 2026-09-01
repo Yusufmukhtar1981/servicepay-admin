@@ -50,8 +50,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       return;
     }
 
-    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) ||
-        !phone.startsWith('0')) {
+    if (!RegExp(r'^[0-9]{11}$').hasMatch(phone) || !phone.startsWith('0')) {
       showMessage('Please enter a valid 11-digit phone number.');
       return;
     }
@@ -107,14 +106,12 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (!mounted) return;
 
-      final success =
-          result['success'] == true ||
+      final success = result['success'] == true ||
           result['status'] == true ||
           result['status']?.toString().toLowerCase() == 'success' ||
           result['status']?.toString() == '200';
 
-      final message =
-          result['message']?.toString() ??
+      final message = result['message']?.toString() ??
           result['response_description']?.toString() ??
           result['description']?.toString() ??
           result['error']?.toString();
@@ -173,7 +170,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  initialValue: selectedNetwork,
+                  value: selectedNetwork,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.sim_card_outlined),
                     filled: true,

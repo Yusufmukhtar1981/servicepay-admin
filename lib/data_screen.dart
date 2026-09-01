@@ -197,8 +197,7 @@ class _DataScreenState extends State<DataScreen> {
           ? Map<String, dynamic>.from(decoded)
           : <String, dynamic>{};
 
-      final success =
-          response.statusCode >= 200 &&
+      final success = response.statusCode >= 200 &&
           response.statusCode < 300 &&
           result['success'] == true;
 
@@ -213,8 +212,7 @@ class _DataScreenState extends State<DataScreen> {
       }
 
       showMessage(
-        result['message']?.toString() ??
-            'An sayi Data cikin nasara.',
+        result['message']?.toString() ?? 'An sayi Data cikin nasara.',
       );
 
       phoneController.clear();
@@ -274,7 +272,7 @@ class _DataScreenState extends State<DataScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue: selectedNetwork,
+              value: selectedNetwork,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.sim_card_outlined),
                 border: OutlineInputBorder(),
@@ -307,7 +305,7 @@ class _DataScreenState extends State<DataScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue: selectedPlanCode,
+              value: selectedPlanCode,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.data_usage_outlined),
                 border: OutlineInputBorder(),

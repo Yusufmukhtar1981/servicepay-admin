@@ -88,7 +88,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue: selectedExam,
+              value: selectedExam,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.school_outlined),
                 border: OutlineInputBorder(),
@@ -119,7 +119,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               key: ValueKey(selectedExam),
-              initialValue: selectedProduct,
+              value: selectedProduct,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.confirmation_number_outlined),
                 border: OutlineInputBorder(),

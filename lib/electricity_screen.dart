@@ -92,7 +92,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue: selectedDisco,
+              value: selectedDisco,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.electric_bolt_outlined),
                 border: OutlineInputBorder(),
@@ -121,7 +121,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              initialValue: selectedMeterType,
+              value: selectedMeterType,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.speed_outlined),
                 border: OutlineInputBorder(),

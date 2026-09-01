@@ -11,7 +11,6 @@ import 'admin_kyc_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'users_screen.dart';
-import 'admin_branch_management_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -525,7 +524,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return ListView(
           padding: const EdgeInsets.all(18),
           children: [
-            const AdminBranchSummaryCard(),
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(

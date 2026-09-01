@@ -21,6 +21,7 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
   String searchText = '';
 
   List<dynamic> products = [];
+  String? errorMessage;
 
   final TextEditingController searchController = TextEditingController();
 
@@ -65,6 +66,7 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
       final query = <String, String>{
         'limit': '100',
         if (selectedStatus != 'ALL') 'status': selectedStatus,
+        if (searchText.trim().isNotEmpty) 'q': searchText.trim(),
       };
 
       final uri = Uri.parse(
@@ -119,19 +121,22 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
         if (mounted) {
           setState(() {
             products = found;
+            errorMessage = null;
           });
         }
       } else {
-        _showMessage(
-          _extractMessage(body) ?? 'Unable to load Marketplace products.',
-          isError: true,
-        );
+        if (mounted) {
+          setState(() {
+            errorMessage = 'Marketplace products are temporarily unavailable.';
+          });
+        }
       }
-    } catch (e) {
-      _showMessage(
-        'Unable to connect to ServicePay Marketplace.',
-        isError: true,
-      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          errorMessage = 'Marketplace products are temporarily unavailable.';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -393,28 +398,30 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
                 ? const Center(
                     child: CircularProgressIndicator(),
                   )
-                : visible.isEmpty
-                    ? _buildEmptyState()
-                    : RefreshIndicator(
-                        onRefresh: _loadProducts,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(
-                            18,
-                            8,
-                            18,
-                            28,
+                : errorMessage != null
+                    ? _buildErrorState()
+                    : visible.isEmpty
+                        ? _buildEmptyState()
+                        : RefreshIndicator(
+                            onRefresh: _loadProducts,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                18,
+                                8,
+                                18,
+                                28,
+                              ),
+                              itemCount: visible.length,
+                              itemBuilder: (
+                                context,
+                                index,
+                              ) {
+                                return _productCard(
+                                  visible[index],
+                                );
+                              },
+                            ),
                           ),
-                          itemCount: visible.length,
-                          itemBuilder: (
-                            context,
-                            index,
-                          ) {
-                            return _productCard(
-                              visible[index],
-                            );
-                          },
-                        ),
-                      ),
           ),
         ],
       ),
@@ -456,6 +463,7 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
                 searchText = value;
               });
             },
+            onSubmitted: (_) => _loadProducts(),
             decoration: InputDecoration(
               hintText: 'Search product or merchant',
               prefixIcon: const Icon(Icons.search_rounded),
@@ -723,6 +731,38 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
               onPressed: _loadProducts,
               icon: const Icon(Icons.refresh),
               label: const Text('Refresh'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                size: 56, color: Color(0xFFB42318)),
+            const SizedBox(height: 14),
+            const Text(
+              'Marketplace unavailable',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              errorMessage ?? 'Marketplace products could not be loaded.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF667085)),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: loading ? null : _loadProducts,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
             ),
           ],
         ),

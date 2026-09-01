@@ -4,8 +4,11 @@ const assert = require("node:assert/strict");
 const {
   normalizeRange,
   getDateWindow,
+  getRequestedDateWindow,
   hasPermission,
   buildScopeFilter,
+  getDashboardTargets,
+  getDashboardExport,
 } = require("../services/adminDashboard.service");
 
 test("normalizes dashboard ranges to bounded supported values", () => {
@@ -82,4 +85,54 @@ test("limits manager queries to the manager scope", () => {
     { _id: { $exists: false } },
   );
   assert.deepEqual(buildScopeFilter({ role: "HEAD_OFFICE" }), {});
+});
+
+test("accepts bounded custom date ranges and rejects oversized ranges", () => {
+  const window = getRequestedDateWindow({
+    startDate: "2026-01-01T00:00:00.000Z",
+    endDate: "2026-03-01T00:00:00.000Z",
+  });
+  assert.equal(window.range, "custom");
+  assert.equal(window.days, 59);
+  assert.throws(
+    () => getRequestedDateWindow({
+      startDate: "2026-01-01T00:00:00.000Z",
+      endDate: "2026-06-01T00:00:00.000Z",
+    }),
+    /cannot exceed/,
+  );
+});
+
+test("non-management roles have a deny-by-default dashboard scope", () => {
+  assert.deepEqual(
+    buildScopeFilter({ role: "STAFF", _id: "staff-1" }, "transaction"),
+    { _id: { $exists: false } },
+  );
+});
+
+const responseRecorder = () => {
+  const response = { statusCode: 200, body: null };
+  response.status = (code) => {
+    response.statusCode = code;
+    return response;
+  };
+  response.json = (body) => {
+    response.body = body;
+    return response;
+  };
+  return response;
+};
+
+test("target configuration is Head Office-only", async () => {
+  const res = responseRecorder();
+  await getDashboardTargets({ user: { role: "ZONAL_MANAGER" } }, res);
+  assert.equal(res.statusCode, 403);
+  assert.match(res.body.message, /Head Office/);
+});
+
+test("report export requires its explicit permission", () => {
+  const res = responseRecorder();
+  getDashboardExport({ user: { role: "ZONAL_MANAGER", permissions: [] } }, res);
+  assert.equal(res.statusCode, 403);
+  assert.match(res.body.message, /permission/);
 });

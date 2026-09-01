@@ -34,6 +34,9 @@ class _AdminExecutiveDashboardScreenState
   Map<String, dynamic> _data = <String, dynamic>{};
   AdminAccess _access = const AdminAccess(role: '', permissions: <String>{});
   String _range = 'today';
+  DateTimeRange? _customRange;
+  String _chartMeasure = 'count';
+  Map<String, dynamic>? _selectedChartPoint;
   String? _error;
   DateTime? _lastUpdated;
   Future<void>? _activeLoad;
@@ -104,9 +107,18 @@ class _AdminExecutiveDashboardScreenState
           'Your login session was not found. Please sign in again.');
     }
 
+    final customParts = requestedRange.startsWith('custom:')
+        ? requestedRange.split(':')
+        : const <String>[];
+    final query = customParts.length == 3
+        ? <String, String>{
+            'startDate': '${customParts[1]}T00:00:00+01:00',
+            'endDate': '${customParts[2]}T23:59:59.999+01:00',
+          }
+        : <String, String>{'range': requestedRange};
     final response = await http.get(
       Uri.parse('$_baseUrl/admin/dashboard/executive').replace(
-        queryParameters: <String, String>{'range': requestedRange},
+        queryParameters: query,
       ),
       headers: <String, String>{
         'Accept': 'application/json',
@@ -178,6 +190,26 @@ class _AdminExecutiveDashboardScreenState
     }
     await _refresh(showErrorState: true);
   }
+
+  Future<void> _selectCustomRange() async {
+    final now = DateTime.now();
+    final selected = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      initialDateRange: _customRange ??
+          DateTimeRange(start: now.subtract(const Duration(days: 6)), end: now),
+      helpText: 'Select executive reporting period',
+    );
+    if (selected == null || !mounted) return;
+    final start = _dateKey(selected.start);
+    final end = _dateKey(selected.end);
+    setState(() => _customRange = selected);
+    await _changeRange('custom:$start:$end');
+  }
+
+  String _dateKey(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   String _money(dynamic value) {
     final amount = _double(value);
@@ -321,13 +353,25 @@ class _AdminExecutiveDashboardScreenState
           _twoColumn(
             constraints.maxWidth,
             _performancePanel(),
-            _healthPanel(),
+            _productPerformancePanel(),
           ),
           const SizedBox(height: 18),
           _twoColumn(
             constraints.maxWidth,
+            _branchPerformancePanel(),
+            _targetsPanel(),
+          ),
+          const SizedBox(height: 18),
+          _twoColumn(
+            constraints.maxWidth,
+            _healthPanel(),
             _activityPanel(),
+          ),
+          const SizedBox(height: 18),
+          _twoColumn(
+            constraints.maxWidth,
             _quickActionsPanel(),
+            _configurationAndExportsPanel(),
           ),
         ],
       ),
@@ -396,6 +440,18 @@ class _AdminExecutiveDashboardScreenState
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     _rangeSelector(),
+                    OutlinedButton.icon(
+                      key: const Key('admin-executive-custom-range'),
+                      onPressed:
+                          _activeLoad == null ? _selectCustomRange : null,
+                      icon: const Icon(Icons.date_range_outlined, size: 17),
+                      label: Text(
+                          _customRange == null ? 'Custom' : 'Custom range'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFFB7D9C2)),
+                      ),
+                    ),
                     IconButton.filled(
                       key: const Key('admin-executive-refresh'),
                       tooltip: 'Refresh dashboard',
@@ -525,6 +581,14 @@ class _AdminExecutiveDashboardScreenState
           _displayMetric('pendingSolarApplications'),
           Icons.solar_power_outlined,
           const Color(0xFF4D7C0F)),
+      _kpiCard('Total Agents / Aggregators', _count('totalAgentsAggregators'),
+          Icons.groups_2_outlined, const Color(0xFF0F766E)),
+      _kpiCard('Total Managers', _count('totalManagers'),
+          Icons.supervisor_account_outlined, const Color(0xFF0369A1)),
+      _kpiCard('Total Branch Managers', _count('totalBranchManagers'),
+          Icons.manage_accounts_outlined, const Color(0xFF6D28D9)),
+      _kpiCard('Total Branches', _count('totalBranches'),
+          Icons.account_tree_outlined, const Color(0xFFC2410C)),
     ];
     return GridView.count(
       crossAxisCount: columns,
@@ -773,33 +837,199 @@ class _AdminExecutiveDashboardScreenState
   Widget _performancePanel() {
     final series =
         _list(_map(_data['performance'])['series']).map(_map).toList();
+    final selected = _selectedChartPoint;
     return _panel(
       title: 'Transaction Performance',
       subtitle:
-          'Successful, pending, and failed records in the selected period.',
+          'Counts, values, and statuses from the selected reporting period.',
       child: series.isEmpty
           ? _empty('No transaction activity in this period.')
-          : SizedBox(
-              height: 210,
-              child: Column(
+          : Column(children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  Expanded(
-                      child: CustomPaint(
-                    painter: _PerformancePainter(series),
-                    child: const SizedBox.expand(),
-                  )),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 14,
-                    children: const [
-                      _LegendDot(color: _green, label: 'Successful'),
-                      _LegendDot(color: Color(0xFFD97706), label: 'Pending'),
-                      _LegendDot(color: Color(0xFFB42318), label: 'Failed'),
-                    ],
-                  ),
+                  for (final option in const [
+                    ('count', 'Count'),
+                    ('value', 'Value'),
+                    ('status', 'Status')
+                  ])
+                    ChoiceChip(
+                      label: Text(option.$2),
+                      selected: _chartMeasure == option.$1,
+                      onSelected: (_) => setState(() {
+                        _chartMeasure = option.$1;
+                        _selectedChartPoint = null;
+                      }),
+                    ),
                 ],
               ),
-            ),
+              if (selected != null) ...[
+                const SizedBox(height: 8),
+                _chartTooltip(selected),
+              ],
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 190,
+                child: LayoutBuilder(builder: (context, constraints) {
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: (details) {
+                      if (constraints.maxWidth <= 0) return;
+                      final index = (details.localPosition.dx /
+                              constraints.maxWidth *
+                              series.length)
+                          .floor()
+                          .clamp(0, series.length - 1);
+                      setState(() => _selectedChartPoint = series[index]);
+                    },
+                    child: CustomPaint(
+                      painter: _PerformancePainter(series, _chartMeasure),
+                      child: const SizedBox.expand(),
+                    ),
+                  );
+                }),
+              ),
+              const SizedBox(height: 8),
+              const Wrap(spacing: 14, children: [
+                _LegendDot(color: _green, label: 'Successful'),
+                _LegendDot(color: Color(0xFFD97706), label: 'Pending'),
+                _LegendDot(color: Color(0xFFB42318), label: 'Failed'),
+              ]),
+            ]),
+    );
+  }
+
+  Widget _chartTooltip(Map<String, dynamic> item) {
+    final value = _chartMeasure == 'value' ? _money(item['value']) : null;
+    return Semantics(
+      label: 'Chart details',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F8F4),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Text(
+          '${item['date'] ?? 'Selected period'} • Successful ${_int(item['successful']) ?? 0}, '
+          'Pending ${_int(item['pending']) ?? 0}, Failed ${_int(item['failed']) ?? 0}'
+          '${value == null ? '' : ' • $value'}',
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _productPerformancePanel() {
+    final products = _list(_data['products']).map(_map).toList();
+    return _rankingPanel(
+      title: 'Product Performance',
+      subtitle: 'Products included by the server for your access scope.',
+      entries: products,
+      emptyText: 'No product performance is available for this role.',
+      nameKeys: const ['name', 'product', 'label'],
+    );
+  }
+
+  Widget _branchPerformancePanel() {
+    final branches = _list(_data['branches']).map(_map).toList();
+    return _rankingPanel(
+      title: 'Branch Performance',
+      subtitle: 'Branch results included by the server for your access scope.',
+      entries: branches,
+      emptyText: 'No branch performance is available for this role.',
+      nameKeys: const ['name', 'branch', 'label'],
+    );
+  }
+
+  Widget _rankingPanel({
+    required String title,
+    required String subtitle,
+    required List<Map<String, dynamic>> entries,
+    required String emptyText,
+    required List<String> nameKeys,
+  }) {
+    return _panel(
+      title: title,
+      subtitle: subtitle,
+      child: entries.isEmpty
+          ? _empty(emptyText)
+          : Column(
+              children: entries.take(6).map((item) {
+              final name = nameKeys
+                  .map((key) => item[key]?.toString())
+                  .firstWhere((value) => value != null && value.isNotEmpty,
+                      orElse: () => 'Unnamed');
+              final count = _int(item['count'] ?? item['transactions']);
+              final amount = _double(item['value'] ?? item['amount']);
+              final successful = _int(item['successful']);
+              final pending = _int(item['pending']);
+              final failed = _int(item['failed']);
+              final status = successful == null &&
+                      pending == null &&
+                      failed == null
+                  ? null
+                  : 'Successful ${successful ?? 0} • Pending ${pending ?? 0} • Failed ${failed ?? 0}';
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(name ?? 'Unnamed',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: status == null ? null : Text(status),
+                trailing: Text(
+                  amount != null
+                      ? _money(amount)
+                      : count?.toString() ?? 'Not available',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+              );
+            }).toList()),
+    );
+  }
+
+  Widget _targetsPanel() {
+    final targets = _list(_data['targets']).map(_map).toList();
+    return _panel(
+      title: 'Targets & Progress',
+      subtitle: 'Progress against targets supplied for this reporting period.',
+      child: targets.isEmpty
+          ? _empty('No targets are available for this role.')
+          : Column(
+              children: targets.take(6).map((item) {
+              final actual = _double(item['actual'] ?? item['value']);
+              final target = _double(item['target']);
+              final progress = _double(item['progress']) ??
+                  (actual != null && target != null && target > 0
+                      ? actual / target
+                      : null);
+              final label = item['name'] ?? item['label'] ?? 'Target';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                            child: Text('$label',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700))),
+                        Text(
+                            progress == null
+                                ? 'Not available'
+                                : '${(progress * 100).clamp(0, 999).toStringAsFixed(0)}%',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
+                      ]),
+                      const SizedBox(height: 5),
+                      LinearProgressIndicator(
+                        value: progress?.clamp(0, 1).toDouble(),
+                        color: _green,
+                      ),
+                    ]),
+              );
+            }).toList()),
     );
   }
 
@@ -1024,6 +1254,72 @@ class _AdminExecutiveDashboardScreenState
     );
   }
 
+  Widget _configurationAndExportsPanel() {
+    final configuration = _map(_data['configuration']);
+    final exports = _list(_data['exports']).map(_map).toList();
+    final canConfigure = _access.isFullAccess ||
+        _can(AdminPermissions.settingsView) ||
+        _can(AdminPermissions.settingsUpdate);
+    final canExport = _access.isFullAccess || _can(AdminPermissions.auditView);
+    return _panel(
+      title: 'Configuration & Exports',
+      subtitle: 'Head Office controls and server-prepared reporting outputs.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (canConfigure) ...[
+            Text(
+              configuration.isEmpty
+                  ? 'Configuration status is not available.'
+                  : configuration['summary']?.toString() ??
+                      configuration['status']?.toString() ??
+                      'Configuration supplied by the server.',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 9),
+            FilledButton.tonalIcon(
+              onPressed: () => _open('control'),
+              icon: const Icon(Icons.settings_outlined, size: 17),
+              label: const Text('Open configuration'),
+            ),
+          ] else
+            _empty(
+                'Configuration is available to authorized Head Office staff only.'),
+          if (canExport) ...[
+            const SizedBox(height: 14),
+            const Text('Exports',
+                style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 5),
+            if (exports.isEmpty)
+              Text('No export is currently available for this period.',
+                  style: TextStyle(color: Colors.grey.shade600))
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: exports.take(6).map((export) {
+                  final label = export['label'] ?? export['name'] ?? 'Export';
+                  final available = export['available'] != false;
+                  return OutlinedButton.icon(
+                    onPressed: available
+                        ? () => ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(export['message']?.toString() ??
+                                    '$label is prepared by the reporting service.'),
+                              ),
+                            )
+                        : null,
+                    icon: const Icon(Icons.file_download_outlined, size: 17),
+                    label: Text('$label'),
+                  );
+                }).toList(),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _sectionTitle(String title, String subtitle) {
     return Row(
       children: [
@@ -1139,9 +1435,10 @@ class _LegendDot extends StatelessWidget {
 }
 
 class _PerformancePainter extends CustomPainter {
-  const _PerformancePainter(this.series);
+  const _PerformancePainter(this.series, this.measure);
 
   final List<Map<String, dynamic>> series;
+  final String measure;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1160,9 +1457,9 @@ class _PerformancePainter extends CustomPainter {
     }
     final maxValue = series
         .expand((item) => [
-              _number(item['successful']),
-              _number(item['pending']),
-              _number(item['failed']),
+              _value(item, 'successful'),
+              _value(item, 'pending'),
+              _value(item, 'failed'),
             ])
         .fold<double>(1, (max, value) => value > max ? value : max);
     final groupWidth = chart.width / series.length;
@@ -1172,7 +1469,7 @@ class _PerformancePainter extends CustomPainter {
       final center = chart.left + groupWidth * index + groupWidth / 2;
       var offset = -barWidth * 1.5;
       for (final key in ['successful', 'pending', 'failed']) {
-        final value = _number(item[key]);
+        final value = _value(item, key);
         final height = chart.height * value / maxValue;
         final rect = Rect.fromLTWH(
           center + offset,
@@ -1191,7 +1488,18 @@ class _PerformancePainter extends CustomPainter {
 
   double _number(dynamic value) => value is num ? value.toDouble() : 0;
 
+  double _value(Map<String, dynamic> item, String status) {
+    // Value mode accepts per-status values when the API provides them. A
+    // period total remains useful rather than inventing a financial split.
+    if (measure == 'value') {
+      final perStatus = _number(item['${status}Value']);
+      if (perStatus > 0) return perStatus;
+      if (status == 'successful') return _number(item['value']);
+    }
+    return _number(item[status]);
+  }
+
   @override
   bool shouldRepaint(covariant _PerformancePainter oldDelegate) =>
-      oldDelegate.series != series;
+      oldDelegate.series != series || oldDelegate.measure != measure;
 }

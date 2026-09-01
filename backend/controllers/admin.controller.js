@@ -5,9 +5,15 @@ const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
 const {
   getExecutiveDashboard,
+   getDashboardTargets,
+   updateDashboardTargets,
+   getDashboardExport,
 } = require("../services/adminDashboard.service");
 
 exports.getAdminExecutiveDashboard = getExecutiveDashboard;
+exports.getAdminDashboardTargets = getDashboardTargets;
+exports.updateAdminDashboardTargets = updateDashboardTargets;
+exports.getAdminDashboardExport = getDashboardExport;
 
 const DELIVERY_STATUSES = [
   "PENDING",

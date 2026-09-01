@@ -9,6 +9,9 @@ const {
   createAdminUser,
   updateAdminUserStatus,
   getAdminExecutiveDashboard,
+   getAdminDashboardTargets,
+   updateAdminDashboardTargets,
+   getAdminDashboardExport,
 } = require("../controllers/admin.controller");
 
 const {
@@ -62,6 +65,34 @@ router.get(
   ),
   dashboardPermission,
   getAdminExecutiveDashboard,
+);
+
+router.get(
+  "/dashboard/executive/targets",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  getAdminDashboardTargets,
+);
+
+router.put(
+  "/dashboard/executive/targets",
+  protect,
+  adminOnly("HEAD_OFFICE"),
+  updateAdminDashboardTargets,
+);
+
+router.get(
+  "/dashboard/executive/export",
+  protect,
+  adminOnly(
+    "HEAD_OFFICE",
+    "ADMIN",
+    "SUPER_ADMIN",
+    "HEAD_OFFICE_ADMIN",
+    "ZONAL_MANAGER",
+    "STATE_MANAGER",
+  ),
+  getAdminDashboardExport,
 );
 
 /*

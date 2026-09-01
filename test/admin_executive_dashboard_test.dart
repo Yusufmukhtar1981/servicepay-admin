@@ -40,6 +40,12 @@ Map<String, dynamic> executiveData({
           restricted ? metric(null, available: false) : metric(3),
       'activeRiders': restricted ? metric(null, available: false) : metric(8),
       'pendingSolarApplications': metric(null, available: false),
+      'totalAgentsAggregators':
+          restricted ? metric(null, available: false) : metric(22),
+      'totalManagers': restricted ? metric(null, available: false) : metric(6),
+      'totalBranchManagers':
+          restricted ? metric(null, available: false) : metric(4),
+      'totalBranches': metric(null, available: false),
     },
     'comparisons': {
       'transactionVolume': empty ? null : 8.4,
@@ -140,6 +146,26 @@ void main() {
     expect(find.text('120'), findsOneWidget);
     expect(find.text('₦250,000.50'), findsOneWidget);
     expect(find.text('↑ 8.4% vs previous period'), findsOneWidget);
+    for (final label in const [
+      'Total Customers',
+      'Active Customers',
+      'Total Customer Wallet Balance',
+      'Today’s Transaction Volume',
+      'Today’s Transaction Value',
+      'Successful Transactions',
+      'Pending Transactions',
+      'Failed Transactions',
+      'Pending Withdrawals',
+      'Pending KYC Reviews',
+      'Active Riders',
+      'Pending Solar Applications',
+      'Total Agents / Aggregators',
+      'Total Managers',
+      'Total Branch Managers',
+      'Total Branches',
+    ]) {
+      expect(find.text(label), findsOneWidget);
+    }
     await scrollTo(tester, find.text('Live Operations Overview'));
     expect(find.text('Live Operations Overview'), findsOneWidget);
     await scrollTo(tester, find.text('Transaction Performance'));
@@ -239,7 +265,11 @@ void main() {
   });
 
   testWidgets('stays overflow-free on mobile and desktop', (tester) async {
-    for (final size in const [Size(360, 800), Size(1440, 1000)]) {
+    for (final size in const [
+      Size(360, 800),
+      Size(800, 1000),
+      Size(1440, 1000),
+    ]) {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       await tester.pumpWidget(

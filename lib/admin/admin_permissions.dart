@@ -16,13 +16,14 @@ abstract final class AdminPermissions {
   static const rolesAssignPermissions = 'roles.assign_permissions';
   static const rolesEnable = 'roles.enable';
   static const usersView = 'users.view';
+  static const privacyView = 'privacy.view';
+  static const privacyManage = 'privacy.manage';
   static const customer360View = 'customer360.view';
   static const customer360Financial = 'customer360.financial';
   static const customer360Kyc = 'customer360.kyc';
   static const customer360Security = 'customer360.security';
   static const transactionsView = 'transactions.view';
-  static const transactionIntelligenceView =
-      'transactions.intelligence.view';
+  static const transactionIntelligenceView = 'transactions.intelligence.view';
   static const transactionIntelligenceRequery =
       'transactions.intelligence.requery';
   static const walletsView = 'wallets.view';
@@ -99,9 +100,9 @@ class AdminAccess {
         user['permissions'] ?? (user['staffRole'] as Map?)?['permissions'];
     final Set<String> permissions = rawPermissions is List
         ? rawPermissions
-            .map((dynamic value) => value.toString().trim())
-            .where((String value) => value.isNotEmpty)
-            .toSet()
+              .map((dynamic value) => value.toString().trim())
+              .where((String value) => value.isNotEmpty)
+              .toSet()
         : <String>{};
     final dynamic rawScope = user['accessScope'];
     return AdminAccess(

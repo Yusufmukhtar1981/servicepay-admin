@@ -38,11 +38,10 @@ import 'admin_customer_support_screen.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
+import 'admin_privacy_requests_screen.dart';
 
 class AdminMainNavigation extends StatefulWidget {
-  const AdminMainNavigation({
-    super.key,
-  });
+  const AdminMainNavigation({super.key});
 
   @override
   State<AdminMainNavigation> createState() => _AdminMainNavigationState();
@@ -71,18 +70,14 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     loadAccessAndConfigureNavigation();
   }
 
-  String normalizeRole(
-    String? value,
-  ) {
+  String normalizeRole(String? value) {
     return (value ?? '').trim().toUpperCase().replaceAll(
-          RegExp(r'[\s-]+'),
-          '_',
-        );
+      RegExp(r'[\s-]+'),
+      '_',
+    );
   }
 
-  String normalizePermission(
-    String? value,
-  ) {
+  String normalizePermission(String? value) {
     return (value ?? '').trim().toLowerCase();
   }
 
@@ -99,30 +94,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     return adminRole == 'STAFF';
   }
 
-  bool hasPermission(
-    String permission,
-  ) {
+  bool hasPermission(String permission) {
     if (isHeadOffice) {
       return true;
     }
 
-    return permissions.contains(
-      normalizePermission(
-        permission,
-      ),
-    );
+    return permissions.contains(normalizePermission(permission));
   }
 
-  bool hasAnyPermission(
-    List<String> requiredPermissions,
-  ) {
+  bool hasAnyPermission(List<String> requiredPermissions) {
     if (isHeadOffice) {
       return true;
     }
 
-    return requiredPermissions.any(
-      hasPermission,
-    );
+    return requiredPermissions.any(hasPermission);
   }
 
   void addNavigationPage({
@@ -131,18 +116,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     required IconData activeIcon,
     required String label,
   }) {
-    pages.add(
-      page,
-    );
+    pages.add(page);
 
     items.add(
       BottomNavigationBarItem(
-        icon: Icon(
-          icon,
-        ),
-        activeIcon: Icon(
-          activeIcon,
-        ),
+        icon: Icon(icon),
+        activeIcon: Icon(activeIcon),
         label: label,
       ),
     );
@@ -157,10 +136,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * DASHBOARD
      * =====================================================
      */
-    if (isHeadOffice ||
-        hasPermission(
-          'dashboard.view',
-        )) {
+    if (isHeadOffice || hasPermission('dashboard.view')) {
       addNavigationPage(
         page: const AdminDashboardScreen(),
         icon: Icons.dashboard_outlined,
@@ -227,15 +203,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-/*
+    /*
      * =====================================================
      * DELIVERY
      * =====================================================
      */
-    if (isHeadOffice ||
-        hasPermission(
-          'delivery.view',
-        )) {
+    if (isHeadOffice || hasPermission('delivery.view')) {
       addNavigationPage(
         page: const AdminDeliveryManagementScreen(),
         icon: Icons.local_shipping_outlined,
@@ -250,12 +223,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * =====================================================
      */
     if (isHeadOffice ||
-        hasAnyPermission(
-          const <String>[
-            AdminPermissions.logisticsView,
-            AdminPermissions.logisticsManage,
-          ],
-        )) {
+        hasAnyPermission(const <String>[
+          AdminPermissions.logisticsView,
+          AdminPermissions.logisticsManage,
+        ])) {
       addNavigationPage(
         page: const AdminLogisticsScreen(),
         icon: Icons.route_outlined,
@@ -331,15 +302,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * =====================================================
      */
     if (isHeadOffice ||
-        hasAnyPermission(
-          const <String>[
-            'wallets.view',
-            'wallets.fund',
-            'wallets.adjust',
-            'finance.view',
-            'finance.reconcile',
-          ],
-        )) {
+        hasAnyPermission(const <String>[
+          'wallets.view',
+          'wallets.fund',
+          'wallets.adjust',
+          'finance.view',
+          'finance.reconcile',
+        ])) {
       addNavigationPage(
         page: const AdminManualFundingScreen(),
         icon: Icons.account_balance_wallet_outlined,
@@ -362,19 +331,26 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
+    if (isHeadOffice || hasPermission(AdminPermissions.privacyView)) {
+      addNavigationPage(
+        page: const AdminPrivacyRequestsScreen(),
+        icon: Icons.privacy_tip_outlined,
+        activeIcon: Icons.privacy_tip_rounded,
+        label: 'Account Requests',
+      );
+    }
+
     /*
      * =====================================================
      * NOTIFICATIONS
      * =====================================================
      */
     if (isHeadOffice ||
-        hasAnyPermission(
-          const <String>[
-            'notifications.view',
-            'notifications.create',
-            'notifications.send',
-          ],
-        )) {
+        hasAnyPermission(const <String>[
+          'notifications.view',
+          'notifications.create',
+          'notifications.send',
+        ])) {
       addNavigationPage(
         page: const AdminNotificationsScreen(),
         icon: Icons.notifications_outlined,
@@ -389,17 +365,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * =====================================================
      */
     if (isHeadOffice ||
-        hasAnyPermission(
-          const <String>[
-            'communications.view',
-            'email_campaign.create',
-            'email_campaign.send',
-            'email_campaign.history_view',
-            'notifications.view',
-            'notifications.create',
-            'notifications.send',
-          ],
-        )) {
+        hasAnyPermission(const <String>[
+          'communications.view',
+          'email_campaign.create',
+          'email_campaign.send',
+          'email_campaign.history_view',
+          'notifications.view',
+          'notifications.create',
+          'notifications.send',
+        ])) {
       addNavigationPage(
         page: const AdminBulkEmailScreen(),
         icon: Icons.forum_outlined,
@@ -436,10 +410,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
     // ================================================================
     // BUSINESS PARTNER MANAGEMENT
-    if (isHeadOffice ||
-        hasPermission(
-          'business_partners.view',
-        )) {
+    if (isHeadOffice || hasPermission('business_partners.view')) {
       addNavigationPage(
         page: const AdminBusinessPartnersScreen(),
         icon: Icons.domain_outlined,
@@ -479,23 +450,21 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-/*
+    /*
      * =====================================================
      * STAFF
      * =====================================================
      */
     if (isHeadOffice ||
-        hasAnyPermission(
-          const <String>[
-            'staff.view',
-            'staff.create',
-            'staff.update',
-            'staff.suspend',
-            'roles.view',
-            'roles.create',
-            'roles.update',
-          ],
-        )) {
+        hasAnyPermission(const <String>[
+          'staff.view',
+          'staff.create',
+          'staff.update',
+          'staff.suspend',
+          'roles.view',
+          'roles.create',
+          'roles.update',
+        ])) {
       addNavigationPage(
         page: const StaffManagementScreen(),
         icon: Icons.groups_outlined,
@@ -507,10 +476,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     if (isHeadOffice || hasPermission('roles.view')) {
       addNavigationPage(
         page: AdminRolesPermissionsScreen(
-          access: AdminAccess(
-            role: adminRole,
-            permissions: permissions,
-          ),
+          access: AdminAccess(role: adminRole, permissions: permissions),
         ),
         icon: Icons.manage_accounts_outlined,
         activeIcon: Icons.manage_accounts_rounded,
@@ -573,33 +539,19 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
       final String role = normalizeRole(
-        prefs.getString(
-              'user_role',
-            ) ??
-            prefs.getString(
-              'admin_role',
-            ) ??
-            prefs.getString(
-              'role',
-            ),
+        prefs.getString('user_role') ??
+            prefs.getString('admin_role') ??
+            prefs.getString('role'),
       );
 
-      final List<String> savedPermissions = prefs.getStringList(
-            'staff_permissions',
-          ) ??
+      final List<String> savedPermissions =
+          prefs.getStringList('staff_permissions') ??
           prefs.getStringList('admin_effective_permissions') ??
           <String>[];
 
       final Set<String> normalizedPermissions = savedPermissions
-          .map(
-            normalizePermission,
-          )
-          .where(
-            (
-              String value,
-            ) =>
-                value.isNotEmpty,
-          )
+          .map(normalizePermission)
+          .where((String value) => value.isNotEmpty)
           .toSet();
 
       const Set<String> allowedAdminRoles = <String>{
@@ -619,16 +571,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           return;
         }
 
-        Navigator.of(
-          context,
-        ).pushAndRemoveUntil(
-          MaterialPageRoute<void>(
-            builder: (_) => const LoginScreen(),
-          ),
-          (
-            Route<dynamic> route,
-          ) =>
-              false,
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+          (Route<dynamic> route) => false,
         );
 
         return;
@@ -641,20 +586,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       setState(() {
         adminRole = role;
 
-        staffRoleName = prefs.getString(
-              'staff_role_name',
-            ) ??
-            '';
+        staffRoleName = prefs.getString('staff_role_name') ?? '';
 
-        staffRoleDisplayName = prefs.getString(
-              'staff_role_display_name',
-            ) ??
-            '';
+        staffRoleDisplayName = prefs.getString('staff_role_display_name') ?? '';
 
-        staffDepartment = prefs.getString(
-              'staff_department',
-            ) ??
-            '';
+        staffDepartment = prefs.getString('staff_department') ?? '';
 
         permissions = normalizedPermissions;
 
@@ -685,46 +621,28 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     if (staffRoleName.isNotEmpty) {
-      return staffRoleName.replaceAll(
-        '_',
-        ' ',
-      );
+      return staffRoleName.replaceAll('_', ' ');
     }
 
     return 'ServicePay Staff';
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     if (isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (pages.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'ServicePay Admin',
-          ),
-        ),
+        appBar: AppBar(title: const Text('ServicePay Admin')),
         body: const Center(
           child: Padding(
-            padding: EdgeInsets.all(
-              24,
-            ),
+            padding: EdgeInsets.all(24),
             child: Text(
               'No authorized admin pages are available for this account.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -737,16 +655,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       appBar: AppBar(
         title: Text(
           accountLabel,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: <Widget>[
           if (isStaff && staffDepartment.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(
-                right: 12,
-              ),
+              padding: const EdgeInsets.only(right: 12),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -754,22 +668,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFE8F5EC,
-                    ),
-                    borderRadius: BorderRadius.circular(
-                      20,
-                    ),
+                    color: const Color(0xFFE8F5EC),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    staffDepartment.replaceAll(
-                      '_',
-                      ' ',
-                    ),
+                    staffDepartment.replaceAll('_', ' '),
                     style: const TextStyle(
-                      color: Color(
-                        0xFF159447,
-                      ),
+                      color: Color(0xFF159447),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -779,17 +684,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             ),
         ],
       ),
-      body: IndexedStack(
-        index: safeIndex,
-        children: pages,
-      ),
+      body: IndexedStack(index: safeIndex, children: pages),
       bottomNavigationBar: SafeArea(
         top: false,
         child: LayoutBuilder(
-          builder: (
-            BuildContext context,
-            BoxConstraints constraints,
-          ) {
+          builder: (BuildContext context, BoxConstraints constraints) {
             void selectModule(int index) {
               if (index < 0 || index >= pages.length) {
                 return;
@@ -800,7 +699,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               });
             }
 
-            final bool isDesktop = kIsWeb ||
+            final bool isDesktop =
+                kIsWeb ||
                 defaultTargetPlatform == TargetPlatform.windows ||
                 defaultTargetPlatform == TargetPlatform.macOS ||
                 defaultTargetPlatform == TargetPlatform.linux;
@@ -819,12 +719,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
                 child: BottomNavigationBar(
                   currentIndex: safeIndex,
                   type: BottomNavigationBarType.fixed,
-                  selectedItemColor: const Color(
-                    0xFF0F766E,
-                  ),
-                  unselectedItemColor: const Color(
-                    0xFF94A3B8,
-                  ),
+                  selectedItemColor: const Color(0xFF0F766E),
+                  unselectedItemColor: const Color(0xFF94A3B8),
                   backgroundColor: Colors.white,
                   selectedFontSize: 10,
                   unselectedFontSize: 9,
@@ -1054,16 +950,13 @@ class _ModuleScrollArrowState extends State<_ModuleScrollArrow> {
     }
     widget.onScroll();
     _repeatTimer?.cancel();
-    _repeatTimer = Timer.periodic(
-      const Duration(milliseconds: 320),
-      (_) {
-        if (widget.enabled) {
-          widget.onScroll();
-        } else {
-          _stopRepeating();
-        }
-      },
-    );
+    _repeatTimer = Timer.periodic(const Duration(milliseconds: 320), (_) {
+      if (widget.enabled) {
+        widget.onScroll();
+      } else {
+        _stopRepeating();
+      }
+    });
   }
 
   void _stopRepeating() {

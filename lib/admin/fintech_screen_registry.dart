@@ -28,6 +28,7 @@ import 'admin_solar_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_customer_360_screen.dart';
+import 'admin_privacy_requests_screen.dart';
 // AUTO-GENERATED SAFE REGISTRY.
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
@@ -49,6 +50,9 @@ String? controlCenterModuleIdForTitle(String title) =>
     controlCenterModuleIds[title];
 
 Widget? fintechScreenForTitle(String title) {
+  if (title == 'Privacy Controls' || title == 'Account Deletion Requests') {
+    return const AdminPrivacyRequestsScreen();
+  }
   final String? controlCenterModuleId = controlCenterModuleIdForTitle(title);
   if (controlCenterModuleId != null) {
     return AdminControlCenterScreen(initialModuleId: controlCenterModuleId);

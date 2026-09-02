@@ -801,6 +801,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       return;
     }
 
+    final String? controlCenterModuleId =
+        controlCenterModuleIdForTitle(title);
+    if (controlCenterModuleId != null) {
+      Navigator.of(context).pushNamed(
+        '/control-center/$controlCenterModuleId',
+      );
+      return;
+    }
+
     final linkedScreen = fintechScreenForTitle(title);
 
     if (linkedScreen != null) {

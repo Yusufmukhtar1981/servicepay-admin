@@ -32,7 +32,28 @@ import 'admin_customer_360_screen.dart';
 // Generated only from ServicePay strict verified screens.
 // Do not manually add unverified screens here.
 
+const Map<String, String> controlCenterModuleIds = <String, String>{
+  'Audit Logs': 'audit-logs',
+  'Security Events': 'security-events',
+  'Access Logs': 'access-logs',
+  'Data Exports': 'data-exports',
+  'Backups': 'backups',
+  'Privacy Controls': 'privacy-controls',
+  'Executive Dashboard': 'executive-dashboard',
+  'Service Performance': 'service-performance',
+  'Transaction Analytics': 'transaction-analytics',
+  'Customer Analytics': 'customer-analytics',
+};
+
+String? controlCenterModuleIdForTitle(String title) =>
+    controlCenterModuleIds[title];
+
 Widget? fintechScreenForTitle(String title) {
+  final String? controlCenterModuleId = controlCenterModuleIdForTitle(title);
+  if (controlCenterModuleId != null) {
+    return AdminControlCenterScreen(initialModuleId: controlCenterModuleId);
+  }
+
   switch (title) {
     case 'Customer 360':
       return const AdminCustomer360Screen();
@@ -58,7 +79,8 @@ Widget? fintechScreenForTitle(String title) {
       return const AdminCardsScreen();
     case 'Transaction Limits':
       return const AdminPlatformConfigurationScreen(
-          initialSection: 'Service Limits');
+        initialSection: 'Service Limits',
+      );
     case 'Transaction Requery':
       return const AdminTransactionRequeryScreen();
 
@@ -113,15 +135,18 @@ Widget? fintechScreenForTitle(String title) {
       return AdminManualFundingScreen();
     case 'Maintenance Mode':
       return AdminPlatformConfigurationScreen(
-          initialSection: 'Maintenance Mode');
+        initialSection: 'Maintenance Mode',
+      );
     case 'Service Limits':
       return AdminPlatformConfigurationScreen(initialSection: 'Service Limits');
     case 'Transaction Fees':
       return AdminPlatformConfigurationScreen(
-          initialSection: 'Transaction Fees');
+        initialSection: 'Transaction Fees',
+      );
     case 'Legal & Policies':
       return AdminPlatformConfigurationScreen(
-          initialSection: 'Legal & Policies');
+        initialSection: 'Legal & Policies',
+      );
     case 'Core Ledger':
       return AdminTransactionsScreen();
 

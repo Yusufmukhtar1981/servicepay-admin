@@ -1,725 +1,506 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
-import 'admin_settings_screen.dart';
-import 'admin_data_pricing_screen.dart';
-import 'admin_product_commission_screen.dart';
-import 'admin_marketplace_screen.dart';
-import 'admin_delivery_screen.dart';
-import 'admin_delivery_coverage_screen.dart';
-import 'admin_keke_fare_screen.dart';
-import 'admin_kyc_screen.dart';
-import 'admin_cards_screen.dart';
-import 'admin_transactions_screen.dart';
-import 'admin_riders_screen.dart';
-import 'admin_rider_withdrawals_screen.dart';
-import 'admin_business_withdrawals_screen.dart';
-import 'admin_manual_funding_screen.dart';
-import 'admin_empowerment_screen.dart';
-import 'admin_amana_screen.dart';
-import 'users_screen.dart';
-import 'roles_permissions_screen.dart';
-import 'staff_management_screen.dart';
+import 'admin_control_center_api.dart';
+import 'admin_control_center_download.dart';
+import 'admin_permissions.dart';
+import 'login_screen.dart';
 
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-
-import 'admin_airtime_to_cash_screen.dart';
-import 'admin_notifications_screen.dart';
-import 'admin_partner_applications_screen.dart';
-import 'admin_partner_screen.dart';
+/// Legal security-event transitions for the workflow state returned by the API.
+List<String> controlCenterSecurityActions(Map<String, dynamic> event) {
+  final String outcome = (event['outcome'] ?? '').toString().toUpperCase();
+  final bool explicitlyNonActionable = event['actionable'] == false ||
+      event['investigationRequired'] == false ||
+      event['nonActionable'] == true;
+  if (explicitlyNonActionable ||
+      const <String>['SUCCESS', 'SUCCESSFUL', 'SUCCEEDED', 'BENIGN', 'ALLOWED']
+          .contains(outcome)) {
+    return const <String>[];
+  }
+  final String status =
+      (event['workflowStatus'] ?? event['workflow'] ?? event['status'] ?? '')
+          .toString()
+          .toUpperCase();
+  switch (status) {
+    case 'OPEN':
+      return const <String>['ACKNOWLEDGE'];
+    case 'ACKNOWLEDGED':
+      return const <String>['RESOLVE'];
+    case 'RESOLVED':
+      return const <String>['REOPEN'];
+    default:
+      return const <String>[];
+  }
+}
 
 class AdminControlCenterScreen extends StatefulWidget {
-  const AdminControlCenterScreen({super.key});
-
+  const AdminControlCenterScreen({super.key, this.api});
+  final AdminControlCenterApi? api;
   @override
   State<AdminControlCenterScreen> createState() =>
       _AdminControlCenterScreenState();
 }
 
 class _AdminControlCenterScreenState extends State<AdminControlCenterScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
-
-  static const Color primaryGreen = Color(0xFF08783E);
-
-  bool loadingServices = true;
-  bool savingServices = false;
-  bool adjustingWallet = false;
-
-  final Map<String, String> serviceLabels = <String, String>{
-    'airtime': 'Airtime',
-    'data': 'Data',
-    'electricity': 'Electricity',
-    'cableTv': 'Cable TV',
-    'examPin': 'Exam PIN',
-    'ninVerification': 'NIN Verification',
-    'delivery': 'Delivery',
-    'kekeNapep': 'Keke Napep',
-    'amana': 'ServicePay Amana',
-    'walletFunding': 'Wallet Funding',
-    'servicepayTransfer': 'ServicePay Transfer',
-    'bankTransfer': 'Bank Transfer',
-    'flightBooking': 'Flight Booking',
-    'notifications': 'Notifications',
-  };
-
-  late Map<String, bool> services;
-
-  final TextEditingController customerController = TextEditingController();
-
-  final TextEditingController amountController = TextEditingController();
-
-  final TextEditingController reasonController = TextEditingController();
-
-  String walletAction = 'CREDIT';
+  static const List<_Module> _modules = <_Module>[
+    _Module('audit-logs', 'Audit Logs', Icons.history_outlined),
+    _Module('security-events', 'Security Events', Icons.shield_outlined),
+    _Module('access-logs', 'Access Logs', Icons.login_outlined),
+    _Module('data-exports', 'Data Exports', Icons.file_download_outlined),
+    _Module('backups', 'Backups & Readiness', Icons.backup_outlined),
+    _Module('privacy-controls', 'Privacy Controls', Icons.privacy_tip_outlined),
+    _Module(
+        'executive-dashboard', 'Executive Dashboard', Icons.dashboard_outlined),
+    _Module('service-performance', 'Service Performance', Icons.speed_outlined),
+    _Module('transaction-analytics', 'Transaction Analytics',
+        Icons.insights_outlined),
+    _Module('customer-analytics', 'Customer Analytics', Icons.people_outline),
+  ];
+  late final AdminControlCenterApi _api = widget.api ?? AdminControlCenterApi();
+  final TextEditingController _search = TextEditingController();
+  final Map<String, TextEditingController> _filters =
+      <String, TextEditingController>{};
+  Map<String, dynamic>? _catalog, _data;
+  _Module? _selected;
+  bool _loading = true;
+  String? _error;
+  int _page = 1;
+  DateTimeRange _range = DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 29)),
+      end: DateTime.now());
+  String _preset = '30 Days';
 
   @override
   void initState() {
     super.initState();
-
-    services = <String, bool>{
-      for (final String key in serviceLabels.keys) key: true,
-    };
-
-    loadServices();
+    _loadCatalog();
   }
 
   @override
   void dispose() {
-    customerController.dispose();
-    amountController.dispose();
-    reasonController.dispose();
+    _search.dispose();
+    for (final c in _filters.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  Future<String?> getToken() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    const List<String> keys = <String>[
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in keys) {
-      final String value = (prefs.getString(key) ?? '').trim();
-
-      if (value.isNotEmpty) {
-        return value.startsWith('Bearer ') ? value.substring(7) : value;
-      }
-    }
-
-    return null;
-  }
-
-  dynamic decodeBody(String body) {
-    try {
-      return jsonDecode(body);
-    } catch (_) {
-      return <String, dynamic>{};
-    }
-  }
-
-  String messageFrom(
-    dynamic decoded, {
-    required String fallback,
-  }) {
-    if (decoded is Map) {
-      final dynamic value = decoded['message'] ?? decoded['error'];
-
-      if (value != null && value.toString().trim().isNotEmpty) {
-        return value.toString();
-      }
-    }
-
-    return fallback;
-  }
-
-  void showMessage(
-    String message, {
-    bool error = false,
-  }) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: error ? Colors.red.shade700 : primaryGreen,
-        ),
-      );
-  }
-
-  Future<void> loadServices() async {
+  Future<void> _loadCatalog() async {
     setState(() {
-      loadingServices = true;
+      _loading = true;
+      _error = null;
     });
-
     try {
-      final String? token = await getToken();
-
-      if (token == null) {
-        showMessage(
-          'Admin session not found.',
-          error: true,
-        );
-        return;
-      }
-
-      final http.Response response = await http.get(
-        Uri.parse('$baseUrl/settings/admin'),
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      final dynamic decoded = decodeBody(response.body);
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        showMessage(
-          messageFrom(
-            decoded,
-            fallback: 'Unable to load service settings.',
-          ),
-          error: true,
-        );
-        return;
-      }
-
-      dynamic settings;
-
-      if (decoded is Map) {
-        settings = decoded['settings'] ?? decoded['data'];
-
-        if (settings is Map && settings['settings'] is Map) {
-          settings = settings['settings'];
-        }
-      }
-
-      if (settings is Map && settings['services'] is Map) {
-        final Map raw = settings['services'] as Map;
-
-        for (final String key in serviceLabels.keys) {
-          if (raw[key] is bool) {
-            services[key] = raw[key] == true;
-          }
-        }
-      }
-    } catch (error) {
-      showMessage(
-        'Unable to load service settings.',
-        error: true,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          loadingServices = false;
-        });
-      }
+      _catalog = await _api.catalog();
+    } catch (e) {
+      await _handle(e);
     }
+    if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> saveServices() async {
+  Future<void> _open(_Module module, {int page = 1}) async {
     setState(() {
-      savingServices = true;
+      _selected = module;
+      _loading = true;
+      _error = null;
+      _page = page;
     });
-
     try {
-      final String? token = await getToken();
+      _data = await _api.module(module.id,
+          page: page,
+          limit: 25,
+          start: _range.start,
+          end: _range.end,
+          search: _search.text,
+          action: _f('action'),
+          status: _f('status'),
+          actorId: _f('actorId'),
+          moduleFilter: _f('module'),
+          eventType: _f('eventType'),
+          severity: _f('severity'),
+          workflow: _f('workflow'),
+          outcome: _f('outcome'),
+          method: _f('method'),
+          statusCode: _f('statusCode'),
+          path: _f('path'),
+          ip: _f('ip'),
+          serviceType: _f('serviceType'),
+          provider: _f('provider'),
+          branchId: _f('branchId'),
+          customerId: _f('customerId'),
+          state: _f('state'),
+          role: _f('role'),
+          kycStatus: _f('kycStatus'),
+          type: _f('type'),
+          subjectUser: _f('subjectUser'));
+    } catch (e) {
+      await _handle(e);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
 
-      if (token == null) {
-        showMessage(
-          'Admin session not found.',
-          error: true,
-        );
-        return;
-      }
-
-      final http.Response response = await http.put(
-        Uri.parse('$baseUrl/settings/admin'),
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(
-          <String, dynamic>{
-            'reason': 'Head Office service availability update',
-            'services': services,
-          },
-        ),
-      );
-
-      final dynamic decoded = decodeBody(response.body);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        showMessage(
-          'Service controls updated successfully.',
-        );
-      } else {
-        showMessage(
-          messageFrom(
-            decoded,
-            fallback: 'Unable to update services.',
-          ),
-          error: true,
-        );
-      }
-    } catch (_) {
-      showMessage(
-        'Unable to update services.',
-        error: true,
-      );
-    } finally {
+  String _f(String key) => _filters[key]?.text ?? '';
+  Future<void> _handle(Object e) async {
+    if (e is AdminControlApiException && e.statusCode == 401) {
+      await AdminSessionStore.clearSession();
       if (mounted) {
-        setState(() {
-          savingServices = false;
-        });
+        Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute<void>(builder: (_) => const AdminLoginScreen()),
+            (_) => false);
       }
+    } else if (mounted) {
+      setState(() => _error = e.toString());
     }
   }
 
-  Future<void> adjustWallet() async {
-    final String identifier = customerController.text.trim();
-
-    final double? amount = double.tryParse(
-      amountController.text.trim(),
-    );
-
-    final String reason = reasonController.text.trim();
-
-    if (identifier.isEmpty) {
-      showMessage(
-        'Enter customer phone, email or user ID.',
-        error: true,
-      );
-      return;
-    }
-
-    if (amount == null || amount <= 0) {
-      showMessage(
-        'Enter a valid amount.',
-        error: true,
-      );
-      return;
-    }
-
-    if (reason.length < 5) {
-      showMessage(
-        'Please enter a clear reason.',
-        error: true,
-      );
-      return;
-    }
-
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(
-            walletAction == 'CREDIT' ? 'Confirm Credit' : 'Confirm Debit',
-          ),
-          content: Text(
-            '${walletAction == 'CREDIT' ? 'Credit' : 'Debit'} '
-            '₦${amount.toStringAsFixed(2)} '
-            '${walletAction == 'CREDIT' ? 'to' : 'from'} '
-            '$identifier?',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    setState(() {
-      adjustingWallet = true;
-    });
-
-    try {
-      final String? token = await getToken();
-
-      if (token == null) {
-        showMessage(
-          'Admin session not found.',
-          error: true,
-        );
-        return;
-      }
-
-      final http.Response response = await http.post(
-        Uri.parse(
-          '$baseUrl/admin/wallet-adjustment',
-        ),
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(
-          <String, dynamic>{
-            'identifier': identifier,
-            'action': walletAction,
-            'amount': amount,
-            'reason': reason,
-          },
-        ),
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+            title: Text(_selected?.title ?? 'Admin Control Center'),
+            backgroundColor: const Color(0xff123b42),
+            foregroundColor: Colors.white,
+            leading: _selected == null
+                ? null
+                : IconButton(
+                    tooltip: 'Back to Control Center',
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => setState(() {
+                          _selected = null;
+                          _error = null;
+                        })),
+            actions: <Widget>[
+              IconButton(
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loading
+                      ? null
+                      : () => _selected == null
+                          ? _loadCatalog()
+                          : _open(_selected!, page: _page))
+            ]),
+        body: _selected == null ? _home() : _workspace(_selected!),
       );
 
-      final dynamic decoded = decodeBody(response.body);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        dynamic customer;
-
-        if (decoded is Map) {
-          customer = decoded['customer'];
-        }
-
-        final dynamic balance =
-            customer is Map ? customer['walletBalance'] : null;
-
-        showMessage(
-          balance == null
-              ? messageFrom(
-                  decoded,
-                  fallback: 'Wallet adjusted successfully.',
-                )
-              : 'Wallet adjusted successfully. '
-                  'New balance: ₦$balance',
-        );
-
-        amountController.clear();
-        reasonController.clear();
-      } else {
-        showMessage(
-          messageFrom(
-            decoded,
-            fallback: 'Wallet adjustment failed.',
-          ),
-          error: true,
-        );
-      }
-    } catch (_) {
-      showMessage(
-        'Wallet adjustment failed.',
-        error: true,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          adjustingWallet = false;
-        });
-      }
-    }
-  }
-
-  Widget sectionCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF7F0),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: primaryGreen,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget buildServiceControl() {
-    if (loadingServices) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    return Column(
-      children: <Widget>[
-        ...serviceLabels.entries.map(
-          (MapEntry<String, String> entry) {
-            final bool enabled = services[entry.key] == true;
-
-            return SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                entry.value,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: Text(
-                enabled ? 'Visible to customers' : 'Hidden from customers',
-              ),
-              value: enabled,
-              activeColor: primaryGreen,
-              onChanged: (bool value) {
-                setState(() {
-                  services[entry.key] = value;
-                });
-              },
-            );
-          },
-        ),
+  Widget _home() =>
+      ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+        const Text('HEAD OFFICE',
+            style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        const Text('Control Center',
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: savingServices ? null : saveServices,
-            icon: savingServices
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(
-                    Icons.save_rounded,
-                  ),
-            label: Text(
-              savingServices ? 'Saving...' : 'Save Service Controls',
-            ),
-          ),
-        ),
-      ],
-    );
+        if (_loading) const LinearProgressIndicator(),
+        if (_error != null) _errorBox(_loadCatalog),
+        LayoutBuilder(builder: (_, c) {
+          final double width =
+              c.maxWidth > 700 ? (c.maxWidth - 12) / 2 : c.maxWidth;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _modules
+                .map((m) => SizedBox(
+                      width: width,
+                      child: Card(
+                          child: ListTile(
+                        leading: Icon(m.icon),
+                        title: Text(m.title),
+                        subtitle: Text(_available(m)
+                            ? 'Open operational workspace'
+                            : 'Unavailable for this session'),
+                        enabled: _available(m),
+                        onTap: _available(m) ? () => _open(m) : null,
+                      )),
+                    ))
+                .toList(),
+          );
+        }),
+      ]);
+
+  bool _available(_Module module) {
+    final dynamic root = _catalog?['data'] ?? _catalog;
+    if (root is List) {
+      return root.whereType<Map>().any((v) =>
+          _normal(v['endpoint']?.toString() ?? '') ==
+              _normal(AdminControlCenterApi.modulePaths[module.id]!) &&
+          v['live'] == true);
+    }
+    final dynamic modules =
+        root is Map ? root['modules'] ?? root['capabilities'] : null;
+    if (modules is Map) {
+      final dynamic v = modules[module.id] ??
+          modules[AdminControlCenterApi.modulePaths[module.id]];
+      return v is bool
+          ? v
+          : v is Map && v['available'] == true && v['authorized'] != false;
+    }
+    return false;
   }
 
-  Widget buildWalletControl() {
+  String _normal(String s) => s.replaceFirst(RegExp(r'^/+'), '').trim();
+
+  Widget _workspace(_Module m) {
+    final List<Map<String, dynamic>> records = _items();
+    return Column(children: <Widget>[
+      Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(children: <Widget>[
+            _dates(m),
+            if (_filterNames(m).isNotEmpty) ...<Widget>[
+              TextField(
+                  controller: _search,
+                  decoration: const InputDecoration(
+                      labelText: 'Search', prefixIcon: Icon(Icons.search))),
+              Wrap(
+                  spacing: 8,
+                  children: _filterNames(m)
+                      .map((n) => SizedBox(
+                          width: 180,
+                          child: TextField(
+                              controller: _controller(n),
+                              decoration:
+                                  InputDecoration(labelText: _title(n)))))
+                      .toList()),
+              Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                      onPressed: _loading ? null : () => _open(m),
+                      icon: const Icon(Icons.filter_alt),
+                      label: const Text('Apply filters'))),
+            ],
+            Row(children: <Widget>[
+              if (m.id == 'data-exports' || m.id.contains('analytics'))
+                TextButton.icon(
+                    onPressed: () => _exportDialog(m),
+                    icon: const Icon(Icons.download),
+                    label: const Text('Export CSV')),
+              if (m.id == 'privacy-controls')
+                TextButton.icon(
+                    onPressed: _privacyCreate,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New privacy request'))
+            ]),
+          ])),
+      if (_loading) const LinearProgressIndicator(),
+      Expanded(
+          child: _error != null
+              ? _errorBox(() => _open(m, page: _page))
+              : RefreshIndicator(
+                  onRefresh: () => _open(m, page: _page),
+                  child: ListView(
+                      padding: const EdgeInsets.all(12),
+                      children: <Widget>[
+                        _moduleBody(m, records),
+                        if (_usesRecords(m)) _pagination(m, records),
+                        const SizedBox(height: 30),
+                      ]))),
+    ]);
+  }
+
+  Widget _dates(_Module m) => Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
+          children: <Widget>[
+            const Text('Date range:'),
+            ...<String>['Today', '7 Days', '30 Days', 'This Month', 'Custom']
+                .map((p) => ChoiceChip(
+                    label: Text(p),
+                    selected: _preset == p,
+                    onSelected: (_) => _setPreset(p, m))),
+            Text('${_date(_range.start)} – ${_date(_range.end)}'),
+          ]);
+  Future<void> _setPreset(String preset, _Module m) async {
+    final DateTime now = DateTime.now();
+    DateTime start;
+    if (preset == 'Custom') {
+      final DateTimeRange? r = await showDateRangePicker(
+          context: context,
+          firstDate: DateTime(now.year - 2),
+          lastDate: now,
+          initialDateRange: _range);
+      if (r == null) return;
+      if (r.duration.inDays > 90) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Custom range cannot exceed 90 days.')));
+        }
+        return;
+      }
+      setState(() {
+        _range = r;
+        _preset = preset;
+      });
+      _open(m);
+      return;
+    }
+    start = preset == 'Today'
+        ? DateTime(now.year, now.month, now.day)
+        : preset == '7 Days'
+            ? now.subtract(const Duration(days: 6))
+            : preset == 'This Month'
+                ? DateTime(now.year, now.month)
+                : now.subtract(const Duration(days: 29));
+    setState(() {
+      _range = DateTimeRange(start: start, end: now);
+      _preset = preset;
+    });
+    _open(m);
+  }
+
+  TextEditingController _controller(String name) =>
+      _filters.putIfAbsent(name, TextEditingController.new);
+  List<String> _filterNames(_Module m) {
+    switch (m.id) {
+      case 'audit-logs':
+        return <String>['action', 'status', 'actorId', 'module'];
+      case 'security-events':
+        return <String>['eventType', 'severity', 'workflow', 'outcome'];
+      case 'access-logs':
+        return <String>['method', 'statusCode', 'path', 'ip'];
+      case 'privacy-controls':
+        return <String>['status', 'type', 'subjectUser'];
+      case 'transaction-analytics':
+        return <String>[
+          'serviceType',
+          'status',
+          'provider',
+          'branchId',
+          'customerId'
+        ];
+      case 'customer-analytics':
+        return <String>['status', 'state', 'role', 'kycStatus'];
+    }
+    return <String>[];
+  }
+
+  String _title(String value) => value
+      .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+      .replaceFirst(value[0], value[0].toUpperCase());
+
+  Widget _moduleBody(_Module m, List<Map<String, dynamic>> records) {
+    if (m.id == 'data-exports') return _exportHistory(records);
+    if (m.id == 'backups') return _readiness();
+    if (m.id == 'executive-dashboard') return _executive();
+    if (m.id == 'service-performance') {
+      final dynamic root = _root();
+      if (root is Map) {
+        return _services(
+          root['rows'] is List ? root['rows'] as List : <dynamic>[],
+          message: root['message']?.toString(),
+        );
+      }
+      return _services(root is List ? root : <dynamic>[]);
+    }
+    if (m.id == 'transaction-analytics') return _transaction(records);
+    if (m.id == 'customer-analytics') return _customers(records);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        TextField(
-          controller: customerController,
-          decoration: const InputDecoration(
-            labelText: 'Customer phone, email or User ID',
-            prefixIcon: Icon(Icons.person_search_rounded),
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          value: walletAction,
-          decoration: const InputDecoration(
-            labelText: 'Action',
-            border: OutlineInputBorder(),
-          ),
-          items: const <DropdownMenuItem<String>>[
-            DropdownMenuItem<String>(
-              value: 'CREDIT',
-              child: Text('Credit Customer'),
-            ),
-            DropdownMenuItem<String>(
-              value: 'DEBIT',
-              child: Text('Debit Customer'),
-            ),
-          ],
-          onChanged: (String? value) {
-            if (value == null) return;
-
-            setState(() {
-              walletAction = value;
-            });
-          },
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: amountController,
-          keyboardType: const TextInputType.numberWithOptions(
-            decimal: true,
-          ),
-          decoration: const InputDecoration(
-            labelText: 'Amount',
-            prefixText: '₦ ',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: reasonController,
-          minLines: 2,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Reason for adjustment',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 18),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor:
-                  walletAction == 'DEBIT' ? Colors.red.shade700 : primaryGreen,
-            ),
-            onPressed: adjustingWallet ? null : adjustWallet,
-            icon: adjustingWallet
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  )
-                : Icon(
-                    walletAction == 'CREDIT'
-                        ? Icons.add_card_rounded
-                        : Icons.remove_circle_outline_rounded,
-                  ),
-            label: Text(
-              adjustingWallet
-                  ? 'Processing...'
-                  : walletAction == 'CREDIT'
-                      ? 'Credit Wallet'
-                      : 'Debit Wallet',
-            ),
-          ),
-        ),
-      ],
-    );
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+              m.id == 'audit-logs'
+                  ? 'Audit log records'
+                  : m.id == 'security-events'
+                      ? 'Security event investigation queue'
+                      : m.id == 'access-logs'
+                          ? 'Access request records'
+                          : 'Privacy request history',
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          if (records.isEmpty)
+            _empty()
+          else
+            ...records.map((r) => _logCard(r, m)),
+        ]);
   }
 
-  void _openControlPage(Widget page) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => page,
-      ),
-    );
+  bool _usesRecords(_Module m) => !<String>[
+        'data-exports',
+        'backups',
+        'executive-dashboard',
+        'service-performance'
+      ].contains(m.id);
+  dynamic _root() => _data?['data'] ?? _data ?? <String, dynamic>{};
+  List<Map<String, dynamic>> _items() {
+    dynamic r = _root();
+    if (r is Map) r = r['items'];
+    return r is List
+        ? r.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        : <Map<String, dynamic>>[];
   }
 
-  Widget _controlNavigationCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
+  Widget _empty() => const Padding(
+      padding: EdgeInsets.all(32),
+      child: Center(child: Text('No matching records for this date range.')));
+  Widget _logCard(Map<String, dynamic> r, _Module m) {
+    final String name = _first(
+        r,
+        m.id == 'audit-logs'
+            ? <String>['action', 'actorName', 'requestPath']
+            : m.id == 'security-events'
+                ? <String>['eventType', 'identifier', 'ipAddress']
+                : m.id == 'access-logs'
+                    ? <String>['path', 'method', 'ipAddress']
+                    : <String>['type', 'status', 'description']);
     return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7F0),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.settings_suggest_rounded,
-                  color: Color(0xFF08783E),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
+        child: ListTile(
+            title: Text(name),
+            subtitle: Text(_summary(r)),
+            onTap: () => _details(r, name),
+            trailing: m.id == 'security-events' &&
+                    controlCenterSecurityActions(r).isNotEmpty
+                ? PopupMenuButton<String>(
+                    tooltip: 'Security workflow action',
+                    onSelected: (a) => _securityAction(r, a),
+                    itemBuilder: (_) => controlCenterSecurityActions(r)
+                        .map((action) => PopupMenuItem<String>(
+                            value: action, child: Text(_title(action))))
+                        .toList())
+                : m.id == 'privacy-controls'
+                    ? IconButton(
+                        tooltip: 'Update privacy request',
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _privacyUpdate(r))
+                    : null));
+  }
+
+  String _first(Map<String, dynamic> r, List<String> keys) {
+    for (final k in keys) {
+      final v = r[k]?.toString();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return 'Record';
+  }
+
+  String _summary(Map<String, dynamic> r) => r.entries
+      .where((e) =>
+          e.value is! Map &&
+          e.value is! List &&
+          !RegExp('password|token|secret|cookie', caseSensitive: false)
+              .hasMatch(e.key))
+      .take(4)
+      .map((e) => '${_title(e.key)}: ${e.value}')
+      .join(' • ');
+  void _details(Map<String, dynamic> r, String title) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              ...r.entries
+                  .where((e) => !RegExp(
+                          'password|token|secret|cookie|authorization',
+                          caseSensitive: false)
+                      .hasMatch(e.key))
+                  .map(
+                    (e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text('${_title(e.key)}: ${e.value}'),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.4,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF08783E),
-              ),
+                  ),
             ],
           ),
         ),
@@ -727,301 +508,516 @@ class _AdminControlCenterScreenState extends State<AdminControlCenterScreen> {
     );
   }
 
-  Future<void> _showAllPlatformControls() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.88,
-          minChildSize: 0.55,
-          maxChildSize: 0.96,
-          builder: (_, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8FAF9),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(28),
-                ),
-              ),
-              child: Column(
-                children: [
-                  const SizedBox(height: 10),
-                  Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.black12,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 18, 20, 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.admin_panel_settings_rounded,
-                          color: Color(0xFF08783E),
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'ServicePay Platform Controls',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 30),
-                      children: [
-                        _controlNavigationCard(
-                          icon: Icons.toggle_on_rounded,
-                          title: 'Service Availability & Feature Control',
-                          subtitle:
-                              'Enable or disable customer services and manage platform availability.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminSettingsScreen());
+  Future<void> _securityAction(Map<String, dynamic> r, String action) async {
+    if (!controlCenterSecurityActions(r).contains(action)) return;
+    final id = r['_id']?.toString() ?? r['id']?.toString();
+    if (id == null) return;
+    final note = TextEditingController();
+    String? validationError;
+    final bool? ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+                    title: Text('$action security event'),
+                    content: TextField(
+                        controller: note,
+                        maxLength: 1000,
+                        decoration: InputDecoration(
+                            labelText: action == 'REOPEN'
+                                ? 'Investigation note (optional)'
+                                : 'Investigation note (at least 10 characters)',
+                            errorText: validationError)),
+                    actions: <Widget>[
+                      TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel')),
+                      FilledButton(
+                          onPressed: () {
+                            if (action != 'REOPEN' &&
+                                note.text.trim().length < 10) {
+                              setDialogState(() {
+                                validationError =
+                                    'Provide an investigation note of at least 10 characters.';
+                              });
+                              return;
+                            }
+                            Navigator.pop(context, true);
                           },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.signal_cellular_alt_rounded,
-                          title: 'Data Pricing',
-                          subtitle:
-                              'Manage data selling prices, provider cost and ServicePay markup.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminDataPricingScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.account_tree_rounded,
-                          title: 'Commission Management',
-                          subtitle:
-                              'Configure product commissions and partner earnings.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminProductCommissionScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.storefront_rounded,
-                          title: 'Marketplace',
-                          subtitle:
-                              'Manage Marketplace products, stores, orders and platform operations.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminMarketplaceScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.local_shipping_rounded,
-                          title: 'Delivery Operations',
-                          subtitle:
-                              'Manage deliveries, assignments, pricing and operational activity.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminDeliveryScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.map_rounded,
-                          title: 'Delivery Coverage',
-                          subtitle:
-                              'Control states and locations where ServicePay Delivery is available.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminDeliveryCoverageScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.local_taxi_rounded,
-                          title: 'Keke Fare Control',
-                          subtitle:
-                              'Manage Keke fare settings and transport pricing.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminKekeFareScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.verified_user_rounded,
-                          title: 'KYC & Compliance',
-                          subtitle:
-                              'Review and manage customer identity verification.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminKycScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.credit_card_rounded,
-                          title: 'Cards',
-                          subtitle:
-                              'Manage ServicePay card operations and card controls.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminCardsScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.receipt_long_rounded,
-                          title: 'Transactions',
-                          subtitle:
-                              'Monitor platform transactions and financial activity.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminTransactionsScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.two_wheeler_rounded,
-                          title: 'Riders',
-                          subtitle:
-                              'Manage riders, verification and rider operations.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminRidersScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.payments_rounded,
-                          title: 'Rider Withdrawals',
-                          subtitle:
-                              'Review and process rider withdrawal requests.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminRiderWithdrawalsScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.business_center_rounded,
-                          title: 'Business Withdrawals',
-                          subtitle:
-                              'Review Business Wallet withdrawal requests.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminBusinessWithdrawalsScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.account_balance_wallet_rounded,
-                          title: 'Manual Funding',
-                          subtitle:
-                              'Review and manage manual wallet funding requests.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminManualFundingScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.volunteer_activism_rounded,
-                          title: 'Empowerment',
-                          subtitle:
-                              'Manage ServicePay Empowerment programmes and operations.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminEmpowermentScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.handshake_rounded,
-                          title: 'ServicePay Amana',
-                          subtitle:
-                              'Manage controlled-purpose payments and Amana operations.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminAmanaScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.people_alt_rounded,
-                          title: 'Customers & Users',
-                          subtitle: 'Manage customer accounts and user status.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(AdminUsersScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.badge_rounded,
-                          title: 'Staff Management',
-                          subtitle:
-                              'Manage ServicePay staff accounts and internal access.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(StaffManagementScreen());
-                          },
-                        ),
-                        _controlNavigationCard(
-                          icon: Icons.security_rounded,
-                          title: 'Roles & Permissions',
-                          subtitle:
-                              'Control staff roles and administrative permissions.',
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            _openControlPage(RolesPermissionsScreen());
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+                          child: Text(action))
+                    ])));
+    if (ok == true) {
+      try {
+        await _api.updateSecurityEvent(id, action: action, note: note.text);
+        if (mounted) _open(_selected!);
+      } catch (e) {
+        await _handle(e);
+      }
+    }
+    note.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FC),
-      appBar: AppBar(
-        title: const Text(
-          'Head Office Controls',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Refresh Services',
-            onPressed: loadServices,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
+  Widget _readiness() {
+    final r = _root();
+    if (r is! Map) return _empty();
+    final backup = r['backup'];
+    final database = r['database'];
+    final service = r['service'];
+    final providers = r['providers'];
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          sectionCard(
-            title: 'Service Control',
-            subtitle: 'Turn customer dashboard services ON or OFF.',
-            icon: Icons.tune_rounded,
-            child: buildServiceControl(),
-          ),
-          const SizedBox(height: 18),
-          sectionCard(
-            title: 'Customer Wallet',
-            subtitle: 'Head Office can credit or debit a customer wallet.',
-            icon: Icons.account_balance_wallet_rounded,
-            child: buildWalletControl(),
-          ),
-        ],
-      ),
-    );
+          const Text('Infrastructure readiness',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          _info('Database', database),
+          _info('Application service', service),
+          _info('Backup status', backup),
+          if (backup is Map && backup['manualBackupSupported'] == false)
+            const Card(
+                child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                        'Provider-managed backups. Manual backup is unavailable.'))),
+          if (providers is Map)
+            ...providers.entries.map((e) => _info('Provider ${e.key}', e.value))
+        ]);
   }
+
+  Widget _info(String title, dynamic v) => Card(
+      child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(v is Map
+                    ? _summary(Map<String, dynamic>.from(v))
+                    : v?.toString() ?? 'No status returned')
+              ])));
+  Widget _executive() {
+    final r = _root();
+    if (r is! Map) return _empty();
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text('Executive operations',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          _kpis(<String, dynamic>{
+            'Customers': r['customers'],
+            'Workforce': r['workforce'],
+            'Branches': r['branches'],
+            'Wallet': r['walletBalance'],
+            'Transactions': r['transactions'],
+            'Pending operations': r['pendingOperations']
+          }),
+          _trend('Transaction trend', r['transactionTrend']),
+          const Text('Service and product performance',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          _services(r['operations'] is List ? r['operations'] : <dynamic>[]),
+          const Text('Recent activity',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          ...((r['recentActivity'] as List? ?? <dynamic>[])
+              .whereType<Map>()
+              .map(
+                (x) => _logCard(Map<String, dynamic>.from(x),
+                    _Module('audit-logs', '', Icons.history)),
+              )),
+        ]);
+  }
+
+  Widget _transaction(List<Map<String, dynamic>> records) {
+    final r = _root() as Map? ?? <String, dynamic>{};
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text('Transaction summary and drill-down',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          _kpis(r['summary'] is Map
+              ? Map<String, dynamic>.from(r['summary'])
+              : <String, dynamic>{}),
+          _breakdown('Status', r['statuses']),
+          _breakdown('Services', r['services']),
+          _breakdown('Providers', r['providers']),
+          _trend('Daily transaction trend', r['daily']),
+          const Text('Transactions',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          if (records.isEmpty)
+            _empty()
+          else
+            ...records.map((x) => _logCard(
+                x, _Module('transaction-analytics', '', Icons.insights)))
+        ]);
+  }
+
+  Widget _customers(List<Map<String, dynamic>> records) {
+    final r = _root() as Map? ?? <String, dynamic>{};
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text('Customer analytics',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          _kpis(r['summary'] is Map
+              ? Map<String, dynamic>.from(r['summary'])
+              : <String, dynamic>{
+                  'Transaction-active customers':
+                      r['transactionActiveCustomers']
+                }),
+          _breakdown('Customer state', r['states']),
+          _breakdown('KYC status', r['kycTiers']),
+          _trend('Customer growth', r['growth']),
+          const Text('Customers',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          if (records.isEmpty)
+            _empty()
+          else
+            ...records.map((x) =>
+                _logCard(x, _Module('customer-analytics', '', Icons.people)))
+        ]);
+  }
+
+  Widget _services(List<dynamic> rows, {String? message}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text('Lifecycle operational views',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          if (message != null && message.trim().isNotEmpty)
+            Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(message.trim())),
+          const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 8),
+              child: Text(
+                  'Applications, finance schedules, and payments are separate lifecycle views. Row values are non-additive and must not be summed.')),
+          if (rows.isEmpty)
+            _empty()
+          else
+            ...rows.whereType<Map>().map((x) {
+              final r = Map<String, dynamic>.from(x);
+              return Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(_first(r, const <String>['service', 'source']),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          Text(
+                              'Source: ${r['source'] ?? '—'} • Value meaning: ${r['valueMeaning'] ?? '—'} • Additive: ${r['additive'] ?? false}'),
+                          Text(
+                              'Count: ${r['count'] ?? 0} • Value: ${r['value'] ?? 0} (non-additive)'),
+                          Text(
+                              'Successful: ${r['successful'] ?? 0} • Pending: ${r['pending'] ?? 0} • Failed: ${r['failed'] ?? 0}'),
+                          Text(
+                              'Success rate: ${r['successRate'] ?? 0}% • Last activity: ${r['lastActivity'] ?? '—'}'),
+                          Text(
+                              'Operational status: ${r['operationalStatus'] ?? '—'}'),
+                          _trend('Service trend', r['trend']),
+                        ],
+                      )));
+            }),
+        ],
+      );
+  Widget _kpis(Map<String, dynamic> values) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: values.entries
+            .map((e) => SizedBox(
+                width: 160,
+                child: Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(_title(e.key)),
+                          Text(
+                              e.value is Map
+                                  ? _summary(Map<String, dynamic>.from(e.value))
+                                  : e.value?.toString() ?? '—',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold))
+                        ],
+                      )),
+                )))
+            .toList(),
+      );
+  Widget _breakdown(String title, dynamic values) {
+    if (values is! List || values.isEmpty) return const SizedBox.shrink();
+    return Card(
+        child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                ...values
+                    .whereType<Map>()
+                    .take(10)
+                    .map((x) => Text(_summary(Map<String, dynamic>.from(x))))
+              ],
+            )));
+  }
+
+  Widget _trend(String title, dynamic values) {
+    if (values is! List || values.isEmpty) return const SizedBox.shrink();
+    final nums = values
+        .whereType<Map>()
+        .map((x) =>
+            double.tryParse(
+                (x['count'] ?? x['registrations'] ?? x['value'] ?? 0)
+                    .toString()) ??
+            0)
+        .toList();
+    final max = nums.fold<double>(0, (a, b) => a > b ? a : b);
+    return Card(
+        child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ...nums.take(14).map((n) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: LinearProgressIndicator(
+                          value: max == 0 ? 0 : n / max,
+                          semanticsLabel: '$title chart value $n'))),
+                ])));
+  }
+
+  Widget _exportHistory(List<Map<String, dynamic>> rows) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        const Text('Export history',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        if (rows.isEmpty)
+          _empty()
+        else
+          ...rows.map(
+              (x) => _logCard(x, _Module('data-exports', '', Icons.download)))
+      ]);
+  Widget _pagination(_Module m, List<Map<String, dynamic>> records) {
+    final r = _root();
+    final p = r is Map ? r['pagination'] : null;
+    final total = p is Map ? p['total'] : null;
+    final pages = p is Map ? p['totalPages'] : null;
+    return Row(mainAxisAlignment: MainAxisAlignment.end, children: <Widget>[
+      Text('Page $_page${total != null ? ' of $pages • $total total' : ''}'),
+      IconButton(
+          tooltip: 'Previous page',
+          onPressed: _page > 1 ? () => _open(m, page: _page - 1) : null,
+          icon: const Icon(Icons.chevron_left)),
+      IconButton(
+          tooltip: 'Next page',
+          onPressed: (pages is num ? _page < pages : records.length == 25)
+              ? () => _open(m, page: _page + 1)
+              : null,
+          icon: const Icon(Icons.chevron_right))
+    ]);
+  }
+
+  Future<void> _exportDialog(_Module m) async {
+    String dataset = m.id == 'transaction-analytics'
+        ? 'TRANSACTIONS'
+        : m.id == 'customer-analytics'
+            ? 'CUSTOMERS'
+            : 'AUDIT';
+    await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+                title: const Text('Download CSV export'),
+                content: DropdownButtonFormField<String>(
+                    value: dataset,
+                    items: const <String>[
+                      'AUDIT',
+                      'SECURITY',
+                      'TRANSACTIONS',
+                      'CUSTOMERS',
+                      'STAFF',
+                      'BRANCHES',
+                      'DELIVERIES',
+                      'WITHDRAWALS',
+                      'KYC',
+                      'MARKETPLACE',
+                      'SOLAR',
+                      'FINANCING',
+                      'EMPOWERMENT',
+                      'AMANA'
+                    ]
+                        .map((x) => DropdownMenuItem(value: x, child: Text(x)))
+                        .toList(),
+                    onChanged: (v) => dataset = v ?? dataset),
+                actions: <Widget>[
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _export(dataset, m);
+                      },
+                      child: const Text('Download CSV'))
+                ]));
+  }
+
+  Future<void> _export(String dataset, _Module m) async {
+    try {
+      final ex = await _api.exportDataset(dataset,
+          from: _range.start,
+          to: _range.end,
+          status: m.id == 'transaction-analytics' ? _f('status') : '',
+          service: m.id == 'transaction-analytics' ? _f('serviceType') : '');
+      if (!controlCenterDownloadSupported) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:
+                  Text('CSV download is supported in a web browser only.')));
+        }
+        return;
+      }
+      if (ex.csv == null) {
+        throw const AdminControlApiException(
+            0, 'The export service did not return CSV data.');
+      }
+      await downloadControlCenterCsv(ex.csv!,
+          '${dataset.toLowerCase()}-${_date(_range.start)}-${_date(_range.end)}.csv');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('CSV download started.')));
+        if (_selected?.id == 'data-exports') _open(_selected!);
+      }
+    } catch (e) {
+      await _handle(e);
+    }
+  }
+
+  Future<void> _privacyCreate() async {
+    String type = 'ACCESS';
+    final subject = TextEditingController(),
+        description = TextEditingController();
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+                title: const Text('Create privacy request'),
+                content:
+                    Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                  DropdownButtonFormField<String>(
+                      value: type,
+                      decoration:
+                          const InputDecoration(labelText: 'Request type'),
+                      items: const [
+                        'ACCESS',
+                        'ERASURE',
+                        'CORRECTION',
+                        'OBJECTION'
+                      ]
+                          .map(
+                              (x) => DropdownMenuItem(value: x, child: Text(x)))
+                          .toList(),
+                      onChanged: (x) => type = x ?? type),
+                  TextField(
+                      controller: subject,
+                      decoration:
+                          const InputDecoration(labelText: 'Subject user ID')),
+                  TextField(
+                      controller: description,
+                      decoration:
+                          const InputDecoration(labelText: 'Description')),
+                  const Text(
+                      'ERASURE execution requires an approved anonymization and retention pipeline; it cannot be marked completed while unavailable.',
+                      style: TextStyle(fontSize: 12))
+                ]),
+                actions: <Widget>[
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Create'))
+                ]));
+    if (ok == true) {
+      try {
+        await _api.createPrivacyRequest(<String, dynamic>{
+          'type': type,
+          'subjectUser': subject.text.trim(),
+          'description': description.text.trim()
+        });
+        if (mounted) _open(_selected!);
+      } catch (e) {
+        await _handle(e);
+      }
+    }
+    subject.dispose();
+    description.dispose();
+  }
+
+  Future<void> _privacyUpdate(Map<String, dynamic> r) async {
+    final id = r['_id']?.toString() ?? r['id']?.toString();
+    if (id == null) return;
+    String status = r['status']?.toString() ?? 'OPEN';
+    final note = TextEditingController();
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+                title: const Text('Update privacy request'),
+                content:
+                    Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                  DropdownButtonFormField<String>(
+                      value: const [
+                        'OPEN',
+                        'IN_REVIEW',
+                        'COMPLETED',
+                        'REJECTED'
+                      ].contains(status)
+                          ? status
+                          : 'OPEN',
+                      items: const [
+                        'OPEN',
+                        'IN_REVIEW',
+                        'COMPLETED',
+                        'REJECTED'
+                      ]
+                          .map(
+                              (x) => DropdownMenuItem(value: x, child: Text(x)))
+                          .toList(),
+                      onChanged: (x) => status = x ?? status),
+                  TextField(
+                      controller: note,
+                      decoration: const InputDecoration(
+                          labelText: 'Meaningful status note'))
+                ]),
+                actions: <Widget>[
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Update'))
+                ]));
+    if (ok == true) {
+      try {
+        await _api.updatePrivacyRequest(
+            id, <String, dynamic>{'status': status, 'note': note.text.trim()});
+        if (mounted) _open(_selected!);
+      } catch (e) {
+        await _handle(e);
+      }
+    }
+    note.dispose();
+  }
+
+  String _date(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  Widget _errorBox(VoidCallback retry) => Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        Text(_error ?? 'Unable to load this workspace.'),
+        OutlinedButton(onPressed: retry, child: const Text('Retry'))
+      ]));
+}
+
+class _Module {
+  const _Module(this.id, this.title, this.icon);
+  final String id, title;
+  final IconData icon;
 }

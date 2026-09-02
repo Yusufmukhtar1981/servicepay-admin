@@ -21,6 +21,10 @@ abstract final class AdminPermissions {
   static const customer360Kyc = 'customer360.kyc';
   static const customer360Security = 'customer360.security';
   static const transactionsView = 'transactions.view';
+  static const transactionIntelligenceView =
+      'transactions.intelligence.view';
+  static const transactionIntelligenceRequery =
+      'transactions.intelligence.requery';
   static const walletsView = 'wallets.view';
   static const fundingView = 'funding.view';
   static const withdrawalsView = 'withdrawals.view';
@@ -139,5 +143,29 @@ abstract final class AdminSessionStore {
       }
     }
     return AdminAccess(role: role, permissions: permissions, scope: scope);
+  }
+
+  static Future<void> clearSession() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    const List<String> keys = <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+      'user_id',
+      'user_name',
+      'user_phone',
+      'user_email',
+      'user_role',
+      'user_status',
+      'wallet_balance',
+      _permissionsKey,
+      _scopeKey,
+    ];
+    for (final String key in keys) {
+      await prefs.remove(key);
+    }
   }
 }

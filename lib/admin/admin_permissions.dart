@@ -9,6 +9,7 @@ abstract final class AdminPermissions {
   static const staffUpdate = 'staff.update';
   static const staffSuspend = 'staff.suspend';
   static const staffAssignRole = 'staff.assign_role';
+  static const staffResetPassword = 'staff.reset_password';
   static const rolesCreate = 'roles.create';
   static const rolesView = 'roles.view';
   static const rolesUpdate = 'roles.update';
@@ -16,20 +17,14 @@ abstract final class AdminPermissions {
   static const rolesAssignPermissions = 'roles.assign_permissions';
   static const rolesEnable = 'roles.enable';
   static const usersView = 'users.view';
-  static const customer360View = 'customer360.view';
-  static const customer360Financial = 'customer360.financial';
-  static const customer360Kyc = 'customer360.kyc';
-  static const customer360Security = 'customer360.security';
   static const transactionsView = 'transactions.view';
-  static const transactionIntelligenceView =
-      'transactions.intelligence.view';
-  static const transactionIntelligenceRequery =
-      'transactions.intelligence.requery';
   static const walletsView = 'wallets.view';
   static const fundingView = 'funding.view';
   static const withdrawalsView = 'withdrawals.view';
   static const financeView = 'finance.view';
   static const deliveryView = 'delivery.view';
+  static const logisticsView = 'logistics.view';
+  static const logisticsManage = 'logistics.manage';
   static const marketplaceView = 'marketplace.view';
   static const solarView = 'solar.view';
   static const phoneFinancingView = 'phone_financing.view';
@@ -50,7 +45,51 @@ abstract final class AdminPermissions {
   static const settingsView = 'settings.view';
   static const settingsUpdate = 'settings.update';
   static const auditView = 'audit.view';
+  static const transactionIntelligenceView = 'transaction_intelligence.view';
+  static const transactionIntelligenceRequery =
+      'transaction_intelligence.requery';
+  static const transactionIntelligenceExport =
+      'transaction_intelligence.export';
+  static const transactionIntelligenceProviderHealth =
+      'transaction_intelligence.provider_health';
+  static const fraudRiskView = 'fraud_risk.view';
+  static const fraudRiskInvestigate = 'fraud_risk.investigate';
+  static const fraudRiskAssign = 'fraud_risk.assign';
+  static const fraudRiskResolve = 'fraud_risk.resolve';
+  static const fraudRiskRulesManage = 'fraud_risk.rules.manage';
+  static const fraudRiskExport = 'fraud_risk.export';
+  static const fraudRiskRestrict = 'fraud_risk.restrict';
+  static const reportsView = 'reports.view';
   static const reportsExport = 'reports.export';
+
+  // Canonical branch-management permissions supplied by the API.
+  static const branchesView = 'branches.view';
+  static const branchesManage = 'branches.manage';
+  static const branchesTargetsManage = 'branches.targets.manage';
+  static const branchesApprovalsView = 'branches.approvals.view';
+  static const branchesApprovalsManage = 'branches.approvals.manage';
+  static const branchesReportsView = 'branches.reports.view';
+  static const branchesStaffManage = 'branches.staff.manage';
+  static const branchDashboardView = 'branch.dashboard.view';
+  static const branchStaffView = 'branch.staff.view';
+  static const branchStaffManage = 'branch.staff.manage';
+  static const branchCustomersView = 'branch.customers.view';
+  static const branchCustomersCreate = 'branch.customers.create';
+  static const branchDeliveryView = 'branch.delivery.view';
+  static const branchDeliveryManage = 'branch.delivery.manage';
+  static const branchSolarView = 'branch.solar.view';
+  static const branchSolarManage = 'branch.solar.manage';
+  static const branchMarketplaceView = 'branch.marketplace.view';
+  static const branchMarketplaceManage = 'branch.marketplace.manage';
+  static const branchPhoneView = 'branch.phone.view';
+  static const branchPhoneManage = 'branch.phone.manage';
+  static const branchEmpowermentView = 'branch.empowerment.view';
+  static const branchEmpowermentManage = 'branch.empowerment.manage';
+  static const branchTargetsView = 'branch.targets.view';
+  static const branchApprovalsView = 'branch.approvals.view';
+  static const branchApprovalsSubmit = 'branch.approvals.submit';
+  static const branchReportsView = 'branch.reports.view';
+  static const branchFinanceView = 'branch.finance.view';
 }
 
 class AdminAccess {
@@ -89,8 +128,7 @@ class AdminAccess {
     return permissions.contains(legacy[permission]);
   }
 
-  bool hasAny(Iterable<String> required) =>
-      isFullAccess || required.any(permissions.contains);
+  bool hasAny(Iterable<String> required) => isFullAccess || required.any(has);
 
   static AdminAccess fromUser(Map<String, dynamic> user) {
     final dynamic rawPermissions =
@@ -102,10 +140,10 @@ class AdminAccess {
             .toSet()
         : <String>{};
     final dynamic rawScope = user['accessScope'];
+    final String role =
+        (user['role'] ?? user['effectiveRole'] ?? '').toString().toUpperCase();
     return AdminAccess(
-      role: (user['role'] ?? user['effectiveRole'] ?? '')
-          .toString()
-          .toUpperCase(),
+      role: role,
       permissions: permissions,
       scope: rawScope is Map
           ? Map<String, dynamic>.from(rawScope)

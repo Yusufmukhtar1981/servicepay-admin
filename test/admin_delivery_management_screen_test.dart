@@ -62,6 +62,21 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
   }
 
   @override
+  Future<Map<String, dynamic>> reassignRider({
+    required String deliveryId,
+    required String riderId,
+  }) async {
+    expect(deliveryId, 'delivery-1');
+    expect(riderId, 'rider-1');
+    assignmentCount += 1;
+    return <String, dynamic>{
+      ...delivery,
+      'status': 'ASSIGNED',
+      'assignedRiderId': rider,
+    };
+  }
+
+  @override
   Future<Map<String, dynamic>> assignRider({
     required String deliveryId,
     required String riderId,

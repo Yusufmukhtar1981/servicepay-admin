@@ -146,6 +146,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
+    // Branch configuration and manager controls are restricted to Head Office.
     if (isHeadOffice) {
       addNavigationPage(
         page: const AdminBranchManagementScreen(

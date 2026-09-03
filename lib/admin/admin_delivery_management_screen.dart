@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import 'admin_delivery_api.dart';
 
 class AdminDeliveryManagementScreen extends StatefulWidget {
-  const AdminDeliveryManagementScreen({
-    super.key,
-    this.api,
-  });
+  const AdminDeliveryManagementScreen({super.key, this.api});
 
   final AdminDeliveryApiClient? api;
 
@@ -19,15 +16,19 @@ class _AdminDeliveryManagementScreenState
     extends State<AdminDeliveryManagementScreen> {
   late final AdminDeliveryApiClient _api;
   final List<String> _statuses = const <String>[
+    'ALL',
     'PENDING',
     'ASSIGNED',
     'ACCEPTED',
     'PICKED_UP',
     'IN_TRANSIT',
     'DELIVERED',
+    'CANCELLED',
+    'FAILED',
+    'REFUNDED',
   ];
   List<Map<String, dynamic>> _deliveries = <Map<String, dynamic>>[];
-  String _status = 'PENDING';
+  String _status = 'ALL';
   String _error = '';
   bool _loading = true;
 
@@ -53,8 +54,9 @@ class _AdminDeliveryManagementScreenState
       });
     }
     try {
-      final List<Map<String, dynamic>> deliveries =
-          await _api.getDeliveries(status: _status);
+      final List<Map<String, dynamic>> deliveries = await _api.getDeliveries(
+        status: _status,
+      );
       if (!mounted) return;
       setState(() {
         _deliveries = deliveries;
@@ -76,13 +78,16 @@ class _AdminDeliveryManagementScreenState
   Future<void> _openAssignment(Map<String, dynamic> delivery) async {
     final Map<String, dynamic>? assigned =
         await showDialog<Map<String, dynamic>>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => AssignDeliveryRiderDialog(
-        api: _api,
-        delivery: delivery,
-      ),
-    );
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) => AssignDeliveryRiderDialog(
+            api: _api,
+            delivery: delivery,
+            reassign:
+                _text(delivery['status']) == 'ASSIGNED' &&
+                _map(delivery['assignedRiderId']).isNotEmpty,
+          ),
+        );
     if (assigned == null || !mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -112,10 +117,7 @@ class _AdminDeliveryManagementScreenState
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             if (message?.isNotEmpty == true) ...<Widget>[
               const SizedBox(height: 8),
@@ -147,6 +149,8 @@ class _AdminDeliveryManagementScreenState
     final String deliveryId = _text(delivery['_id'] ?? delivery['id']);
     final bool canAssign =
         deliveryId.isNotEmpty && status == 'PENDING' && rider.isEmpty;
+    final bool canReassign =
+        deliveryId.isNotEmpty && status == 'ASSIGNED' && rider.isNotEmpty;
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       elevation: 0,
@@ -163,10 +167,7 @@ class _AdminDeliveryManagementScreenState
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    _text(
-                      delivery['trackingNumber'],
-                      fallback: 'Delivery',
-                    ),
+                    _text(delivery['trackingNumber'], fallback: 'Delivery'),
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -206,7 +207,7 @@ class _AdminDeliveryManagementScreenState
                   fallback: _text(delivery['riderName'], fallback: 'Rider'),
                 ),
               ),
-            if (canAssign) ...<Widget>[
+            if (canAssign || canReassign) ...<Widget>[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -214,7 +215,7 @@ class _AdminDeliveryManagementScreenState
                   key: Key('assign-rider-$deliveryId'),
                   onPressed: () => _openAssignment(delivery),
                   icon: const Icon(Icons.delivery_dining),
-                  label: const Text('Assign Rider'),
+                  label: Text(canReassign ? 'Reassign Rider' : 'Assign Rider'),
                 ),
               ),
             ],
@@ -276,26 +277,28 @@ class _AdminDeliveryManagementScreenState
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error.isNotEmpty
-                    ? _messageState(
-                        icon: Icons.cloud_off_outlined,
-                        title: 'Unable to load deliveries',
-                        message: _error,
-                        onRetry: _loadDeliveries,
-                      )
-                    : _deliveries.isEmpty
-                        ? _messageState(
-                            icon: Icons.inventory_2_outlined,
-                            title: 'No ${_status.toLowerCase()} deliveries',
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _loadDeliveries,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                              itemCount: _deliveries.length,
-                              itemBuilder: (BuildContext context, int index) =>
-                                  _deliveryCard(_deliveries[index]),
-                            ),
-                          ),
+                ? _messageState(
+                    icon: Icons.cloud_off_outlined,
+                    title: 'Unable to load deliveries',
+                    message: _error,
+                    onRetry: _loadDeliveries,
+                  )
+                : _deliveries.isEmpty
+                ? _messageState(
+                    icon: Icons.inventory_2_outlined,
+                    title: _status == 'ALL'
+                        ? 'No deliveries'
+                        : 'No ${_status.toLowerCase()} deliveries',
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadDeliveries,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      itemCount: _deliveries.length,
+                      itemBuilder: (BuildContext context, int index) =>
+                          _deliveryCard(_deliveries[index]),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -308,10 +311,12 @@ class AssignDeliveryRiderDialog extends StatefulWidget {
     super.key,
     required this.api,
     required this.delivery,
+    this.reassign = false,
   });
 
   final AdminDeliveryApiClient api;
   final Map<String, dynamic> delivery;
+  final bool reassign;
 
   @override
   State<AssignDeliveryRiderDialog> createState() =>
@@ -341,8 +346,8 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
       _error = '';
     });
     try {
-      final List<Map<String, dynamic>> riders =
-          await widget.api.getAvailableRiders(_deliveryId);
+      final List<Map<String, dynamic>> riders = await widget.api
+          .getAvailableRiders(_deliveryId);
       if (!mounted) return;
       setState(() {
         _riders = riders;
@@ -375,10 +380,15 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
       _error = '';
     });
     try {
-      final Map<String, dynamic> delivery = await widget.api.assignRider(
-        deliveryId: _deliveryId,
-        riderId: riderId,
-      );
+      final Map<String, dynamic> delivery = widget.reassign
+          ? await widget.api.reassignRider(
+              deliveryId: _deliveryId,
+              riderId: riderId,
+            )
+          : await widget.api.assignRider(
+              deliveryId: _deliveryId,
+              riderId: riderId,
+            );
       if (!mounted) return;
       Navigator.of(context).pop(delivery);
     } catch (error) {
@@ -398,7 +408,9 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Assign Delivery Rider'),
+      title: Text(
+        widget.reassign ? 'Reassign Delivery Rider' : 'Assign Delivery Rider',
+      ),
       content: SizedBox(
         width: 520,
         child: ConstrainedBox(
@@ -411,80 +423,78 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
                   ),
                 )
               : _error.isNotEmpty && _riders.isEmpty
-                  ? Column(
-                      key: const Key('rider-load-error'),
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(
-                          Icons.cloud_off_outlined,
-                          size: 42,
-                          color: Color(0xFF0F766E),
+              ? Column(
+                  key: const Key('rider-load-error'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.cloud_off_outlined,
+                      size: 42,
+                      color: Color(0xFF0F766E),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(_error, textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      key: const Key('rider-load-retry'),
+                      onPressed: _loadRiders,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                )
+              : _riders.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'No verified online riders are available right now.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              : ListView(
+                  shrinkWrap: true,
+                  children: <Widget>[
+                    if (_error.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          _error,
+                          style: const TextStyle(color: Colors.red),
                         ),
-                        const SizedBox(height: 12),
-                        Text(_error, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          key: const Key('rider-load-retry'),
-                          onPressed: _loadRiders,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
+                      ),
+                    ..._riders.map((Map<String, dynamic> rider) {
+                      final String id =
+                          (rider['_id'] ?? rider['id'])?.toString() ?? '';
+                      final String name =
+                          rider['fullName']?.toString().trim() ?? '';
+                      final String riderCode =
+                          rider['riderId']?.toString().trim() ?? '';
+                      final String vehicle =
+                          rider['vehicleType']?.toString().trim() ?? '';
+                      return RadioListTile<String>(
+                        key: Key('available-rider-$id'),
+                        value: id,
+                        groupValue: _selectedRiderId,
+                        onChanged: _assigning
+                            ? null
+                            : (String? value) {
+                                setState(() {
+                                  _selectedRiderId = value;
+                                });
+                              },
+                        title: Text(name.isEmpty ? 'Delivery Rider' : name),
+                        subtitle: Text(
+                          <String>[
+                            riderCode,
+                            vehicle,
+                          ].where((String item) => item.isNotEmpty).join(' • '),
                         ),
-                      ],
-                    )
-                  : _riders.isEmpty
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text(
-                              'No verified online riders are available right now.',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        )
-                      : ListView(
-                          shrinkWrap: true,
-                          children: <Widget>[
-                            if (_error.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Text(
-                                  _error,
-                                  style: const TextStyle(color: Colors.red),
-                                ),
-                              ),
-                            ..._riders.map((Map<String, dynamic> rider) {
-                              final String id =
-                                  (rider['_id'] ?? rider['id'])?.toString() ??
-                                      '';
-                              final String name =
-                                  rider['fullName']?.toString().trim() ?? '';
-                              final String riderCode =
-                                  rider['riderId']?.toString().trim() ?? '';
-                              final String vehicle =
-                                  rider['vehicleType']?.toString().trim() ?? '';
-                              return RadioListTile<String>(
-                                key: Key('available-rider-$id'),
-                                value: id,
-                                groupValue: _selectedRiderId,
-                                onChanged: _assigning
-                                    ? null
-                                    : (String? value) {
-                                        setState(() {
-                                          _selectedRiderId = value;
-                                        });
-                                      },
-                                title: Text(
-                                  name.isEmpty ? 'Delivery Rider' : name,
-                                ),
-                                subtitle: Text(
-                                  <String>[riderCode, vehicle]
-                                      .where((String item) => item.isNotEmpty)
-                                      .join(' • '),
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
+                      );
+                    }),
+                  ],
+                ),
         ),
       ),
       actions: <Widget>[
@@ -504,7 +514,7 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Assign Rider'),
+              : Text(widget.reassign ? 'Reassign Rider' : 'Assign Rider'),
         ),
       ],
     );
@@ -512,10 +522,7 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
 }
 
 class _DeliveryLine extends StatelessWidget {
-  const _DeliveryLine({
-    required this.icon,
-    required this.text,
-  });
+  const _DeliveryLine({required this.icon, required this.text});
 
   final IconData icon;
   final String text;

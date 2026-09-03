@@ -15,13 +15,15 @@ class AdminDeliveryApiException implements Exception {
 }
 
 abstract class AdminDeliveryApiClient {
-  Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
-  });
+  Future<List<Map<String, dynamic>>> getDeliveries({String status = 'ALL'});
 
   Future<List<Map<String, dynamic>>> getAvailableRiders(String deliveryId);
 
   Future<Map<String, dynamic>> assignRider({
+    required String deliveryId,
+    required String riderId,
+  });
+  Future<Map<String, dynamic>> reassignRider({
     required String deliveryId,
     required String riderId,
   });
@@ -31,7 +33,7 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
   AdminDeliveryApi({
     http.Client? client,
     this.baseUrl = 'https://api.servicepay.ng/api/admin',
-    this.requestTimeout = const Duration(seconds: 12),
+    this.requestTimeout = const Duration(seconds: 30),
     this.tokenLoader,
   }) : _client = client ?? http.Client();
 
@@ -49,10 +51,11 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
   static List<Map<String, dynamic>> listFrom(dynamic value) {
     return value is List
         ? value
-            .whereType<Map>()
-            .map(
-                (Map<dynamic, dynamic> item) => Map<String, dynamic>.from(item))
-            .toList()
+              .whereType<Map>()
+              .map(
+                (Map<dynamic, dynamic> item) => Map<String, dynamic>.from(item),
+              )
+              .toList()
         : <Map<String, dynamic>>[];
   }
 
@@ -99,9 +102,7 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
     Map<String, String>? query,
     Map<String, dynamic>? body,
   }) async {
-    final Uri uri = Uri.parse('$baseUrl$path').replace(
-      queryParameters: query,
-    );
+    final Uri uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
     try {
       final Map<String, String> headers = await _headers();
       final http.Response response;
@@ -110,8 +111,9 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
             .patch(uri, headers: headers, body: jsonEncode(body))
             .timeout(requestTimeout);
       } else {
-        response =
-            await _client.get(uri, headers: headers).timeout(requestTimeout);
+        response = await _client
+            .get(uri, headers: headers)
+            .timeout(requestTimeout);
       }
 
       Map<String, dynamic> decoded = <String, dynamic>{};
@@ -147,16 +149,20 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
 
   @override
   Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
+    String status = 'ALL',
   }) async {
+    final String normalizedStatus = status.trim().toUpperCase();
+    final Map<String, String> query = <String, String>{
+      'page': '1',
+      'limit': '100',
+    };
+    if (normalizedStatus.isNotEmpty && normalizedStatus != 'ALL') {
+      query['status'] = normalizedStatus;
+    }
     final Map<String, dynamic> root = await _request(
       'GET',
       '/deliveries',
-      query: <String, String>{
-        'page': '1',
-        'limit': '100',
-        'status': status,
-      },
+      query: query,
     );
     final Map<String, dynamic> data = mapFrom(root['data']);
     return listFrom(data['deliveries'] ?? root['deliveries']);
@@ -186,5 +192,18 @@ class AdminDeliveryApi implements AdminDeliveryApiClient {
     );
     final Map<String, dynamic> data = mapFrom(root['data']);
     return mapFrom(data['delivery'] ?? root['delivery']);
+  }
+
+  @override
+  Future<Map<String, dynamic>> reassignRider({
+    required String deliveryId,
+    required String riderId,
+  }) async {
+    final Map<String, dynamic> root = await _request(
+      'PATCH',
+      '/deliveries/${Uri.encodeComponent(deliveryId)}/reassign-rider',
+      body: <String, dynamic>{'riderId': riderId},
+    );
+    return mapFrom(root['delivery'] ?? mapFrom(root['data'])['delivery']);
   }
 }

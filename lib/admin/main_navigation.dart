@@ -27,6 +27,7 @@ import 'admin_empowerment_screen.dart';
 import 'admin_partner_screen.dart';
 import 'admin_partner_applications_screen.dart';
 import 'admin_business_partners_screen.dart';
+import 'admin_branch_management_screen.dart';
 
 import 'admin_cards_screen.dart';
 
@@ -72,9 +73,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
   String normalizeRole(String? value) {
     return (value ?? '').trim().toUpperCase().replaceAll(
-      RegExp(r'[\s-]+'),
-      '_',
-    );
+          RegExp(r'[\s-]+'),
+          '_',
+        );
   }
 
   String normalizePermission(String? value) {
@@ -142,6 +143,19 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const AdminBranchManagementScreen(
+          canManage: true,
+          canViewReports: true,
+          canViewApprovals: true,
+        ),
+        icon: Icons.account_tree_outlined,
+        activeIcon: Icons.account_tree,
+        label: 'Branch Management',
       );
     }
 
@@ -546,8 +560,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
       final List<String> savedPermissions =
           prefs.getStringList('staff_permissions') ??
-          prefs.getStringList('admin_effective_permissions') ??
-          <String>[];
+              prefs.getStringList('admin_effective_permissions') ??
+              <String>[];
 
       final Set<String> normalizedPermissions = savedPermissions
           .map(normalizePermission)
@@ -699,8 +713,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               });
             }
 
-            final bool isDesktop =
-                kIsWeb ||
+            final bool isDesktop = kIsWeb ||
                 defaultTargetPlatform == TargetPlatform.windows ||
                 defaultTargetPlatform == TargetPlatform.macOS ||
                 defaultTargetPlatform == TargetPlatform.linux;

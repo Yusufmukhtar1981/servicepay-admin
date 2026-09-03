@@ -37,9 +37,28 @@ import 'admin_phone_financing_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_customer_360_screen.dart';
+import 'admin_transactions_screen.dart';
+import 'admin_transaction_intelligence_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
+
+const Set<String> fullAccessAdminRoles = <String>{
+  'HEAD_OFFICE',
+  'ADMIN',
+  'SUPER_ADMIN',
+  'HEAD_OFFICE_ADMIN',
+};
+
+@visibleForTesting
+bool canAccessAdminNavigationModule({
+  required String role,
+  required Set<String> permissions,
+  required String permission,
+}) {
+  return fullAccessAdminRoles.contains(role) ||
+      permissions.contains(permission.toLowerCase());
+}
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
@@ -83,12 +102,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   }
 
   bool get isHeadOffice {
-    return const <String>{
-      'HEAD_OFFICE',
-      'ADMIN',
-      'SUPER_ADMIN',
-      'HEAD_OFFICE_ADMIN',
-    }.contains(adminRole);
+    return fullAccessAdminRoles.contains(adminRole);
   }
 
   bool get isStaff {
@@ -157,6 +171,41 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_tree_outlined,
         activeIcon: Icons.account_tree,
         label: 'Branch Management',
+      );
+    }
+
+    /*
+     * =====================================================
+     * TRANSACTIONS
+     * =====================================================
+     *
+     * These are intentionally separate destinations:
+     * operational transaction records versus transaction
+     * intelligence and reconciliation analysis.
+     */
+    if (canAccessAdminNavigationModule(
+      role: adminRole,
+      permissions: permissions,
+      permission: AdminPermissions.transactionsView,
+    )) {
+      addNavigationPage(
+        page: const AdminTransactionsScreen(),
+        icon: Icons.receipt_long_outlined,
+        activeIcon: Icons.receipt_long_rounded,
+        label: 'Transactions',
+      );
+    }
+
+    if (canAccessAdminNavigationModule(
+      role: adminRole,
+      permissions: permissions,
+      permission: AdminPermissions.transactionIntelligenceView,
+    )) {
+      addNavigationPage(
+        page: const AdminTransactionIntelligenceScreen(),
+        icon: Icons.insights_outlined,
+        activeIcon: Icons.insights_rounded,
+        label: 'Transaction Intelligence',
       );
     }
 

@@ -42,6 +42,7 @@ import 'admin_transaction_intelligence_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
+import 'svp_management_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -157,6 +158,16 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    if (isHeadOffice ||
+        hasPermission(AdminPermissions.svpManagementView)) {
+      addNavigationPage(
+        page: const SvpManagementScreen(),
+        icon: Icons.badge_outlined,
+        activeIcon: Icons.badge,
+        label: 'SVP',
       );
     }
 

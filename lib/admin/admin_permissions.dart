@@ -53,7 +53,12 @@ abstract final class AdminPermissions {
   static const settingsView = 'settings.view';
   static const settingsUpdate = 'settings.update';
   static const auditView = 'audit.view';
+  static const reportsView = 'reports.view';
   static const reportsExport = 'reports.export';
+  static const branchesView = 'branches.view';
+  static const svpManagementView = 'svp.management.view';
+  static const svpReportsView = 'svp.reports.view';
+  static const svpAuditView = 'svp.audit.view';
 }
 
 class AdminAccess {

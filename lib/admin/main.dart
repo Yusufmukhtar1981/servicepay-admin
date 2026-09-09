@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_control_center_screen.dart';
+import 'admin_permissions.dart';
 import 'admin_phone_financing_screen.dart';
 import 'login_screen.dart';
+import 'svp_management_screen.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -35,6 +37,7 @@ class ServicepayAdminApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       home: const AdminLoginScreen(),
       routes: <String, WidgetBuilder>{
+        '/svp': (_) => const _SvpRouteGate(),
         '/phone-financing': (_) => const _PhoneFinancingRouteGate(),
         '/control-center/audit-logs': (_) =>
             const _ControlCenterRouteGate(moduleId: 'audit-logs'),
@@ -56,6 +59,59 @@ class ServicepayAdminApp extends StatelessWidget {
             const _ControlCenterRouteGate(moduleId: 'transaction-analytics'),
         '/control-center/customer-analytics': (_) =>
             const _ControlCenterRouteGate(moduleId: 'customer-analytics'),
+      },
+    );
+  }
+}
+
+class _SvpRouteGate extends StatefulWidget {
+  const _SvpRouteGate();
+
+  @override
+  State<_SvpRouteGate> createState() => _SvpRouteGateState();
+}
+
+class _SvpRouteGateState extends State<_SvpRouteGate> {
+  late final Future<String> _access = _checkAccess();
+
+  Future<String> _checkAccess() async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final String token = preferences.getString('auth_token')?.trim() ?? '';
+    if (token.isEmpty) return 'UNAUTHENTICATED';
+    final AdminAccess access = await AdminSessionStore.loadAccess();
+    return access.has(AdminPermissions.svpManagementView)
+        ? 'AUTHORIZED'
+        : 'FORBIDDEN';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String>(
+      future: _access,
+      builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.data == 'AUTHORIZED') {
+          return const SvpManagementScreen();
+        }
+        if (snapshot.data == 'UNAUTHENTICATED') {
+          return const AdminLoginScreen();
+        }
+        return Scaffold(
+          appBar: AppBar(title: const Text('Access denied')),
+          body: const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                '403 — This account does not have access to SVP Management.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        );
       },
     );
   }

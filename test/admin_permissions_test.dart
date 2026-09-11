@@ -79,18 +79,50 @@ void main() {
     );
   });
 
-  test('organization administration permissions remain independently scoped', () {
-    const AdminAccess reviewer = AdminAccess(
-      role: 'STAFF',
-      permissions: <String>{
-        AdminPermissions.organizationsView,
-        AdminPermissions.organizationsReview,
-      },
-    );
-    expect(reviewer.has(AdminPermissions.organizationsView), isTrue);
-    expect(reviewer.has(AdminPermissions.organizationsReview), isTrue);
-    expect(reviewer.has(AdminPermissions.organizationsStatusManage), isFalse);
-    expect(reviewer.has(AdminPermissions.organizationsWalletManage), isFalse);
-  });
+  test(
+    'organization administration permissions remain independently scoped',
+    () {
+      const AdminAccess reviewer = AdminAccess(
+        role: 'STAFF',
+        permissions: <String>{
+          AdminPermissions.organizationsView,
+          AdminPermissions.organizationsReview,
+        },
+      );
+      expect(reviewer.has(AdminPermissions.organizationsView), isTrue);
+      expect(reviewer.has(AdminPermissions.organizationsReview), isTrue);
+      expect(reviewer.has(AdminPermissions.organizationsStatusManage), isFalse);
+      expect(reviewer.has(AdminPermissions.organizationsWalletManage), isFalse);
+    },
+  );
 
+  test(
+    'treasury permissions are independently scoped from organization admin',
+    () {
+      const AdminAccess access = AdminAccess(
+        role: 'STAFF',
+        permissions: <String>{
+          AdminPermissions.organizationsWithdrawalsView,
+          AdminPermissions.organizationsSettlementAccountsReview,
+          AdminPermissions.organizationsTreasuryManage,
+        },
+      );
+
+      expect(access.has(AdminPermissions.organizationsWithdrawalsView), isTrue);
+      expect(
+        access.has(AdminPermissions.organizationsWithdrawalsReview),
+        isFalse,
+      );
+      expect(
+        access.has(AdminPermissions.organizationsSettlementAccountsView),
+        isFalse,
+      );
+      expect(
+        access.has(AdminPermissions.organizationsSettlementAccountsReview),
+        isTrue,
+      );
+      expect(access.has(AdminPermissions.organizationsTreasuryManage), isTrue);
+      expect(access.has(AdminPermissions.organizationsReview), isFalse);
+    },
+  );
 }

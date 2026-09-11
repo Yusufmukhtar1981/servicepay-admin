@@ -68,7 +68,14 @@ abstract final class AdminPermissions {
   static const organizationsMembersView = 'organizations.members.view';
   static const organizationsPaymentsView = 'organizations.payments.view';
   static const organizationsAuditView = 'organizations.audit.view';
-
+  static const organizationsWithdrawalsView = 'organizations.withdrawals.view';
+  static const organizationsWithdrawalsReview =
+      'organizations.withdrawals.review';
+  static const organizationsSettlementAccountsView =
+      'organizations.settlement_accounts.view';
+  static const organizationsSettlementAccountsReview =
+      'organizations.settlement_accounts.review';
+  static const organizationsTreasuryManage = 'organizations.treasury.manage';
 }
 
 class AdminAccess {

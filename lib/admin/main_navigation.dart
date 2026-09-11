@@ -39,6 +39,7 @@ import 'admin_customer_support_screen.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'admin_transaction_intelligence_screen.dart';
+import 'admin_organizations_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
@@ -217,6 +218,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.insights_outlined,
         activeIcon: Icons.insights_rounded,
         label: 'Transaction Intelligence',
+      );
+    }
+
+    if (isHeadOffice || hasPermission(AdminPermissions.organizationsView)) {
+      addNavigationPage(
+        page: const AdminOrganizationsScreen(),
+        icon: Icons.business_outlined,
+        activeIcon: Icons.business,
+        label: 'Organizations',
       );
     }
 

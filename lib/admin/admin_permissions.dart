@@ -87,11 +87,15 @@ class AdminAccess {
     'ADMIN',
     'SUPER_ADMIN',
     'HEAD_OFFICE_ADMIN',
+    'SERVICEPAY_SUPER_ADMIN',
   };
 
   bool get isFullAccess =>
-      _fullAccessRoles.contains(role.toUpperCase()) ||
+      _fullAccessRoles.contains(normalizeRole(role)) ||
       permissions.contains('*');
+
+  static String normalizeRole(String? value) =>
+      (value ?? '').trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
 
   bool has(String permission) {
     if (isFullAccess || permissions.contains(permission)) return true;
@@ -121,9 +125,9 @@ class AdminAccess {
         : <String>{};
     final dynamic rawScope = user['accessScope'];
     return AdminAccess(
-      role: (user['role'] ?? user['effectiveRole'] ?? '')
-          .toString()
-          .toUpperCase(),
+      role: normalizeRole(
+        (user['role'] ?? user['effectiveRole'] ?? '').toString(),
+      ),
       permissions: permissions,
       scope: rawScope is Map
           ? Map<String, dynamic>.from(rawScope)

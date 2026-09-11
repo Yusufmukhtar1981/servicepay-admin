@@ -12,6 +12,16 @@ void main() {
     expect(access.has(AdminPermissions.rolesDelete), isTrue);
   });
 
+  test('ServicePay super admin retains full access', () {
+    const AdminAccess access = AdminAccess(
+      role: 'servicepay-super-admin',
+      permissions: <String>{},
+    );
+
+    expect(access.isFullAccess, isTrue);
+    expect(access.has(AdminPermissions.organizationsView), isTrue);
+  });
+
   test('staff access exposes only assigned modules', () {
     const AdminAccess access = AdminAccess(
       role: 'STAFF',

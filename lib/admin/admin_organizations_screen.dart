@@ -17,6 +17,12 @@ String organizationStatusPermission(
       : AdminPermissions.organizationsStatusManage;
 }
 
+dynamic organizationPendingCount(Map<String, dynamic> summary) {
+  return summary['pending'] ??
+      summary['PENDING_VERIFICATION'] ??
+      summary['pendingVerification'];
+}
+
 class AdminOrganizationsScreen extends StatefulWidget {
   const AdminOrganizationsScreen({
     super.key,
@@ -192,10 +198,7 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
           Wrap(spacing: 12, runSpacing: 12, children: [
             _metric(
                 'Total', _summary['total'] ?? _summary['totalOrganizations']),
-            _metric(
-                'Pending verification',
-                _summary['PENDING_VERIFICATION'] ??
-                    _summary['pendingVerification']),
+            _metric('Pending verification', organizationPendingCount(_summary)),
             _metric('Verified', _summary['VERIFIED'] ?? _summary['verified']),
             _metric('Suspended', _summary['suspended']),
           ]),

@@ -50,6 +50,7 @@ const Set<String> fullAccessAdminRoles = <String>{
   'ADMIN',
   'SUPER_ADMIN',
   'HEAD_OFFICE_ADMIN',
+  'SERVICEPAY_SUPER_ADMIN',
 };
 
 @visibleForTesting
@@ -58,7 +59,9 @@ bool canAccessAdminNavigationModule({
   required Set<String> permissions,
   required String permission,
 }) {
-  return fullAccessAdminRoles.contains(role) ||
+  final String normalizedRole =
+      role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
+  return fullAccessAdminRoles.contains(normalizedRole) ||
       permissions.contains(permission.toLowerCase());
 }
 
@@ -644,6 +647,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         'ADMIN',
         'SUPER_ADMIN',
         'HEAD_OFFICE_ADMIN',
+        'SERVICEPAY_SUPER_ADMIN',
         'STAFF',
         'ZONAL_MANAGER',
         'STATE_MANAGER',

@@ -63,4 +63,21 @@ void main() {
       AdminPermissions.organizationsStatusManage,
     );
   });
+
+  test('organizations summary accepts the current pending response key', () {
+    expect(
+      organizationPendingCount(<String, dynamic>{
+        'total': 11,
+        'pending': 4,
+        'pendingVerification': 2,
+      }),
+      4,
+    );
+    expect(
+      organizationPendingCount(<String, dynamic>{
+        'PENDING_VERIFICATION': 3,
+      }),
+      3,
+    );
+  });
 }

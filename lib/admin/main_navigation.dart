@@ -179,6 +179,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
+    // Keep Feature Control immediately discoverable after Dashboard while
+    // preserving its independent permission gate.
+    if (canAccessFeatureControlsNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: const AdminFeatureControlsScreen(),
+        icon: Icons.toggle_on_outlined,
+        activeIcon: Icons.toggle_on_rounded,
+        label: 'Feature Control',
+      );
+    }
+
     if (isHeadOffice || hasPermission(AdminPermissions.svpManagementView)) {
       addNavigationPage(
         page: const SvpManagementScreen(),
@@ -606,20 +620,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       activeIcon: Icons.settings_rounded,
       label: 'Settings',
     );
-
-    // Feature Controls is independently permission-gated. In particular,
-    // broad legacy admin roles must not imply feature_control.view.
-    if (canAccessFeatureControlsNavigation(
-      role: adminRole,
-      permissions: permissions,
-    )) {
-      addNavigationPage(
-        page: const AdminFeatureControlsScreen(),
-        icon: Icons.toggle_on_outlined,
-        activeIcon: Icons.toggle_on_rounded,
-        label: 'Feature Controls',
-      );
-    }
 
     if (isHeadOffice) {
       addNavigationPage(

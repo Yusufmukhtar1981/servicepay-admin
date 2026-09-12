@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin/admin_permissions.dart';
 import 'main_navigation.dart';
 import 'register_screen.dart';
 
@@ -390,11 +391,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final String role = user['role']
-              ?.toString()
-              .trim()
-              .toUpperCase() ??
-          'CUSTOMER';
+      final String role = AdminAccess.normalizeRole(
+        user['role']?.toString() ?? 'CUSTOMER',
+      );
 
       final String status = user['status']
               ?.toString()
@@ -402,8 +401,14 @@ class _LoginScreenState extends State<LoginScreen> {
               .toUpperCase() ??
           'ACTIVE';
 
-      // admin.servicepay.ng is reserved for Head Office only.
-      if (role != 'HEAD_OFFICE') {
+      // admin.servicepay.ng is reserved for established master Admin roles.
+      const Set<String> allowedAdminRoles = <String>{
+        'HEAD_OFFICE',
+        'SUPER_ADMIN',
+        'HEAD_OFFICE_ADMIN',
+        'SERVICEPAY_SUPER_ADMIN',
+      };
+      if (!allowedAdminRoles.contains(role)) {
         showMessage(
           'Access denied. Head Office account required.',
         );
@@ -421,6 +426,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await saveLoginData(
         token,
         user,
+      );
+      await AdminSessionStore.saveAccess(
+        AdminAccess.fromUser(user),
       );
 
       if (!mounted) {

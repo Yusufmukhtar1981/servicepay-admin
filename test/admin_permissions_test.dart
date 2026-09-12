@@ -150,7 +150,8 @@ void main() {
     expect(manager.canProtectedManageFeatureControls, isFalse);
   });
 
-  test('only ServicePay super admin has implicit protected access', () {
+  test('master Admin roles can view and manage but protected access is strict',
+      () {
     const AdminAccess superAdmin = AdminAccess(
       role: 'servicepay-super-admin',
       permissions: <String>{},
@@ -163,10 +164,37 @@ void main() {
       role: 'HEAD_OFFICE',
       permissions: <String>{},
     );
-    expect(headOffice.canViewFeatureControls, isFalse);
-    expect(headOffice.has(AdminPermissions.featureControlView), isFalse);
-    expect(headOffice.has(AdminPermissions.featureControlManage), isFalse);
-    expect(headOffice.canManageFeatureControls, isFalse);
+    expect(headOffice.canViewFeatureControls, isTrue);
+    expect(headOffice.has(AdminPermissions.featureControlView), isTrue);
+    expect(headOffice.has(AdminPermissions.featureControlManage), isTrue);
+    expect(headOffice.canManageFeatureControls, isTrue);
     expect(headOffice.canProtectedManageFeatureControls, isFalse);
+
+    for (final String role in <String>[
+      'SUPER_ADMIN',
+      'head-office-admin',
+    ]) {
+      final AdminAccess legacyMaster =
+          AdminAccess(role: role, permissions: const <String>{});
+      expect(legacyMaster.canViewFeatureControls, isTrue);
+      expect(legacyMaster.canManageFeatureControls, isTrue);
+      expect(legacyMaster.canProtectedManageFeatureControls, isFalse);
+    }
+
+    const AdminAccess ordinaryStaff = AdminAccess(
+      role: 'STAFF',
+      permissions: <String>{},
+    );
+    expect(ordinaryStaff.canViewFeatureControls, isFalse);
+    expect(ordinaryStaff.canManageFeatureControls, isFalse);
+    expect(ordinaryStaff.canProtectedManageFeatureControls, isFalse);
+
+    const AdminAccess protectedManager = AdminAccess(
+      role: 'HEAD_OFFICE',
+      permissions: <String>{
+        AdminPermissions.featureControlProtectedManage,
+      },
+    );
+    expect(protectedManager.canProtectedManageFeatureControls, isTrue);
   });
 }

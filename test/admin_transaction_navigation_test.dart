@@ -83,13 +83,13 @@ void main() {
     );
   });
 
-  test('feature controls use explicit view access only', () {
+  test('feature controls are visible to master roles and explicit viewers', () {
     expect(
       canAccessFeatureControlsNavigation(
         role: 'HEAD_OFFICE',
         permissions: <String>{},
       ),
-      isFalse,
+      isTrue,
     );
     expect(
       canAccessFeatureControlsNavigation(
@@ -104,6 +104,20 @@ void main() {
         permissions: <String>{},
       ),
       isTrue,
+    );
+    expect(
+      canAccessFeatureControlsNavigation(
+        role: 'SUPER-ADMIN',
+        permissions: <String>{},
+      ),
+      isTrue,
+    );
+    expect(
+      canAccessFeatureControlsNavigation(
+        role: 'STAFF',
+        permissions: <String>{},
+      ),
+      isFalse,
     );
   });
 }

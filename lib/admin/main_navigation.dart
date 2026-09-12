@@ -73,14 +73,10 @@ bool canAccessFeatureControlsNavigation({
   required String role,
   required Set<String> permissions,
 }) {
-  final String normalizedRole = role.trim().toUpperCase().replaceAll(
-    RegExp(r'[\s-]+'),
-    '_',
-  );
-  final Set<String> normalizedPermissions =
-      permissions.map((permission) => permission.trim().toLowerCase()).toSet();
-  return normalizedRole == 'SERVICEPAY_SUPER_ADMIN' ||
-      normalizedPermissions.contains(AdminPermissions.featureControlView);
+  return AdminAccess(
+    role: role,
+    permissions: permissions,
+  ).canViewFeatureControls;
 }
 
 class AdminMainNavigation extends StatefulWidget {

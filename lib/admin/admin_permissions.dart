@@ -136,6 +136,16 @@ class AdminAccess {
   bool get isServicePaySuperAdmin =>
       normalizeRole(role) == 'SERVICEPAY_SUPER_ADMIN';
 
+  static const Set<String> _featureControlMasterRoles = <String>{
+    'HEAD_OFFICE',
+    'SUPER_ADMIN',
+    'HEAD_OFFICE_ADMIN',
+    'SERVICEPAY_SUPER_ADMIN',
+  };
+
+  bool get isFeatureControlMaster =>
+      _featureControlMasterRoles.contains(normalizeRole(role));
+
   bool _hasExplicit(String permission) => permissions.any(
         (value) => value.trim().toLowerCase() == permission.toLowerCase(),
       );
@@ -143,11 +153,11 @@ class AdminAccess {
   bool hasFeatureControl(String permission) {
     final normalized = permission.trim().toLowerCase();
     if (normalized == AdminPermissions.featureControlView) {
-      return isServicePaySuperAdmin ||
+      return isFeatureControlMaster ||
           _hasExplicit(AdminPermissions.featureControlView);
     }
     if (normalized == AdminPermissions.featureControlManage) {
-      return isServicePaySuperAdmin ||
+      return isFeatureControlMaster ||
           _hasExplicit(AdminPermissions.featureControlManage);
     }
     if (normalized == AdminPermissions.featureControlProtectedManage) {
@@ -157,9 +167,9 @@ class AdminAccess {
     return false;
   }
 
-  /// Feature Controls deliberately does not inherit the broad legacy admin
-  /// access rules. The API's three feature-control permissions are explicit;
-  /// only SERVICEPAY_SUPER_ADMIN has implicit access to protected changes.
+  /// Established master Admin roles may view and manage Feature Controls.
+  /// Protected financial changes remain explicit, except for
+  /// SERVICEPAY_SUPER_ADMIN.
   bool get canViewFeatureControls =>
       hasFeatureControl(AdminPermissions.featureControlView);
 

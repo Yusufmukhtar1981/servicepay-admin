@@ -125,4 +125,48 @@ void main() {
       expect(access.has(AdminPermissions.organizationsReview), isFalse);
     },
   );
+
+  test('feature control permissions stay explicit by action', () {
+    const AdminAccess viewer = AdminAccess(
+      role: 'STAFF',
+      permissions: <String>{AdminPermissions.featureControlView},
+    );
+    expect(viewer.canViewFeatureControls, isTrue);
+    expect(viewer.has(AdminPermissions.featureControlView), isTrue);
+    expect(viewer.has(AdminPermissions.featureControlManage), isFalse);
+    expect(viewer.canManageFeatureControls, isFalse);
+    expect(viewer.canProtectedManageFeatureControls, isFalse);
+
+    const AdminAccess manager = AdminAccess(
+      role: 'STAFF',
+      permissions: <String>{
+        AdminPermissions.featureControlView,
+        AdminPermissions.featureControlManage,
+      },
+    );
+    expect(manager.canViewFeatureControls, isTrue);
+    expect(manager.canManageFeatureControls, isTrue);
+    expect(manager.has(AdminPermissions.featureControlManage), isTrue);
+    expect(manager.canProtectedManageFeatureControls, isFalse);
+  });
+
+  test('only ServicePay super admin has implicit protected access', () {
+    const AdminAccess superAdmin = AdminAccess(
+      role: 'servicepay-super-admin',
+      permissions: <String>{},
+    );
+    expect(superAdmin.canViewFeatureControls, isTrue);
+    expect(superAdmin.canManageFeatureControls, isTrue);
+    expect(superAdmin.canProtectedManageFeatureControls, isTrue);
+
+    const AdminAccess headOffice = AdminAccess(
+      role: 'HEAD_OFFICE',
+      permissions: <String>{},
+    );
+    expect(headOffice.canViewFeatureControls, isFalse);
+    expect(headOffice.has(AdminPermissions.featureControlView), isFalse);
+    expect(headOffice.has(AdminPermissions.featureControlManage), isFalse);
+    expect(headOffice.canManageFeatureControls, isFalse);
+    expect(headOffice.canProtectedManageFeatureControls, isFalse);
+  });
 }

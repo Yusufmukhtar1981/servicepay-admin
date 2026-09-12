@@ -49,9 +49,7 @@ void main() {
     expect(
       canAccessAdminNavigationModule(
         role: 'STAFF',
-        permissions: <String>{
-          AdminPermissions.transactionIntelligenceView,
-        },
+        permissions: <String>{AdminPermissions.transactionIntelligenceView},
         permission: AdminPermissions.transactionsView,
       ),
       isFalse,
@@ -59,9 +57,7 @@ void main() {
     expect(
       canAccessAdminNavigationModule(
         role: 'STAFF',
-        permissions: <String>{
-          AdminPermissions.transactionIntelligenceView,
-        },
+        permissions: <String>{AdminPermissions.transactionIntelligenceView},
         permission: AdminPermissions.transactionIntelligenceView,
       ),
       isTrue,
@@ -84,6 +80,30 @@ void main() {
         permission: AdminPermissions.transactionIntelligenceView,
       ),
       isFalse,
+    );
+  });
+
+  test('feature controls use explicit view access only', () {
+    expect(
+      canAccessFeatureControlsNavigation(
+        role: 'HEAD_OFFICE',
+        permissions: <String>{},
+      ),
+      isFalse,
+    );
+    expect(
+      canAccessFeatureControlsNavigation(
+        role: 'STAFF',
+        permissions: <String>{AdminPermissions.featureControlView},
+      ),
+      isTrue,
+    );
+    expect(
+      canAccessFeatureControlsNavigation(
+        role: 'SERVICEPAY_SUPER_ADMIN',
+        permissions: <String>{},
+      ),
+      isTrue,
     );
   });
 }

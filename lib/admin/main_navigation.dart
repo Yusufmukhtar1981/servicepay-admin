@@ -18,6 +18,7 @@ import 'admin_rider_withdrawals_screen.dart';
 import 'admin_riders_screen.dart';
 import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
+import 'admin_feature_controls_screen.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -65,6 +66,21 @@ bool canAccessAdminNavigationModule({
   );
   return fullAccessAdminRoles.contains(normalizedRole) ||
       permissions.contains(permission.toLowerCase());
+}
+
+@visibleForTesting
+bool canAccessFeatureControlsNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final String normalizedRole = role.trim().toUpperCase().replaceAll(
+    RegExp(r'[\s-]+'),
+    '_',
+  );
+  final Set<String> normalizedPermissions =
+      permissions.map((permission) => permission.trim().toLowerCase()).toSet();
+  return normalizedRole == 'SERVICEPAY_SUPER_ADMIN' ||
+      normalizedPermissions.contains(AdminPermissions.featureControlView);
 }
 
 class AdminMainNavigation extends StatefulWidget {
@@ -594,6 +610,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       activeIcon: Icons.settings_rounded,
       label: 'Settings',
     );
+
+    // Feature Controls is independently permission-gated. In particular,
+    // broad legacy admin roles must not imply feature_control.view.
+    if (canAccessFeatureControlsNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: const AdminFeatureControlsScreen(),
+        icon: Icons.toggle_on_outlined,
+        activeIcon: Icons.toggle_on_rounded,
+        label: 'Feature Controls',
+      );
+    }
 
     if (isHeadOffice) {
       addNavigationPage(

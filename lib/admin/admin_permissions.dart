@@ -52,6 +52,10 @@ abstract final class AdminPermissions {
   static const emailCampaignManage = 'email_campaign.manage';
   static const settingsView = 'settings.view';
   static const settingsUpdate = 'settings.update';
+  static const featureControlView = 'feature_control.view';
+  static const featureControlManage = 'feature_control.manage';
+  static const featureControlProtectedManage =
+      'feature_control.protected_manage';
   static const auditView = 'audit.view';
   static const reportsView = 'reports.view';
   static const reportsExport = 'reports.export';
@@ -105,6 +109,17 @@ class AdminAccess {
       (value ?? '').trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
 
   bool has(String permission) {
+    final String normalizedPermission = permission.trim().toLowerCase();
+    if (normalizedPermission == AdminPermissions.featureControlView) {
+      return canViewFeatureControls;
+    }
+    if (normalizedPermission == AdminPermissions.featureControlManage) {
+      return canManageFeatureControls;
+    }
+    if (normalizedPermission ==
+        AdminPermissions.featureControlProtectedManage) {
+      return canProtectedManageFeatureControls;
+    }
     if (isFullAccess || permissions.contains(permission)) return true;
     const Map<String, String> legacy = <String, String>{
       AdminPermissions.communicationsView: AdminPermissions.notificationsView,
@@ -118,17 +133,62 @@ class AdminAccess {
     return permissions.contains(legacy[permission]);
   }
 
-  bool hasAny(Iterable<String> required) =>
-      isFullAccess || required.any(permissions.contains);
+  bool get isServicePaySuperAdmin =>
+      normalizeRole(role) == 'SERVICEPAY_SUPER_ADMIN';
+
+  bool _hasExplicit(String permission) => permissions.any(
+        (value) => value.trim().toLowerCase() == permission.toLowerCase(),
+      );
+
+  bool hasFeatureControl(String permission) {
+    final normalized = permission.trim().toLowerCase();
+    if (normalized == AdminPermissions.featureControlView) {
+      return isServicePaySuperAdmin ||
+          _hasExplicit(AdminPermissions.featureControlView);
+    }
+    if (normalized == AdminPermissions.featureControlManage) {
+      return isServicePaySuperAdmin ||
+          _hasExplicit(AdminPermissions.featureControlManage);
+    }
+    if (normalized == AdminPermissions.featureControlProtectedManage) {
+      return isServicePaySuperAdmin ||
+          _hasExplicit(AdminPermissions.featureControlProtectedManage);
+    }
+    return false;
+  }
+
+  /// Feature Controls deliberately does not inherit the broad legacy admin
+  /// access rules. The API's three feature-control permissions are explicit;
+  /// only SERVICEPAY_SUPER_ADMIN has implicit access to protected changes.
+  bool get canViewFeatureControls =>
+      hasFeatureControl(AdminPermissions.featureControlView);
+
+  bool get canManageFeatureControls =>
+      hasFeatureControl(AdminPermissions.featureControlManage);
+
+  bool get canProtectedManageFeatureControls =>
+      hasFeatureControl(AdminPermissions.featureControlProtectedManage);
+
+  bool hasAny(Iterable<String> required) {
+    final values = required.toList();
+    if (values.isNotEmpty &&
+        values.every(
+          (permission) =>
+              permission.trim().toLowerCase().startsWith('feature_control.'),
+        )) {
+      return values.any(has);
+    }
+    return isFullAccess || values.any(permissions.contains);
+  }
 
   static AdminAccess fromUser(Map<String, dynamic> user) {
     final dynamic rawPermissions =
         user['permissions'] ?? (user['staffRole'] as Map?)?['permissions'];
     final Set<String> permissions = rawPermissions is List
         ? rawPermissions
-              .map((dynamic value) => value.toString().trim())
-              .where((String value) => value.isNotEmpty)
-              .toSet()
+            .map((dynamic value) => value.toString().trim())
+            .where((String value) => value.isNotEmpty)
+            .toSet()
         : <String>{};
     final dynamic rawScope = user['accessScope'];
     return AdminAccess(

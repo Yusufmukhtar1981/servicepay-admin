@@ -17,7 +17,7 @@ class AdminTransactionCard extends StatelessWidget {
     final status = '${contextData['status'] ?? 'Unavailable'}';
     final occurredAt = contextData['occurredAt'];
     return Card(
-      color: Colors.grey.shade100,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(

@@ -39,7 +39,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('KYB / Business Verification', Icons.business_outlined),
         _FintechItem('NIN / ID Verification', Icons.badge_outlined),
         _FintechItem(
-            'Customer Tiers & Limits', Icons.stacked_bar_chart_outlined),
+          'Customer Tiers & Limits',
+          Icons.stacked_bar_chart_outlined,
+        ),
         _FintechItem('Account Restrictions', Icons.block_outlined),
         _FintechItem('Beneficiaries', Icons.group_add_outlined),
       ],
@@ -154,7 +156,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('Commissions', Icons.percent_outlined),
         _FintechItem('Profit & Loss', Icons.analytics_outlined),
         _FintechItem(
-            'Provider Balances', Icons.account_balance_wallet_outlined),
+          'Provider Balances',
+          Icons.account_balance_wallet_outlined,
+        ),
         _FintechItem('Financial Reports', Icons.assessment_outlined),
       ],
     ),
@@ -279,7 +283,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F5),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -289,9 +293,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
-                  AdminExecutiveDashboardScreen(
-                    onOpenModule: _openModule,
-                  ),
+                  AdminExecutiveDashboardScreen(onOpenModule: _openModule),
                   _fintechControlCenter(),
                 ],
               ),
@@ -321,18 +323,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     };
 
     if (page == null) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => page),
-    );
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
   }
 
   Widget _topBar() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-      decoration: const BoxDecoration(
-        color: _dark,
-      ),
+      decoration: const BoxDecoration(color: _dark),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final mobile = constraints.maxWidth < 700;
@@ -387,18 +385,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF143B2A),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFF2E6248),
-                        ),
+                        border: Border.all(color: const Color(0xFF2E6248)),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.circle,
-                            size: 9,
-                            color: Color(0xFF4ADE80),
-                          ),
+                          Icon(Icons.circle, size: 9, color: Color(0xFF4ADE80)),
                           SizedBox(width: 7),
                           Text(
                             'FINTECH CONTROL',
@@ -507,8 +499,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         .where((section) => section.items.isNotEmpty)
         .toList();
 
-    final totalModules =
-        _sections.fold<int>(0, (sum, section) => sum + section.items.length);
+    final totalModules = _sections.fold<int>(
+      0,
+      (sum, section) => sum + section.items.length,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -516,10 +510,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final crossAxisCount = width >= 1500
             ? 4
             : width >= 1050
-                ? 3
-                : width >= 650
-                    ? 2
-                    : 1;
+            ? 3
+            : width >= 650
+            ? 2
+            : 1;
 
         return ListView(
           padding: const EdgeInsets.all(18),
@@ -528,10 +522,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF08783E),
-                    Color(0xFF0B5F35),
-                  ],
+                  colors: [Color(0xFF08783E), Color(0xFF0B5F35)],
                 ),
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -574,11 +565,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   if (mobile) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        intro,
-                        const SizedBox(height: 18),
-                        stats,
-                      ],
+                      children: [intro, const SizedBox(height: 18), stats],
                     );
                   }
 
@@ -605,7 +592,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         icon: const Icon(Icons.close),
                       ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Theme.of(context).colorScheme.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -616,17 +603,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             if (filteredSections.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(40),
-                child: Center(
-                  child: Text('No fintech module found.'),
-                ),
+                child: Center(child: Text('No fintech module found.')),
               ),
             ...filteredSections.map(
               (section) => Padding(
                 padding: const EdgeInsets.only(bottom: 18),
-                child: _sectionCard(
-                  section,
-                  crossAxisCount,
-                ),
+                child: _sectionCard(section, crossAxisCount),
               ),
             ),
             const SizedBox(height: 30),
@@ -639,10 +621,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget _miniStat(String value, String label) {
     return Container(
       constraints: const BoxConstraints(minWidth: 82),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 9,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(12),
@@ -660,28 +639,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFFD7F2E3),
-              fontSize: 10,
-            ),
+            style: const TextStyle(color: Color(0xFFD7F2E3), fontSize: 10),
           ),
         ],
       ),
     );
   }
 
-  Widget _sectionCard(
-    _FintechSection section,
-    int crossAxisCount,
-  ) {
+  Widget _sectionCard(_FintechSection section, int crossAxisCount) {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFFE5ECE8),
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -692,12 +663,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE9F7EF),
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   section.icon,
-                  color: _primary,
+                  color: Theme.of(context).colorScheme.primary,
                   size: 22,
                 ),
               ),
@@ -705,28 +676,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Expanded(
                 child: Text(
                   section.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
-                    color: _dark,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 9,
-                  vertical: 5,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0F4F2),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   '${section.items.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: _dark,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -747,7 +715,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               final item = section.items[index];
 
               return Material(
-                color: const Color(0xFFF7FAF8),
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(13),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(13),
@@ -761,7 +729,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       children: [
                         Icon(
                           item.icon,
-                          color: _primary,
+                          color: Theme.of(context).colorScheme.primary,
                           size: 20,
                         ),
                         const SizedBox(width: 10),
@@ -770,17 +738,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             item.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 12.5,
-                              color: _dark,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ),
-                        const Icon(
+                        Icon(
                           Icons.chevron_right,
                           size: 18,
-                          color: Colors.grey,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ],
                     ),
@@ -801,12 +769,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       return;
     }
 
-    final String? controlCenterModuleId =
-        controlCenterModuleIdForTitle(title);
+    final String? controlCenterModuleId = controlCenterModuleIdForTitle(title);
     if (controlCenterModuleId != null) {
-      Navigator.of(context).pushNamed(
-        '/control-center/$controlCenterModuleId',
-      );
+      Navigator.of(context).pushNamed('/control-center/$controlCenterModuleId');
       return;
     }
 
@@ -828,18 +793,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       MaterialPageRoute(
         builder: (_) =>
             fintechScreenForTitle(title) ??
-            _FintechOperationalModuleScreen(
-              title: title,
-            ),
+            _FintechOperationalModuleScreen(title: title),
       ),
     );
   }
 }
 
 class _FintechOperationalModuleScreen extends StatelessWidget {
-  const _FintechOperationalModuleScreen({
-    required this.title,
-  });
+  const _FintechOperationalModuleScreen({required this.title});
 
   final String title;
 
@@ -848,18 +809,16 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: _dark,
+        backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
         title: Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
         ),
       ),
       body: SafeArea(
@@ -868,17 +827,10 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
             final horizontal = constraints.maxWidth >= 900 ? 40.0 : 18.0;
 
             return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                horizontal,
-                24,
-                horizontal,
-                40,
-              ),
+              padding: EdgeInsets.fromLTRB(horizontal, 24, horizontal, 40),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 1180,
-                  ),
+                  constraints: const BoxConstraints(maxWidth: 1180),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -887,27 +839,26 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF08783E),
-                              Color(0xFF12A05A),
-                            ],
+                            colors: [Color(0xFF08783E), Color(0xFF12A05A)],
                           ),
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Row(
+                            Row(
                               children: [
                                 Icon(
                                   Icons.admin_panel_settings_outlined,
-                                  color: Colors.white,
+                                  color: scheme.onPrimary,
                                 ),
                                 SizedBox(width: 8),
                                 Text(
                                   'SERVICEPAY FINTECH CONTROL CENTER',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color: scheme.onPrimary.withValues(
+                                      alpha: .78,
+                                    ),
                                     fontSize: 12,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: .7,
@@ -918,17 +869,17 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                             const SizedBox(height: 16),
                             Text(
                               title,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: scheme.onPrimary,
                                 fontSize: 26,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            const Text(
+                            Text(
                               'Admin operational workspace',
                               style: TextStyle(
-                                color: Colors.white70,
+                                color: scheme.onPrimary.withValues(alpha: .78),
                                 fontSize: 14,
                               ),
                             ),
@@ -962,28 +913,26 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                         width: double.infinity,
                         padding: const EdgeInsets.all(22),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: scheme.surface,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.grey.shade200,
-                          ),
+                          border: Border.all(color: scheme.outlineVariant),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Module Workspace',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
-                                color: _dark,
+                                color: scheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'A verified live workspace for $title is not configured in the current backend.',
                               style: TextStyle(
-                                color: Colors.grey.shade700,
+                                color: scheme.onSurfaceVariant,
                                 height: 1.5,
                               ),
                             ),
@@ -992,18 +941,14 @@ class _FintechOperationalModuleScreen extends StatelessWidget {
                               width: double.infinity,
                               padding: const EdgeInsets.all(18),
                               decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFFF0F8F4,
-                                ),
-                                borderRadius: BorderRadius.circular(
-                                  12,
-                                ),
+                                color: scheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Row(
+                              child: Row(
                                 children: [
                                   Icon(
                                     Icons.check_circle,
-                                    color: _primary,
+                                    color: scheme.primary,
                                   ),
                                   SizedBox(width: 12),
                                   Expanded(
@@ -1046,15 +991,14 @@ class _FintechStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       width: 220,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -1062,13 +1006,10 @@ class _FintechStatusCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
+              color: scheme.primaryContainer,
               borderRadius: BorderRadius.circular(11),
             ),
-            child: const Icon(
-              Icons.check_circle_outline,
-              color: Color(0xFF08783E),
-            ),
+            child: Icon(Icons.check_circle_outline, color: scheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1079,7 +1020,7 @@ class _FintechStatusCard extends StatelessWidget {
                   label,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.grey.shade600,
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 3),

@@ -59,8 +59,10 @@ bool canAccessAdminNavigationModule({
   required Set<String> permissions,
   required String permission,
 }) {
-  final String normalizedRole =
-      role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
+  final String normalizedRole = role.trim().toUpperCase().replaceAll(
+    RegExp(r'[\s-]+'),
+    '_',
+  );
   return fullAccessAdminRoles.contains(normalizedRole) ||
       permissions.contains(permission.toLowerCase());
 }
@@ -97,9 +99,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
   String normalizeRole(String? value) {
     return (value ?? '').trim().toUpperCase().replaceAll(
-          RegExp(r'[\s-]+'),
-          '_',
-        );
+      RegExp(r'[\s-]+'),
+      '_',
+    );
   }
 
   String normalizePermission(String? value) {
@@ -165,8 +167,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice ||
-        hasPermission(AdminPermissions.svpManagementView)) {
+    if (isHeadOffice || hasPermission(AdminPermissions.svpManagementView)) {
       addNavigationPage(
         page: const SvpManagementScreen(),
         icon: Icons.badge_outlined,
@@ -634,8 +635,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
       final List<String> savedPermissions =
           prefs.getStringList('staff_permissions') ??
-              prefs.getStringList('admin_effective_permissions') ??
-              <String>[];
+          prefs.getStringList('admin_effective_permissions') ??
+          <String>[];
 
       final Set<String> normalizedPermissions = savedPermissions
           .map(normalizePermission)
@@ -757,13 +758,13 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5EC),
+                    color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     staffDepartment.replaceAll('_', ' '),
-                    style: const TextStyle(
-                      color: Color(0xFF159447),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -788,7 +789,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               });
             }
 
-            final bool isDesktop = kIsWeb ||
+            final bool isDesktop =
+                kIsWeb ||
                 defaultTargetPlatform == TargetPlatform.windows ||
                 defaultTargetPlatform == TargetPlatform.macOS ||
                 defaultTargetPlatform == TargetPlatform.linux;
@@ -807,9 +809,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
                 child: BottomNavigationBar(
                   currentIndex: safeIndex,
                   type: BottomNavigationBarType.fixed,
-                  selectedItemColor: const Color(0xFF0F766E),
-                  unselectedItemColor: const Color(0xFF94A3B8),
-                  backgroundColor: Colors.white,
+                  selectedItemColor: Theme.of(context).colorScheme.primary,
+                  unselectedItemColor: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant,
+                  backgroundColor: Theme.of(context).colorScheme.surface,
                   selectedFontSize: 10,
                   unselectedFontSize: 9,
                   onTap: selectModule,
@@ -958,7 +962,7 @@ class _AdminDesktopModuleNavigationState
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       elevation: 12,
       child: SizedBox(
         height: 64,
@@ -984,9 +988,11 @@ class _AdminDesktopModuleNavigationState
                     child: BottomNavigationBar(
                       currentIndex: widget.currentIndex,
                       type: BottomNavigationBarType.fixed,
-                      selectedItemColor: const Color(0xFF0F766E),
-                      unselectedItemColor: const Color(0xFF94A3B8),
-                      backgroundColor: Colors.white,
+                      selectedItemColor: Theme.of(context).colorScheme.primary,
+                      unselectedItemColor: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant,
+                      backgroundColor: Theme.of(context).colorScheme.surface,
                       selectedFontSize: 10,
                       unselectedFontSize: 9,
                       onTap: widget.onTap,
@@ -1094,18 +1100,24 @@ class _ModuleScrollArrowState extends State<_ModuleScrollArrow> {
               height: double.infinity,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _isHovered ? const Color(0xFFE8F5F1) : Colors.white,
-                border: const Border(
-                  left: BorderSide(color: Color(0xFFE6EFEB)),
-                  right: BorderSide(color: Color(0xFFE6EFEB)),
+                color: _isHovered
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(context).colorScheme.surface,
+                border: Border(
+                  left: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  right: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
               ),
               child: Icon(
                 widget.icon,
                 size: 27,
                 color: widget.enabled
-                    ? const Color(0xFF0F766E)
-                    : const Color(0xFF98A2B3),
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),

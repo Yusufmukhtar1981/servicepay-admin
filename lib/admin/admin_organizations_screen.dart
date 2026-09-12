@@ -203,9 +203,11 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
               IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
             ],
           ),
-          const Text(
+          Text(
             'Review and manage ServicePay organizations',
-            style: TextStyle(color: Color(0xFF667085)),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           if (_can(AdminPermissions.organizationsWithdrawalsView) ||
               _can(AdminPermissions.organizationsSettlementAccountsView) ||
@@ -304,7 +306,12 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: Color(0xFF667085))),
+            Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
               _text(value, '0'),
@@ -355,12 +362,18 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
     ),
     backgroundColor: status == 'VERIFIED'
-        ? const Color(0xFFE6F4EA)
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1D5544)
+              : const Color(0xFFE0F2E9))
         : status == 'SUSPENDED'
-        ? const Color(0xFFFFF1E6)
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF5A3C27)
+              : const Color(0xFFFFE9D6))
         : status == 'PENDING_VERIFICATION'
-        ? const Color(0xFFFFF4CC)
-        : const Color(0xFFF2F4F7),
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF5A4A20)
+              : const Color(0xFFFFF0BF))
+        : Theme.of(context).colorScheme.surfaceContainerHighest,
   );
 
   Future<void> _openTreasury() async {
@@ -668,7 +681,10 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF667085)),
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           Text(
             _value(value),
@@ -1190,7 +1206,10 @@ class _DetailsSheetState extends State<_DetailsSheet> {
           width: 120,
           child: Text(
             label,
-            style: const TextStyle(color: Color(0xFF667085), fontSize: 12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
           ),
         ),
         Expanded(
@@ -1209,11 +1228,17 @@ class _DetailsSheetState extends State<_DetailsSheet> {
       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
     ),
     backgroundColor: status == 'VERIFIED'
-        ? const Color(0xFFE6F4EA)
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1D5544)
+              : const Color(0xFFE0F2E9))
         : status == 'SUSPENDED'
-        ? const Color(0xFFFFF1E6)
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF5A3C27)
+              : const Color(0xFFFFE9D6))
         : status == 'PENDING_VERIFICATION'
-        ? const Color(0xFFFFF4CC)
-        : const Color(0xFFF2F4F7),
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF5A4A20)
+              : const Color(0xFFFFF0BF))
+        : Theme.of(context).colorScheme.surfaceContainerHighest,
   );
 }

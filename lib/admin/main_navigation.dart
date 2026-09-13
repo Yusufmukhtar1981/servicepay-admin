@@ -61,9 +61,9 @@ bool canAccessAdminNavigationModule({
   required String permission,
 }) {
   final String normalizedRole = role.trim().toUpperCase().replaceAll(
-    RegExp(r'[\s-]+'),
-    '_',
-  );
+        RegExp(r'[\s-]+'),
+        '_',
+      );
   return fullAccessAdminRoles.contains(normalizedRole) ||
       permissions.contains(permission.toLowerCase());
 }
@@ -81,6 +81,17 @@ bool canAccessFeatureControlsNavigation({
 
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
+
+  /// Testable visibility projection for role-management and deep-link callers.
+  /// The live destination keeps its established ServicePay label, while the
+  /// canonical module name is returned here for permission checks.
+  static List<String> visibleDestinationLabels(AdminAccess access) {
+    final List<String> labels = <String>[];
+    if (access.hasBusinessPartnerAdmin(AdminPermissions.businessPartnersView)) {
+      labels.add('Business Partners');
+    }
+    return labels;
+  }
 
   @override
   State<AdminMainNavigation> createState() => _AdminMainNavigationState();
@@ -111,9 +122,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
   String normalizeRole(String? value) {
     return (value ?? '').trim().toUpperCase().replaceAll(
-      RegExp(r'[\s-]+'),
-      '_',
-    );
+          RegExp(r'[\s-]+'),
+          '_',
+        );
   }
 
   String normalizePermission(String? value) {
@@ -142,6 +153,14 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     return requiredPermissions.any(hasPermission);
+  }
+
+  bool hasBusinessPartnerAccess() {
+    return const <String>{
+          'HEAD_OFFICE',
+          'HEAD_OFFICE_ADMIN',
+        }.contains(adminRole) ||
+        permissions.contains(AdminPermissions.businessPartnersView);
   }
 
   void addNavigationPage({
@@ -525,7 +544,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
     // ================================================================
     // BUSINESS PARTNER MANAGEMENT
-    if (isHeadOffice || hasPermission('business_partners.view')) {
+    // Business Partner administration is a Head Office surface. The broad
+    // legacy ADMIN role keeps its other modules, but must receive an explicit
+    // partner permission before this destination is shown.
+    if (hasBusinessPartnerAccess()) {
       addNavigationPage(
         page: const AdminBusinessPartnersScreen(),
         icon: Icons.domain_outlined,
@@ -661,8 +683,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
       final List<String> savedPermissions =
           prefs.getStringList('staff_permissions') ??
-          prefs.getStringList('admin_effective_permissions') ??
-          <String>[];
+              prefs.getStringList('admin_effective_permissions') ??
+              <String>[];
 
       final Set<String> normalizedPermissions = savedPermissions
           .map(normalizePermission)
@@ -815,8 +837,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
               });
             }
 
-            final bool isDesktop =
-                kIsWeb ||
+            final bool isDesktop = kIsWeb ||
                 defaultTargetPlatform == TargetPlatform.windows ||
                 defaultTargetPlatform == TargetPlatform.macOS ||
                 defaultTargetPlatform == TargetPlatform.linux;

@@ -80,6 +80,41 @@ abstract final class AdminPermissions {
   static const organizationsSettlementAccountsReview =
       'organizations.settlement_accounts.review';
   static const organizationsTreasuryManage = 'organizations.treasury.manage';
+
+  // Head Office Business Partner administration. These permissions are
+  // intentionally separate from the partner portal's service permissions so
+  // customer, financial and audit data is never exposed by a broad Admin role.
+  static const businessPartnersView = 'business_partners.view';
+  static const businessPartnersUpdate = 'business_partners.update';
+  static const businessPartnersCreate = 'business_partners.create';
+  static const businessPartnersAssign = 'business_partners.assign';
+  static const businessPartnersCustomersView =
+      'business_partners.customers.view';
+  static const businessPartnersOfficersView = 'business_partners.officers.view';
+  static const businessPartnersTransactionsView =
+      'business_partners.transactions.view';
+  static const businessPartnersCommissionsView =
+      'business_partners.commissions.view';
+  static const businessPartnersTargetsView = 'business_partners.targets.view';
+  static const businessPartnersBonusesView = 'business_partners.bonuses.view';
+  static const businessPartnersLiabilitiesView =
+      'business_partners.liabilities.view';
+  static const businessPartnersAuditView = 'business_partners.audit.view';
+  static const businessPartnersRulesManage = businessPartnersUpdate;
+  static const businessPartnersCommissionRulesManage =
+      businessPartnersRulesManage;
+  static const businessPartnersBonusRulesManage = businessPartnersRulesManage;
+  static const businessPartnersStatus = 'business_partners.status';
+  static const businessPartnersStatusManage = businessPartnersStatus;
+
+  static const businessPartnerView = businessPartnersView;
+  static const businessPartnerCustomersView = businessPartnersCustomersView;
+  static const businessPartnerOfficersView = businessPartnersOfficersView;
+  static const businessPartnerTransactionsView =
+      businessPartnersTransactionsView;
+  static const businessPartnerCommissionsView = businessPartnersCommissionsView;
+  static const businessPartnerRulesManage = businessPartnersRulesManage;
+  static const businessPartnerStatusManage = businessPartnersStatusManage;
 }
 
 class AdminAccess {
@@ -211,6 +246,16 @@ class AdminAccess {
           : const <String, dynamic>{},
     );
   }
+
+  /// Business Partner administration is restricted to Head Office roles or
+  /// an explicitly assigned granular permission. Broad legacy Admin access
+  /// must not implicitly expose partner customer or financial records.
+  bool hasBusinessPartnerAdmin(String permission) =>
+      const <String>{
+        'HEAD_OFFICE',
+        'HEAD_OFFICE_ADMIN',
+      }.contains(normalizeRole(role)) ||
+      _hasExplicit(permission);
 }
 
 abstract final class AdminSessionStore {

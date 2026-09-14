@@ -96,4 +96,47 @@ void main() {
     expect(client.bodies[0].contains('startsAt'), isFalse);
     expect(client.bodies[2], '{"isActive":true}');
   });
+
+  test(
+      'tracked participant query, winner confirmation and history use admin paths',
+      () async {
+    final client = _Client([
+      http.Response(
+          jsonEncode({
+            'data': {'participants': []}
+          }),
+          200),
+      http.Response('{}', 200),
+      http.Response(
+          jsonEncode({
+            'data': {'winners': []}
+          }),
+          200),
+    ]);
+    final api = AdminAnnouncementsApi(client: client);
+    await api.participants('promo/1',
+        search: 'Ada Smith',
+        status: 'QUALIFIED',
+        page: 2,
+        limit: 10,
+        sort: 'qualificationDate');
+    await api.markWinner('promo/1', 'customer/2');
+    await api.winnersHistory('promo/1');
+
+    expect(client.requests[0].method, 'GET');
+    expect(client.requests[0].url.path,
+        '/api/announcements/admin/promo%2F1/participants');
+    expect(client.requests[0].url.queryParameters, {
+      'search': 'Ada Smith',
+      'status': 'QUALIFIED',
+      'page': '2',
+      'limit': '10',
+      'sort': 'qualificationDate',
+    });
+    expect(client.requests[1].method, 'POST');
+    expect(client.requests[1].url.path,
+        '/api/announcements/admin/promo%2F1/participants/customer%2F2/winner');
+    expect(client.requests[2].url.path,
+        '/api/announcements/admin/promo%2F1/winners/history');
+  });
 }

@@ -29,8 +29,74 @@ class AdminAnnouncementsApi {
       _request('PATCH', '/${Uri.encodeComponent(id)}/status',
           payload: {'isActive': active});
 
+  /// Returns the tracked customers for a promotion announcement.
+  ///
+  /// Query values are deliberately built here (rather than in the widget) so
+  /// every admin consumer sends the same stable pagination and sorting
+  /// contract to the API.
+  Future<Map<String, dynamic>> participants(
+    String id, {
+    String? search,
+    String? status,
+    int page = 1,
+    int limit = 25,
+    String? sort,
+  }) {
+    final query = <String, String>{
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      if (status != null && status.trim().isNotEmpty) 'status': status.trim(),
+      'page': '$page',
+      'limit': '$limit',
+      if (sort != null && sort.trim().isNotEmpty) 'sort': sort.trim(),
+    };
+    return _request(
+      'GET',
+      '/${Uri.encodeComponent(id)}/participants',
+      queryParameters: query,
+    );
+  }
+
+  Future<Map<String, dynamic>> listParticipants(
+    String id, {
+    String? search,
+    String? status,
+    int page = 1,
+    int limit = 25,
+    String? sort,
+  }) =>
+      participants(
+        id,
+        search: search,
+        status: status,
+        page: page,
+        limit: limit,
+        sort: sort,
+      );
+
+  /// Returns the immutable winner audit trail for a promotion.
+  Future<Map<String, dynamic>> winnersHistory(String id) => _request(
+        'GET',
+        '/${Uri.encodeComponent(id)}/winners/history',
+      );
+
+  Future<Map<String, dynamic>> winnerHistory(String id) => winnersHistory(id);
+
+  /// Confirms a qualified customer as the promotion winner.
+  Future<Map<String, dynamic>> markWinner(
+          String announcementId, String customerId) =>
+      _request(
+        'POST',
+        '/${Uri.encodeComponent(announcementId)}/participants/'
+            '${Uri.encodeComponent(customerId)}/winner',
+      );
+
+  Future<Map<String, dynamic>> confirmWinner(
+          String announcementId, String customerId) =>
+      markWinner(announcementId, customerId);
+
   Future<Map<String, dynamic>> _request(String method, String path,
-      {Map<String, dynamic>? payload}) async {
+      {Map<String, dynamic>? payload,
+      Map<String, String>? queryParameters}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = [
       'auth_token',
@@ -42,7 +108,9 @@ class AdminAnnouncementsApi {
     ]
         .map((key) => prefs.getString(key)?.trim() ?? '')
         .firstWhere((value) => value.isNotEmpty, orElse: () => '');
-    final uri = Uri.parse('$baseUrl/announcements/admin$path');
+    final uri = Uri.parse('$baseUrl/announcements/admin$path').replace(
+      queryParameters: queryParameters,
+    );
     final headers = <String, String>{
       'Accept': 'application/json',
       if (token.isNotEmpty) 'Authorization': 'Bearer $token',

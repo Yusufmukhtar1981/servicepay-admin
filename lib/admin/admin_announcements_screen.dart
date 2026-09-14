@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_announcements_api.dart';
 import 'admin_permissions.dart';
+import 'admin_promo_participants_screen.dart';
 
 class AdminAnnouncementsScreen extends StatefulWidget {
   const AdminAnnouncementsScreen({super.key, this.api, this.initialAccess});
@@ -116,6 +117,23 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
   void _message(Object error) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(error.toString())));
 
+  Future<void> _openParticipants(Map<String, dynamic> item) async {
+    final id = (item['_id'] ?? item['id'])?.toString();
+    if (id == null ||
+        id.isEmpty ||
+        !_can(AdminPermissions.announcementsParticipantsView)) {
+      return;
+    }
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => AdminPromoParticipantsScreen(
+        announcementId: id,
+        announcementTitle: _value(item, 'title'),
+        api: _api,
+        initialAccess: _access,
+      ),
+    ));
+  }
+
   String _value(Map<String, dynamic> item, String key,
           [String fallback = '']) =>
       item[key]?.toString().trim().isNotEmpty == true
@@ -171,14 +189,29 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
                                   _can(AdminPermissions.announcementsActivate),
                               canDelete:
                                   _can(AdminPermissions.announcementsDelete),
+                              canViewParticipants: _can(AdminPermissions
+                                  .announcementsParticipantsView),
+                              tracked: _isTracked(item),
                               onEdit: () => _openEditor(item),
                               onToggle: () => _toggle(item),
                               onDelete: () => _delete(item),
+                              onParticipants: () => _openParticipants(item),
                             )),
                     ],
                   ),
                 ),
     );
+  }
+
+  bool _isTracked(Map<String, dynamic> item) {
+    if (item['campaignTrackingEnabled'] == true ||
+        item['trackingEnabled'] == true ||
+        item['isTracked'] == true) {
+      return true;
+    }
+    final tracking = item['tracking'];
+    return tracking is Map &&
+        (tracking['enabled'] == true || tracking['isEnabled'] == true);
   }
 
   Future<void> _openEditor([Map<String, dynamic>? item]) async {
@@ -259,7 +292,10 @@ class _AnnouncementTile extends StatelessWidget {
       required this.onDelete,
       required this.canEdit,
       required this.canActivate,
-      required this.canDelete});
+      required this.canDelete,
+      required this.tracked,
+      required this.canViewParticipants,
+      required this.onParticipants});
   final Map<String, dynamic> item;
   final String Function(Map<String, dynamic>, String, [String]) value;
   final VoidCallback onEdit;
@@ -268,6 +304,9 @@ class _AnnouncementTile extends StatelessWidget {
   final bool canEdit;
   final bool canActivate;
   final bool canDelete;
+  final bool tracked;
+  final bool canViewParticipants;
+  final VoidCallback onParticipants;
   @override
   Widget build(BuildContext context) {
     final active = item['isActive'] == true;
@@ -327,6 +366,11 @@ class _AnnouncementTile extends StatelessWidget {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              if (tracked && canViewParticipants)
+                OutlinedButton.icon(
+                    onPressed: onParticipants,
+                    icon: const Icon(Icons.people_outline),
+                    label: const Text('Promo Participants')),
               if (canActivate)
                 TextButton.icon(
                     onPressed: onToggle,
@@ -362,10 +406,20 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
   late final TextEditingController _selectedCustomerIds;
   late final TextEditingController _selectedRole;
   late final TextEditingController _priority;
+  late final TextEditingController _trackingGoal;
+  late final TextEditingController _trackingMetric;
+  late final TextEditingController _qualifyingTransactionCount;
+  late final TextEditingController _qualifyingTransactionValue;
+  late final TextEditingController _eligibilityStartAt;
+  late final TextEditingController _eligibilityEndAt;
+  late final TextEditingController _eligibleTransactionTypes;
+  late final TextEditingController _rewardDescription;
   String _type = 'INFO';
   String _style = 'BANNER';
   String _visibility = 'ONCE';
   String _audience = 'ALL';
+  String _campaignStatus = 'DRAFT';
+  bool _trackingEnabled = false;
   final _formKey = GlobalKey<FormState>();
   @override
   void initState() {
@@ -385,10 +439,43 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
             : '');
     _selectedRole = TextEditingController(text: i['selectedRole']?.toString());
     _priority = TextEditingController(text: '${i['priority'] ?? 0}');
+    final tracking = i['tracking'] is Map
+        ? Map<String, dynamic>.from(i['tracking'] as Map)
+        : <String, dynamic>{};
+    _trackingEnabled = i['campaignTrackingEnabled'] == true ||
+        i['trackingEnabled'] == true ||
+        i['isTracked'] == true ||
+        tracking['enabled'] == true ||
+        tracking['isEnabled'] == true;
+    final String fallbackMetric =
+        i['qualifyingTransactionValue'] != null ? 'VALUE' : 'TRANSACTIONS';
+    final String metric =
+        '${i['trackingMetric'] ?? tracking['metric'] ?? fallbackMetric}';
+    final dynamic fallbackGoal = metric == 'TRANSACTIONS'
+        ? i['qualifyingTransactionCount']
+        : i['qualifyingTransactionValue'];
+    _trackingGoal = TextEditingController(
+        text: '${i['trackingGoal'] ?? tracking['goal'] ?? fallbackGoal ?? ''}');
+    _trackingMetric = TextEditingController(text: metric);
+    _qualifyingTransactionCount =
+        TextEditingController(text: '${i['qualifyingTransactionCount'] ?? ''}');
+    _qualifyingTransactionValue =
+        TextEditingController(text: '${i['qualifyingTransactionValue'] ?? ''}');
+    _eligibilityStartAt =
+        TextEditingController(text: '${i['eligibilityStartAt'] ?? ''}');
+    _eligibilityEndAt =
+        TextEditingController(text: '${i['eligibilityEndAt'] ?? ''}');
+    _eligibleTransactionTypes = TextEditingController(
+        text: i['eligibleTransactionTypes'] is List
+            ? (i['eligibleTransactionTypes'] as List).join(', ')
+            : '');
+    _rewardDescription =
+        TextEditingController(text: '${i['rewardDescription'] ?? ''}');
     _type = i['type']?.toString() ?? _type;
     _style = i['style']?.toString() ?? _style;
     _visibility = i['visibility']?.toString() ?? _visibility;
     _audience = i['audience']?.toString() ?? _audience;
+    _campaignStatus = i['campaignStatus']?.toString() ?? _campaignStatus;
   }
 
   @override
@@ -403,7 +490,15 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
       _endAt,
       _selectedCustomerIds,
       _selectedRole,
-      _priority
+      _priority,
+      _trackingGoal,
+      _trackingMetric,
+      _qualifyingTransactionCount,
+      _qualifyingTransactionValue,
+      _eligibilityStartAt,
+      _eligibilityEndAt,
+      _eligibleTransactionTypes,
+      _rewardDescription
     ]) {
       c.dispose();
     }
@@ -543,6 +638,152 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
                     onChanged: (v) => setState(() => _visibility = v!)),
+                 const SizedBox(height: 16),
+                 Card(
+                   elevation: 0,
+                   color: const Color(0xFFF4F7F6),
+                   child: Padding(
+                     padding: const EdgeInsets.all(12),
+                     child: Column(
+                       crossAxisAlignment: CrossAxisAlignment.start,
+                       children: [
+                         SwitchListTile(
+                           contentPadding: EdgeInsets.zero,
+                           title: const Text('Enable campaign tracking'),
+                           subtitle: const Text(
+                               'Track participant progress and qualified winners for this promotion.'),
+                           value: _trackingEnabled,
+                           onChanged: (value) =>
+                               setState(() => _trackingEnabled = value),
+                         ),
+                         if (_trackingEnabled) ...[
+                           const SizedBox(height: 8),
+                           TextFormField(
+                             controller: _qualifyingTransactionCount,
+                             keyboardType: TextInputType.number,
+                             decoration:
+                                 _dec('Qualifying transaction count (optional)'),
+                             validator: (value) {
+                               if (value == null || value.trim().isEmpty) {
+                                 return null;
+                               }
+                               final count = int.tryParse(value.trim());
+                               return count == null || count < 1
+                                   ? 'Enter a positive whole number'
+                                   : null;
+                             },
+                           ),
+                           const SizedBox(height: 12),
+                           TextFormField(
+                             controller: _qualifyingTransactionValue,
+                             keyboardType: TextInputType.number,
+                             decoration:
+                                 _dec('Qualifying transaction value (optional)'),
+                             validator: (value) {
+                               if (value == null || value.trim().isEmpty) {
+                                 return null;
+                               }
+                               final amount = int.tryParse(value.trim());
+                               return amount == null || amount < 0
+                                   ? 'Enter a nonnegative whole number'
+                                   : null;
+                             },
+                           ),
+                           const SizedBox(height: 12),
+                           TextFormField(
+                             controller: _eligibilityStartAt,
+                             decoration:
+                                 _dec('Eligibility starts at (ISO 8601)'),
+                             validator: (value) => value == null ||
+                                     value.trim().isEmpty ||
+                                     DateTime.tryParse(value.trim()) != null
+                                 ? null
+                                 : 'Enter a valid ISO 8601 date',
+                           ),
+                           const SizedBox(height: 12),
+                           TextFormField(
+                             controller: _eligibilityEndAt,
+                             decoration: _dec('Eligibility ends at (ISO 8601)'),
+                             validator: (value) {
+                               if (value == null ||
+                                   value.trim().isEmpty ||
+                                   DateTime.tryParse(value.trim()) != null) {
+                                 return null;
+                               }
+                               return 'Enter a valid ISO 8601 date';
+                             },
+                           ),
+                           const SizedBox(height: 12),
+                           TextFormField(
+                             controller: _eligibleTransactionTypes,
+                             decoration: _dec(
+                                 'Eligible transaction types (comma separated)'),
+                           ),
+                           const SizedBox(height: 12),
+                           TextFormField(
+                             controller: _rewardDescription,
+                             decoration: _dec('Reward description (optional)'),
+                             maxLength: 500,
+                           ),
+                           const SizedBox(height: 12),
+                           DropdownButtonFormField<String>(
+                             value: const ['DRAFT', 'ACTIVE', 'ENDED']
+                                     .contains(_campaignStatus)
+                                 ? _campaignStatus
+                                 : 'DRAFT',
+                             decoration: _dec('Campaign status'),
+                             items: const [
+                               DropdownMenuItem(
+                                   value: 'DRAFT', child: Text('Draft')),
+                               DropdownMenuItem(
+                                   value: 'ACTIVE', child: Text('Active')),
+                               DropdownMenuItem(
+                                   value: 'ENDED', child: Text('Ended')),
+                             ],
+                             onChanged: (value) => setState(
+                                 () => _campaignStatus = value ?? 'DRAFT'),
+                           ),
+                           const SizedBox(height: 12),
+                           TextFormField(
+                             controller: _trackingGoal,
+                             keyboardType: TextInputType.number,
+                             decoration: _dec('Qualification goal (optional)'),
+                             validator: (value) {
+                               if (!_trackingEnabled ||
+                                   value == null ||
+                                   value.trim().isEmpty) {
+                                 return null;
+                               }
+                               final goal = num.tryParse(value.trim());
+                               return goal == null || goal <= 0
+                                   ? 'Enter a goal greater than zero'
+                                   : null;
+                             },
+                           ),
+                           const SizedBox(height: 12),
+                           DropdownButtonFormField<String>(
+                             value: const ['VALUE', 'PROGRESS', 'TRANSACTIONS']
+                                     .contains(_trackingMetric.text)
+                                 ? _trackingMetric.text
+                                 : 'VALUE',
+                             decoration: _dec('Qualification metric'),
+                             items: const [
+                               DropdownMenuItem(
+                                   value: 'VALUE', child: Text('Value')),
+                               DropdownMenuItem(
+                                   value: 'PROGRESS', child: Text('Progress')),
+                               DropdownMenuItem(
+                                   value: 'TRANSACTIONS',
+                                   child: Text('Transactions')),
+                             ],
+                             onChanged: (value) => setState(
+                                 () => _trackingMetric.text = value ?? 'VALUE'),
+                           ),
+                         ],
+                       ],
+                     ),
+                   ),
+                 ),
               ]),
             ),
           ),
@@ -585,6 +826,33 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
         'startAt': _startAt.text.trim().isEmpty ? null : _startAt.text.trim(),
         'endAt': _endAt.text.trim().isEmpty ? null : _endAt.text.trim(),
         'visibility': _visibility,
+        'trackingEnabled': _trackingEnabled,
+        'campaignTrackingEnabled': _trackingEnabled,
+        'qualifyingTransactionCount':
+            int.tryParse(_qualifyingTransactionCount.text.trim()),
+        'qualifyingTransactionValue':
+            int.tryParse(_qualifyingTransactionValue.text.trim()),
+        'eligibilityStartAt': _eligibilityStartAt.text.trim().isEmpty
+            ? null
+            : _eligibilityStartAt.text.trim(),
+        'eligibilityEndAt': _eligibilityEndAt.text.trim().isEmpty
+            ? null
+            : _eligibilityEndAt.text.trim(),
+        'eligibleTransactionTypes': _eligibleTransactionTypes.text
+            .split(',')
+            .map((value) => value.trim().toUpperCase())
+            .where((value) => value.isNotEmpty)
+            .toList(),
+        'campaignStatus': _campaignStatus,
+        'rewardDescription': _rewardDescription.text.trim(),
+        'tracking': {
+          'enabled': _trackingEnabled,
+          if (num.tryParse(_trackingGoal.text.trim()) != null)
+            'goal': num.parse(_trackingGoal.text.trim()),
+          'metric': _trackingMetric.text.trim().isEmpty
+              ? 'VALUE'
+              : _trackingMetric.text.trim(),
+        },
         'isActive': widget.item?['isActive'] ?? false,
       };
   void _preview() => showDialog<void>(

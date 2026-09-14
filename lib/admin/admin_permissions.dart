@@ -51,6 +51,17 @@ abstract final class AdminPermissions {
   static const announcementsUpdate = 'announcements.update';
   static const announcementsActivate = 'announcements.activate';
   static const announcementsDelete = 'announcements.delete';
+  static const announcementsParticipantsView =
+      'announcements.participants.view';
+  static const announcementsParticipantsHistoryView =
+      'announcements.participants.history_view';
+  static const announcementsWinnerManage = 'announcements.winner.mark';
+  static const announcementsWinnersView = 'announcements.winners.view';
+  static const promoParticipantsView = announcementsParticipantsView;
+  static const promoParticipantsHistoryView =
+      announcementsParticipantsHistoryView;
+  static const promoWinnerManage = announcementsWinnerManage;
+  static const promoWinnersView = announcementsWinnersView;
   static const communicationsView = 'communications.view';
   static const emailCampaignCreate = 'email_campaign.create';
   static const emailCampaignSend = 'email_campaign.send';

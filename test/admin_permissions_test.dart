@@ -12,6 +12,25 @@ void main() {
     expect(access.has(AdminPermissions.rolesDelete), isTrue);
   });
 
+  test('announcement permissions are least-privilege', () {
+    const AdminAccess reader = AdminAccess(
+      role: 'STAFF',
+      permissions: <String>{AdminPermissions.announcementsView},
+    );
+    expect(reader.has(AdminPermissions.announcementsView), isTrue);
+    expect(reader.has(AdminPermissions.announcementsCreate), isFalse);
+    expect(reader.has(AdminPermissions.announcementsDelete), isFalse);
+  });
+
+  test('announcement permission contract matches backend registry', () {
+    expect(AdminPermissions.announcementsView, 'announcements.view');
+    expect(AdminPermissions.announcementsSummary, 'announcements.summary');
+    expect(AdminPermissions.announcementsCreate, 'announcements.create');
+    expect(AdminPermissions.announcementsUpdate, 'announcements.update');
+    expect(AdminPermissions.announcementsActivate, 'announcements.activate');
+    expect(AdminPermissions.announcementsDelete, 'announcements.delete');
+  });
+
   test('ServicePay super admin retains full access', () {
     const AdminAccess access = AdminAccess(
       role: 'servicepay-super-admin',

@@ -13,6 +13,7 @@ import 'admin_delivery_management_screen.dart';
 import 'admin_keke_fare_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_announcements_screen.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_riders_screen.dart';
@@ -366,6 +367,16 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.route_outlined,
         activeIcon: Icons.route_rounded,
         label: 'Logistics',
+      );
+    }
+
+    if (isHeadOffice ||
+        hasPermission(AdminPermissions.announcementsView)) {
+      addNavigationPage(
+        page: const AdminAnnouncementsScreen(),
+        icon: Icons.campaign_outlined,
+        activeIcon: Icons.campaign,
+        label: 'Announcements',
       );
     }
 

@@ -45,6 +45,12 @@ abstract final class AdminPermissions {
   static const notificationsView = 'notifications.view';
   static const notificationsCreate = 'notifications.create';
   static const notificationsSend = 'notifications.send';
+  static const announcementsView = 'announcements.view';
+  static const announcementsSummary = 'announcements.summary';
+  static const announcementsCreate = 'announcements.create';
+  static const announcementsUpdate = 'announcements.update';
+  static const announcementsActivate = 'announcements.activate';
+  static const announcementsDelete = 'announcements.delete';
   static const communicationsView = 'communications.view';
   static const emailCampaignCreate = 'email_campaign.create';
   static const emailCampaignSend = 'email_campaign.send';

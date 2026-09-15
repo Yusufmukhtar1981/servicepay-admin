@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'fintech_screen_registry.dart';
 
+import 'admin_announcements_api.dart';
 import 'admin_executive_dashboard_screen.dart';
+import 'admin_permissions.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_customer_360_screen.dart';
@@ -13,7 +15,16 @@ import 'admin_transactions_screen.dart';
 import 'users_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+  const AdminDashboardScreen({
+    super.key,
+    this.dashboardLoader,
+    this.initialAccess,
+    this.promoApi,
+  });
+
+  final Future<Map<String, dynamic>> Function(String range)? dashboardLoader;
+  final AdminAccess? initialAccess;
+  final AdminAnnouncementsApi? promoApi;
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -293,7 +304,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
-                  AdminExecutiveDashboardScreen(onOpenModule: _openModule),
+                  AdminExecutiveDashboardScreen(
+                    onOpenModule: _openModule,
+                    dashboardLoader: widget.dashboardLoader,
+                    initialAccess: widget.initialAccess,
+                    promoApi: widget.promoApi,
+                  ),
                   _fintechControlCenter(),
                 ],
               ),

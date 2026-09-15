@@ -73,6 +73,103 @@ class AdminAnnouncementsApi {
         sort: sort,
       );
 
+  Future<Map<String, dynamic>> promoLeaderboard({
+    String? campaignId,
+    String range = 'campaign',
+    String? from,
+    String? to,
+    String? status,
+    String? search,
+    int page = 1,
+    int limit = 25,
+  }) {
+    final query = <String, String>{
+      if (campaignId != null && campaignId.trim().isNotEmpty)
+        'campaignId': campaignId.trim(),
+      if (range.trim().isNotEmpty) 'range': range.trim(),
+      if (from != null && from.trim().isNotEmpty) 'from': from.trim(),
+      if (to != null && to.trim().isNotEmpty) 'to': to.trim(),
+      if (status != null && status.trim().isNotEmpty) 'status': status.trim(),
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      'page': '$page',
+      'limit': '$limit',
+    };
+    return _request('GET', '/promo-leaderboard', queryParameters: query);
+  }
+
+  Future<Map<String, dynamic>> listPromoLeaderboard({
+    String? campaignId,
+    String range = 'campaign',
+    String? from,
+    String? to,
+    String? status,
+    String? search,
+    int page = 1,
+    int limit = 25,
+  }) =>
+      promoLeaderboard(
+        campaignId: campaignId,
+        range: range,
+        from: from,
+        to: to,
+        status: status,
+        search: search,
+        page: page,
+        limit: limit,
+      );
+
+  Future<Map<String, dynamic>> promoLeaderboardDetail(
+    String customerId, {
+    String? campaignId,
+    String? range,
+    String? from,
+    String? to,
+    String? status,
+    String? search,
+    int page = 1,
+    int limit = 25,
+  }) {
+    final query = <String, String>{
+      if (campaignId != null && campaignId.trim().isNotEmpty)
+        'campaignId': campaignId.trim(),
+      if (range != null && range.trim().isNotEmpty) 'range': range.trim(),
+      if (from != null && from.trim().isNotEmpty) 'from': from.trim(),
+      if (to != null && to.trim().isNotEmpty) 'to': to.trim(),
+      if (status != null && status.trim().isNotEmpty) 'status': status.trim(),
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      'page': '$page',
+      'limit': '$limit',
+    };
+    return _request(
+      'GET',
+      '/promo-leaderboard/${Uri.encodeComponent(customerId)}',
+      queryParameters: query,
+    );
+  }
+
+  Future<Map<String, dynamic>> promoParticipantDetail(
+    String customerId, {
+    String? campaignId,
+    String? range,
+    String? from,
+    String? to,
+    String? status,
+    String? search,
+    int page = 1,
+    int limit = 25,
+  }) =>
+      promoLeaderboardDetail(
+        customerId,
+        campaignId: campaignId,
+        range: range,
+        from: from,
+        to: to,
+        status: status,
+        search: search,
+        page: page,
+        limit: limit,
+      );
+
   /// Returns the immutable winner audit trail for a promotion.
   Future<Map<String, dynamic>> winnersHistory(String id) => _request(
         'GET',

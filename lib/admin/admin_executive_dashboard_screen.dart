@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_permissions.dart';
+import 'admin_announcements_api.dart';
+import 'admin_promo_leaderboard_screen.dart';
 
 class AdminExecutiveDashboardScreen extends StatefulWidget {
   const AdminExecutiveDashboardScreen({
@@ -14,11 +16,13 @@ class AdminExecutiveDashboardScreen extends StatefulWidget {
     this.onOpenModule,
     this.dashboardLoader,
     this.initialAccess,
+    this.promoApi,
   });
 
   final ValueChanged<String>? onOpenModule;
   final Future<Map<String, dynamic>> Function(String range)? dashboardLoader;
   final AdminAccess? initialAccess;
+  final AdminAnnouncementsApi? promoApi;
 
   @override
   State<AdminExecutiveDashboardScreen> createState() =>
@@ -42,13 +46,30 @@ class _AdminExecutiveDashboardScreenState
   DateTime? _lastUpdated;
   Future<void>? _activeLoad;
   bool _isLoading = true;
+  late final AdminAnnouncementsApi _promoApi;
+  late final bool _ownsPromoApi;
+  AdminAccess? _promoAccess;
+  bool _promoLoading = true;
+  String? _promoError;
+  List<Map<String, dynamic>> _promoTopParticipants =
+      <Map<String, dynamic>>[];
 
   @override
   void initState() {
     super.initState();
+    _promoApi = widget.promoApi ?? AdminAnnouncementsApi();
+    _ownsPromoApi = widget.promoApi == null;
+    _promoAccess = widget.initialAccess;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh(showErrorState: true);
+      _loadPromoTopFive();
     });
+  }
+
+  @override
+  void dispose() {
+    if (_ownsPromoApi) _promoApi.close();
+    super.dispose();
   }
 
   Map<String, dynamic> _map(dynamic value) {
@@ -75,6 +96,65 @@ class _AdminExecutiveDashboardScreenState
   }
 
   bool _can(String permission) => _access.has(permission);
+
+  Future<void> _loadPromoTopFive() async {
+    final access = widget.initialAccess ?? await AdminSessionStore.loadAccess();
+    if (!access.hasHeadOfficePermission(
+        AdminPermissions.announcementsParticipantsView)) {
+      if (!mounted) return;
+      setState(() {
+        _promoAccess = access;
+        _promoLoading = false;
+      });
+      return;
+    }
+    try {
+      final result = await _promoApi.promoLeaderboard(
+        range: 'campaign',
+        page: 1,
+        limit: 5,
+      );
+      final rawData = result['data'];
+      final data =
+          rawData is Map ? Map<String, dynamic>.from(rawData) : result;
+      final raw = data['topParticipants'] ??
+          result['topParticipants'] ??
+          data['participants'] ??
+          result['participants'];
+      if (!mounted) return;
+      setState(() {
+        _promoAccess = access;
+        _promoTopParticipants = raw is List
+            ? raw
+                .whereType<Map>()
+                .map(Map<String, dynamic>.from)
+                .take(5)
+                .toList()
+            : <Map<String, dynamic>>[];
+        _promoLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _promoAccess = access;
+        _promoLoading = false;
+        _promoError = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _openPromoLeaderboard() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(
+            name: '/admin/promotions/promo-leaderboard'),
+        builder: (_) => AdminPromoLeaderboardScreen(
+          api: _promoApi,
+          initialAccess: _promoAccess,
+        ),
+      ),
+    );
+  }
 
   Future<void> _loadDashboard(String requestedRange) async {
     if (widget.dashboardLoader != null) {
@@ -396,6 +476,18 @@ class _AdminExecutiveDashboardScreenState
           const SizedBox(height: 18),
           _sectionTitle('Executive overview', 'Real-time server aggregates'),
           const SizedBox(height: 10),
+          if (_promoAccess?.hasHeadOfficePermission(
+                  AdminPermissions.announcementsParticipantsView) ==
+              true) ...[
+            AdminPromoLeaderboardTop5(
+              participants: _promoTopParticipants,
+              loading: _promoLoading,
+              error: _promoError,
+              onRetry: _loadPromoTopFive,
+              onViewFullLeaderboard: _openPromoLeaderboard,
+            ),
+            const SizedBox(height: 18),
+          ],
           _kpiGrid(constraints.maxWidth),
           const SizedBox(height: 22),
           _twoColumn(

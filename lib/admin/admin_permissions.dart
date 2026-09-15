@@ -188,6 +188,22 @@ class AdminAccess {
   bool get isServicePaySuperAdmin =>
       normalizeRole(role) == 'SERVICEPAY_SUPER_ADMIN';
 
+  static const Set<String> _headOfficeRoles = <String>{
+    'HEAD_OFFICE',
+    'HEAD_OFFICE_ADMIN',
+    'ADMIN',
+    'SUPER_ADMIN',
+    'SERVICEPAY_SUPER_ADMIN',
+  };
+
+  /// Mirrors the backend role aliases which produce staffAccess.isHeadOffice.
+  bool get isHeadOffice => _headOfficeRoles.contains(normalizeRole(role));
+
+  /// High-trust promotion reports require both Head Office identity and the
+  /// participant permission. Scoped staff must not gain access through '*'.
+  bool hasHeadOfficePermission(String permission) =>
+      isHeadOffice && (_hasExplicit(permission) || permissions.contains('*'));
+
   static const Set<String> _featureControlMasterRoles = <String>{
     'HEAD_OFFICE',
     'SUPER_ADMIN',

@@ -14,6 +14,7 @@ import 'admin_keke_fare_screen.dart';
 import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_announcements_screen.dart';
+import 'admin_promo_leaderboard_screen.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_riders_screen.dart';
@@ -80,6 +81,19 @@ bool canAccessFeatureControlsNavigation({
   ).canViewFeatureControls;
 }
 
+@visibleForTesting
+bool canAccessPromoLeaderboardNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  return AdminAccess(
+    role: role,
+    permissions: permissions,
+  ).hasHeadOfficePermission(
+    AdminPermissions.announcementsParticipantsView,
+  );
+}
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
 
@@ -90,6 +104,11 @@ class AdminMainNavigation extends StatefulWidget {
     final List<String> labels = <String>[];
     if (access.hasBusinessPartnerAdmin(AdminPermissions.businessPartnersView)) {
       labels.add('Business Partners');
+    }
+    if (access.hasHeadOfficePermission(
+      AdminPermissions.announcementsParticipantsView,
+    )) {
+      labels.add('Promotions');
     }
     return labels;
   }
@@ -370,13 +389,24 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice ||
-        hasPermission(AdminPermissions.announcementsView)) {
+    if (isHeadOffice || hasPermission(AdminPermissions.announcementsView)) {
       addNavigationPage(
         page: const AdminAnnouncementsScreen(),
         icon: Icons.campaign_outlined,
         activeIcon: Icons.campaign,
         label: 'Announcements',
+      );
+    }
+
+    if (canAccessPromoLeaderboardNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: const AdminPromoLeaderboardScreen(),
+        icon: Icons.emoji_events_outlined,
+        activeIcon: Icons.emoji_events_rounded,
+        label: 'Promotions',
       );
     }
 

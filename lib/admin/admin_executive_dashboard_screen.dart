@@ -99,8 +99,7 @@ class _AdminExecutiveDashboardScreenState
 
   Future<void> _loadPromoTopFive() async {
     final access = widget.initialAccess ?? await AdminSessionStore.loadAccess();
-    if (!access.hasHeadOfficePermission(
-        AdminPermissions.announcementsParticipantsView)) {
+    if (!access.isHeadOffice) {
       if (!mounted) return;
       setState(() {
         _promoAccess = access;
@@ -476,9 +475,7 @@ class _AdminExecutiveDashboardScreenState
           const SizedBox(height: 18),
           _sectionTitle('Executive overview', 'Real-time server aggregates'),
           const SizedBox(height: 10),
-          if (_promoAccess?.hasHeadOfficePermission(
-                  AdminPermissions.announcementsParticipantsView) ==
-              true) ...[
+          if (_promoAccess?.isHeadOffice == true) ...[
             AdminPromoLeaderboardTop5(
               participants: _promoTopParticipants,
               loading: _promoLoading,

@@ -30,7 +30,7 @@ class _LeaderboardClient extends http.BaseClient {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({'auth_token': 'token'}));
 
-  test('leaderboard access requires a backend Head Office role', () {
+  test('leaderboard access follows the backend Head Office role boundary', () {
     const permission = AdminPermissions.announcementsParticipantsView;
     for (final role in <String>[
       'STAFF',
@@ -45,7 +45,7 @@ void main() {
       expect(access.isHeadOffice, isFalse, reason: role);
       expect(access.hasHeadOfficePermission(permission), isFalse, reason: role);
       expect(AdminMainNavigation.visibleDestinationLabels(access),
-          isNot(contains('Promotions')));
+          isNot(contains('Promo Leaderboard')));
     }
 
     for (final role in <String>[
@@ -57,12 +57,12 @@ void main() {
     ]) {
       final access = AdminAccess(
         role: role,
-        permissions: const <String>{permission},
+        permissions: const <String>{},
       );
       expect(access.isHeadOffice, isTrue, reason: role);
-      expect(access.hasHeadOfficePermission(permission), isTrue, reason: role);
+      expect(access.hasHeadOfficePermission(permission), isFalse, reason: role);
       expect(AdminMainNavigation.visibleDestinationLabels(access),
-          contains('Promotions'));
+          contains('Promo Leaderboard'));
     }
 
     const wildcard = AdminAccess(
@@ -71,7 +71,7 @@ void main() {
     );
     expect(wildcard.hasHeadOfficePermission(permission), isTrue);
     expect(AdminMainNavigation.visibleDestinationLabels(wildcard),
-        contains('Promotions'));
+        contains('Promo Leaderboard'));
   });
 
   test('promo leaderboard API sends list and detail contract queries',
@@ -207,9 +207,40 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Top 5 Promo Participants'), findsNothing);
-    expect(find.text('Promotions'), findsNothing);
+    expect(find.text('Top Promo Participants'), findsNothing);
+    expect(find.text('Promo Leaderboard'), findsNothing);
     expect(client.requests, isEmpty);
+  });
+
+  testWidgets(
+      'Head Office dashboard shows promo widget without a permission list',
+      (tester) async {
+    final client = _LeaderboardClient([
+      http.Response(
+          jsonEncode({
+            'data': {
+              'topParticipants': <dynamic>[],
+            },
+          }),
+          200),
+    ]);
+    await tester.pumpWidget(MaterialApp(
+      home: AdminExecutiveDashboardScreen(
+        promoApi: AdminAnnouncementsApi(client: client),
+        initialAccess: const AdminAccess(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{},
+        ),
+        dashboardLoader: (_) async => <String, dynamic>{
+          'generatedAt': '2026-01-01T00:00:00Z',
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Top Promo Participants'), findsOneWidget);
+    expect(find.text('View Full Leaderboard'), findsOneWidget);
+    expect(client.requests, hasLength(1));
   });
 
   testWidgets('leaderboard renders summary, top three and opens details',
@@ -296,7 +327,7 @@ void main() {
         api: AdminAnnouncementsApi(client: client),
         initialAccess: const AdminAccess(
           role: 'HEAD_OFFICE',
-          permissions: <String>{AdminPermissions.announcementsParticipantsView},
+          permissions: <String>{},
         ),
       ),
     ));

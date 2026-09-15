@@ -89,9 +89,7 @@ bool canAccessPromoLeaderboardNavigation({
   return AdminAccess(
     role: role,
     permissions: permissions,
-  ).hasHeadOfficePermission(
-    AdminPermissions.announcementsParticipantsView,
-  );
+  ).isHeadOffice;
 }
 
 class AdminMainNavigation extends StatefulWidget {
@@ -105,10 +103,8 @@ class AdminMainNavigation extends StatefulWidget {
     if (access.hasBusinessPartnerAdmin(AdminPermissions.businessPartnersView)) {
       labels.add('Business Partners');
     }
-    if (access.hasHeadOfficePermission(
-      AdminPermissions.announcementsParticipantsView,
-    )) {
-      labels.add('Promotions');
+    if (access.isHeadOffice) {
+      labels.add('Promo Leaderboard');
     }
     return labels;
   }
@@ -406,7 +402,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         page: const AdminPromoLeaderboardScreen(),
         icon: Icons.emoji_events_outlined,
         activeIcon: Icons.emoji_events_rounded,
-        label: 'Promotions',
+        label: 'Promo Leaderboard',
       );
     }
 

@@ -68,9 +68,7 @@ class _AdminPromoLeaderboardScreenState
     super.dispose();
   }
 
-  bool _canView(AdminAccess access) => access.hasHeadOfficePermission(
-        AdminPermissions.announcementsParticipantsView,
-      );
+  bool _canView(AdminAccess access) => access.isHeadOffice;
 
   Future<void> _load({int? page}) async {
     final access = widget.initialAccess ?? await AdminSessionStore.loadAccess();
@@ -612,7 +610,7 @@ class AdminPromoLeaderboardTop5 extends StatelessWidget {
                 children: [
                   const Expanded(
                     child: Text(
-                      'Top 5 Promo Participants',
+                      'Top Promo Participants',
                       style:
                           TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                     ),

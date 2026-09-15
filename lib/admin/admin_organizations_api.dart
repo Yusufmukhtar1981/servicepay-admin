@@ -5,12 +5,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 abstract class AdminOrganizationsApiClient {
   Future<Map<String, dynamic>> summary();
-  Future<Map<String, dynamic>> list({String? status, String? search});
+  Future<Map<String, dynamic>> list(
+      {String? status, String? search, String? organizationType});
   Future<Map<String, dynamic>> details(String id);
   Future<Map<String, dynamic>> wallet(String id);
   Future<Map<String, dynamic>> members(String id);
   Future<Map<String, dynamic>> payments(String id);
   Future<Map<String, dynamic>> audit(String id);
+  Future<Map<String, dynamic>> startReview(String id);
+  Future<Map<String, dynamic>> approve(String id);
+  Future<Map<String, dynamic>> reject(String id, {required String reason});
+  Future<Map<String, dynamic>> requestInformation(String id,
+      {required String reason, List<String> fields, List<String> documents});
+  Future<Map<String, dynamic>> suspend(String id, {required String reason});
+  Future<Map<String, dynamic>> document(String id, String documentId,
+      {String action = 'view'});
   Future<void> updateStatus(String id, String status);
   Future<void> updateWalletFreeze(String id, bool frozen);
   Future<Map<String, dynamic>> withdrawalsSummary();
@@ -112,15 +121,14 @@ class AdminOrganizationsApi implements AdminOrganizationsApiClient {
   Future<Map<String, dynamic>> summary() => _request('GET', '/summary');
 
   @override
-  Future<Map<String, dynamic>> list({String? status, String? search}) =>
-      _request(
-        'GET',
-        '',
-        query: <String, String>{
-          if (status != null && status.isNotEmpty) 'status': status,
-          if (search != null && search.isNotEmpty) 'search': search,
-        },
-      );
+  Future<Map<String, dynamic>> list(
+          {String? status, String? search, String? organizationType}) =>
+      _request('GET', '', query: <String, String>{
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (search != null && search.isNotEmpty) 'search': search,
+        if (organizationType != null && organizationType.isNotEmpty)
+          'organizationType': organizationType,
+      });
 
   @override
   Future<Map<String, dynamic>> details(String id) => _request('GET', '/$id');
@@ -140,6 +148,58 @@ class AdminOrganizationsApi implements AdminOrganizationsApiClient {
   @override
   Future<Map<String, dynamic>> audit(String id) =>
       _request('GET', '/$id/audit');
+
+  @override
+  Future<Map<String, dynamic>> startReview(String id) =>
+      _request('POST', '/$id/start-review');
+
+  @override
+  Future<Map<String, dynamic>> approve(String id) =>
+      _request('POST', '/$id/approve');
+
+  @override
+  Future<Map<String, dynamic>> reject(String id, {required String reason}) {
+    if (reason.trim().isEmpty) {
+      throw const AdminOrganizationsApiException(
+          'A rejection reason is required.', 400);
+    }
+    return _request('POST', '/$id/reject',
+        body: <String, dynamic>{'reason': reason.trim()});
+  }
+
+  @override
+  Future<Map<String, dynamic>> requestInformation(String id,
+      {required String reason,
+      List<String> fields = const <String>[],
+      List<String> documents = const <String>[]}) {
+    if (reason.trim().isEmpty) {
+      throw const AdminOrganizationsApiException(
+          'A reason is required to request information.', 400);
+    }
+    return _request('POST', '/$id/request-information', body: <String, dynamic>{
+      'reason': reason.trim(),
+      'fields': fields,
+      'documents': documents,
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> suspend(String id, {required String reason}) {
+    if (reason.trim().isEmpty) {
+      throw const AdminOrganizationsApiException(
+          'A suspension reason is required.', 400);
+    }
+    return _request('POST', '/$id/suspend',
+        body: <String, dynamic>{'reason': reason.trim()});
+  }
+
+  @override
+  Future<Map<String, dynamic>> document(String id, String documentId,
+      {String action = 'view'}) {
+    final safeAction =
+        <String>{'preview', 'download'}.contains(action) ? '/$action' : '';
+    return _request('GET', '/$id/documents/$documentId$safeAction');
+  }
 
   @override
   Future<void> updateStatus(String id, String status) async {

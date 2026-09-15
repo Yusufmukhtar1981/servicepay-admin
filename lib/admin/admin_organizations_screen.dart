@@ -1,7 +1,109 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_organizations_api.dart';
 import 'admin_permissions.dart';
+
+const List<Map<String, String>> adminOrganizationTypeFilters =
+    <Map<String, String>>[
+  <String, String>{'value': 'COMPANY', 'label': 'Company'},
+  <String, String>{'value': 'NGO', 'label': 'NGO'},
+  <String, String>{'value': 'COOPERATIVE', 'label': 'Cooperative'},
+  <String, String>{'value': 'ASSOCIATION', 'label': 'Association'},
+  <String, String>{'value': 'FOUNDATION', 'label': 'Foundation'},
+  <String, String>{
+    'value': 'SCHOOL',
+    'label': 'School/Educational Institution'
+  },
+  <String, String>{'value': 'RELIGIOUS', 'label': 'Religious'},
+  <String, String>{'value': 'GOVERNMENT', 'label': 'Government'},
+  <String, String>{'value': 'COMMUNITY', 'label': 'Community'},
+  <String, String>{'value': 'OTHER', 'label': 'Other'},
+];
+
+/// Fields the Backend/Customer KYB flow can actually fulfil. Keep this list
+/// deliberately narrower than the persistence model: `type` is a legacy
+/// alias, and residential state/LGA/landmark are not customer-editable
+/// request targets.
+const List<String> adminOrganizationRequestFields = <String>[
+  'name',
+  'organizationType',
+  'registrationStatus',
+  'registrationNumber',
+  'dateEstablished',
+  'description',
+  'industry',
+  'sector',
+  'organizationEmail',
+  'organizationPhone',
+  'website',
+  'officeAddress.address',
+  'officeAddress.state',
+  'officeAddress.lga',
+  'officeAddress.city',
+  'officeAddress.landmark',
+  'representative.fullName',
+  'representative.role',
+  'representative.phone',
+  'representative.email',
+  'representative.nin',
+  'representative.residentialAddress.address',
+  'representative.residentialAddress.city',
+];
+
+const List<String> adminOrganizationRequestDocumentTypes = <String>[
+  'CERTIFICATE_OF_INCORPORATION',
+  'REGISTRATION_CERTIFICATE',
+  'GOVERNING_DOCUMENT',
+  'TAX_REGISTRATION',
+  'PROOF_OF_ADDRESS',
+  'IDENTITY_DOCUMENT',
+  'OTHER',
+];
+
+String organizationRequestFieldLabel(String path) => path
+    .split('.')
+    .map((part) => part
+        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+        .replaceAll('_', ' '))
+    .map((part) =>
+        part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
+    .join(' / ');
+
+String organizationRequestDocumentLabel(String type) => type
+    .split('_')
+    .map((part) =>
+        part.isEmpty ? part : '${part[0]}${part.substring(1).toLowerCase()}')
+    .join(' ');
+
+String organizationRepresentativeName(Map<String, dynamic> representative) =>
+    (representative['fullName'] ?? representative['name'] ?? '—').toString();
+
+bool organizationDocumentsVisible(AdminAccess access) =>
+    access.has(AdminPermissions.organizationsDocumentsView);
+
+String organizationAuditActor(Map<String, dynamic> item) {
+  final actor = item['actor'];
+  if (actor is Map) {
+    final value = actor['fullName'] ?? actor['email'];
+    if (value?.toString().trim().isNotEmpty == true) return value.toString();
+  }
+  final value = item['actorName'] ?? item['actorEmail'];
+  return value?.toString().trim().isNotEmpty == true
+      ? value.toString()
+      : 'Admin';
+}
+
+String organizationAuditReasonStatus(Map<String, dynamic> item) {
+  final metadata = item['metadata'];
+  final reason = metadata is Map ? metadata['reason'] : item['reason'];
+  final status = metadata is Map ? metadata['status'] : item['status'];
+  final parts = <String>[
+    if (reason?.toString().trim().isNotEmpty == true) reason.toString(),
+    if (status?.toString().trim().isNotEmpty == true) status.toString(),
+  ];
+  return parts.isEmpty ? '—' : parts.join(' · ');
+}
 
 String organizationStatusPermission(
   String nextStatus, {
@@ -41,6 +143,7 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
   bool _loading = true;
   String? _error;
   String _status = '';
+  String _organizationType = '';
   String _search = '';
   Map<String, dynamic> _summary = <String, dynamic>{};
   List<Map<String, dynamic>> _organizations = <Map<String, dynamic>>[];
@@ -81,7 +184,11 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
     try {
       final values = await Future.wait(<Future<Map<String, dynamic>>>[
         _api.summary(),
-        _api.list(status: _status.isEmpty ? null : _status, search: _search),
+        _api.list(
+            status: _status.isEmpty ? null : _status,
+            search: _search,
+            organizationType:
+                _organizationType.isEmpty ? null : _organizationType),
       ]);
       if (!mounted) return;
       setState(() {
@@ -241,48 +348,71 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
           ),
           const SizedBox(height: 20),
           Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 280,
-                child: TextField(
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    labelText: 'Search organizations',
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (value) {
-                    _search = value.trim();
+              spacing: 12,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                    width: 280,
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        labelText: 'Search organizations',
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (value) {
+                        _search = value.trim();
+                        _load();
+                      },
+                    )),
+                DropdownButton<String>(
+                  value: _status,
+                  hint: const Text('Status'),
+                  items: const [
+                    DropdownMenuItem(value: '', child: Text('All statuses')),
+                    DropdownMenuItem(value: 'DRAFT', child: Text('Draft')),
+                    DropdownMenuItem(
+                        value: 'PENDING_REVIEW', child: Text('Pending review')),
+                    DropdownMenuItem(
+                        value: 'UNDER_REVIEW', child: Text('Under review')),
+                    DropdownMenuItem(
+                        value: 'MORE_INFORMATION_REQUIRED',
+                        child: Text('More information required')),
+                    DropdownMenuItem(
+                        value: 'PENDING_VERIFICATION',
+                        child: Text('Pending verification (legacy)')),
+                    DropdownMenuItem(
+                        value: 'APPROVED', child: Text('Approved')),
+                    DropdownMenuItem(
+                        value: 'VERIFIED', child: Text('Verified (legacy)')),
+                    DropdownMenuItem(
+                        value: 'SUSPENDED', child: Text('Suspended')),
+                    DropdownMenuItem(
+                        value: 'REJECTED', child: Text('Rejected')),
+                  ],
+                  onChanged: (value) {
+                    _status = value ?? '';
                     _load();
                   },
                 ),
-              ),
-              DropdownButton<String>(
-                value: _status,
-                hint: const Text('Status'),
-                items: const [
-                  DropdownMenuItem(value: '', child: Text('All statuses')),
-                  DropdownMenuItem(value: 'DRAFT', child: Text('Draft')),
-                  DropdownMenuItem(
-                    value: 'PENDING_VERIFICATION',
-                    child: Text('Pending verification'),
-                  ),
-                  DropdownMenuItem(value: 'VERIFIED', child: Text('Verified')),
-                  DropdownMenuItem(
-                    value: 'SUSPENDED',
-                    child: Text('Suspended'),
-                  ),
-                  DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
-                ],
-                onChanged: (value) {
-                  _status = value ?? '';
-                  _load();
-                },
-              ),
-            ],
-          ),
+                DropdownButton<String>(
+                  value: _organizationType,
+                  hint: const Text('Organization type'),
+                  items: <DropdownMenuItem<String>>[
+                    const DropdownMenuItem(value: '', child: Text('All types')),
+                    ...adminOrganizationTypeFilters.map(
+                      (type) => DropdownMenuItem<String>(
+                        value: type['value'],
+                        child: Text(type['label']!),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    _organizationType = value ?? '';
+                    _load();
+                  },
+                ),
+              ]),
           const SizedBox(height: 14),
           if (_organizations.isEmpty)
             const Card(
@@ -328,7 +458,9 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        onTap: () => _openDetails(item),
+        onTap: _can(AdminPermissions.organizationsView)
+            ? () => _openDetails(item)
+            : null,
         leading: CircleAvatar(
           child: Text(_text(item['name'], 'O').substring(0, 1).toUpperCase()),
         ),
@@ -949,6 +1081,86 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
   }
 }
 
+class _RequestInformationSelection {
+  final Set<String> fields = <String>{};
+  final Set<String> documents = <String>{};
+}
+
+class _RequestInformationContent extends StatelessWidget {
+  const _RequestInformationContent({
+    required this.reason,
+    required this.selection,
+    required this.onChanged,
+  });
+
+  final TextEditingController reason;
+  final _RequestInformationSelection selection;
+  final VoidCallback onChanged;
+
+  Widget _choices({
+    required String title,
+    required List<String> values,
+    required Set<String> selected,
+    required String Function(String) label,
+  }) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: values
+                .map((value) => FilterChip(
+                      label: Text(label(value)),
+                      selected: selected.contains(value),
+                      onSelected: (checked) {
+                        if (checked) {
+                          selected.add(value);
+                        } else {
+                          selected.remove(value);
+                        }
+                        onChanged();
+                      },
+                    ))
+                .toList(),
+          ),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: reason,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Required reason',
+                hintText: 'Explain what is missing',
+              ),
+            ),
+            _choices(
+              title: 'Fields to request',
+              values: adminOrganizationRequestFields,
+              selected: selection.fields,
+              label: organizationRequestFieldLabel,
+            ),
+            _choices(
+              title: 'Documents to request',
+              values: adminOrganizationRequestDocumentTypes,
+              selected: selection.documents,
+              label: organizationRequestDocumentLabel,
+            ),
+          ],
+        ),
+      );
+}
+
 class _DetailsSheet extends StatefulWidget {
   const _DetailsSheet({
     required this.details,
@@ -974,6 +1186,7 @@ class _DetailsSheetState extends State<_DetailsSheet> {
   String get id =>
       (widget.details['id'] ?? widget.details['_id'] ?? '').toString();
   bool can(String p) => widget.access.has(p);
+  bool get canDocuments => organizationDocumentsVisible(widget.access);
 
   @override
   void initState() {
@@ -1045,6 +1258,200 @@ class _DetailsSheetState extends State<_DetailsSheet> {
     }
   }
 
+  Future<String?> _reasonDialog(String title,
+      {String confirm = 'Continue'}) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Required reason',
+            hintText: 'Write a clear audit note',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isEmpty) return;
+              Navigator.pop(context, controller.text.trim());
+            },
+            child: Text(confirm),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<Map<String, dynamic>?> _informationDialog() async {
+    final reason = TextEditingController();
+    final selection = _RequestInformationSelection();
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Request more information'),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return _RequestInformationContent(
+              reason: reason,
+              selection: selection,
+              onChanged: () => setDialogState(() {}),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (reason.text.trim().isEmpty) return;
+              // The content widget stores the selected values in controllers
+              // so the action remains independent of presentation state.
+              Navigator.pop(context, <String, dynamic>{
+                'reason': reason.text.trim(),
+                'fields': selection.fields.toList(),
+                'documents': selection.documents.toList(),
+              });
+            },
+            child: const Text('Send request'),
+          ),
+        ],
+      ),
+    );
+    reason.dispose();
+    return result;
+  }
+
+  Future<void> _reviewAction(String action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final information =
+          action == 'information' ? await _informationDialog() : null;
+      final reason = <String>{'reject', 'suspend'}.contains(action)
+          ? await _reasonDialog(action == 'reject'
+              ? 'Reject organization'
+              : 'Suspend organization')
+          : null;
+      if ((<String>{'reject', 'suspend'}.contains(action) &&
+              (reason == null || reason.isEmpty)) ||
+          (action == 'information' && information == null)) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      if (action == 'start') {
+        await widget.api.startReview(id);
+      } else if (action == 'approve') {
+        await widget.api.approve(id);
+      } else if (action == 'reject') {
+        await widget.api.reject(id, reason: reason!);
+      } else if (action == 'suspend') {
+        await widget.api.suspend(id, reason: reason!);
+      } else {
+        await widget.api.requestInformation(id,
+            reason: information!['reason'] as String,
+            fields: List<String>.from(information['fields'] as List),
+            documents: List<String>.from(information['documents'] as List));
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Organization review updated.')));
+        Navigator.pop(context);
+      }
+    } on AdminOrganizationsApiException catch (e) {
+      if (mounted) {
+        setState(() => _error = e.message);
+      }
+    } finally {
+      if (mounted && _busy) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openDocument(
+      Map<String, dynamic> document, String action) async {
+    final documentId = (document['id'] ?? document['_id'] ?? '').toString();
+    if (documentId.isEmpty || !canDocuments) return;
+    try {
+      final response =
+          await widget.api.document(id, documentId, action: action);
+      final value = response['document'] is Map
+          ? Map<String, dynamic>.from(response['document'] as Map)
+          : response;
+      final rawUrl = value['url'] ?? value['signedUrl'];
+      final url = rawUrl is String ? Uri.tryParse(rawUrl) : null;
+      if (url == null || !url.hasScheme) {
+        throw const AdminOrganizationsApiException(
+            'The secure document link was not returned.', 502);
+      }
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        throw const AdminOrganizationsApiException(
+            'Unable to open the secure document.', 502);
+      }
+    } on AdminOrganizationsApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Unable to open the secure document.')));
+      }
+    }
+  }
+
+  Widget _reviewActions() {
+    final status = (widget.details['status'] ?? '').toString().toUpperCase();
+    final reviewable = status == 'PENDING_REVIEW' ||
+        status == 'PENDING_VERIFICATION' ||
+        status == 'UNDER_REVIEW';
+    final approved = status == 'APPROVED' || status == 'VERIFIED';
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (reviewable &&
+            status != 'UNDER_REVIEW' &&
+            can(AdminPermissions.organizationsReview))
+          OutlinedButton(
+              onPressed: _busy ? null : () => _reviewAction('start'),
+              child: const Text('Start review')),
+        if (reviewable && can(AdminPermissions.organizationsReview))
+          FilledButton.icon(
+              onPressed: _busy ? null : () => _reviewAction('approve'),
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('Approve')),
+        if (reviewable && can(AdminPermissions.organizationsReview))
+          OutlinedButton(
+              onPressed: _busy ? null : () => _reviewAction('reject'),
+              child: const Text('Reject')),
+        if (reviewable && can(AdminPermissions.organizationsReview))
+          OutlinedButton(
+              onPressed: _busy ? null : () => _reviewAction('information'),
+              child: const Text('Request more information')),
+        if (approved && can(AdminPermissions.organizationsStatusManage))
+          OutlinedButton(
+              onPressed: _busy ? null : () => _reviewAction('suspend'),
+              child: const Text('Suspend')),
+        if (status == 'SUSPENDED' &&
+            can(AdminPermissions.organizationsStatusManage))
+          FilledButton(
+              onPressed: _busy ? null : () => widget.onStatus('APPROVED'),
+              child: const Text('Reactivate')),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: Padding(
@@ -1068,134 +1475,137 @@ class _DetailsSheetState extends State<_DetailsSheet> {
                 _badge(
                   (widget.details['status'] ?? 'DRAFT')
                       .toString()
-                      .toUpperCase(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _line(
-              'Type',
-              widget.details['type'] ?? widget.details['organizationType'],
-            ),
-            _line('Registration', widget.details['registrationNumber']),
-            _line('Contact', (widget.details['contact'] as Map?)?['name']),
-            _line('Email', (widget.details['contact'] as Map?)?['email']),
-            _line('Phone', (widget.details['contact'] as Map?)?['phone']),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (widget.details['status'] == 'PENDING_VERIFICATION' &&
-                    can(AdminPermissions.organizationsReview))
-                  FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onStatus('VERIFIED');
-                    },
-                    icon: const Icon(Icons.verified_outlined),
-                    label: const Text('Approve / verify'),
-                  ),
-                if (widget.details['status'] == 'PENDING_VERIFICATION' &&
-                    can(AdminPermissions.organizationsReview))
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onStatus('REJECTED');
-                    },
-                    child: const Text('Reject'),
-                  ),
-                if (widget.details['status'] == 'VERIFIED' &&
-                    can(AdminPermissions.organizationsStatusManage))
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onStatus('SUSPENDED');
-                    },
-                    child: const Text('Suspend'),
-                  ),
-                if (widget.details['status'] == 'SUSPENDED' &&
-                    can(AdminPermissions.organizationsStatusManage))
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onStatus('VERIFIED');
-                    },
-                    child: const Text('Reactivate'),
-                  ),
-                if (can(AdminPermissions.organizationsWalletManage))
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _freeze,
-                    icon: Icon(_frozen ? Icons.lock_open : Icons.lock_outline),
-                    label: Text(_frozen ? 'Unfreeze wallet' : 'Freeze wallet'),
-                  ),
-              ],
-            ),
-            const Divider(height: 28),
-            if (can(AdminPermissions.organizationsMembersView) ||
-                can(AdminPermissions.organizationsPaymentsView) ||
-                can(AdminPermissions.organizationsAuditView))
-              DefaultTabController(
-                length: 3,
-                child: Column(
-                  children: [
-                    TabBar(
-                      onTap: (i) {
-                        if ((i == 0 &&
-                                !can(
-                                  AdminPermissions.organizationsMembersView,
-                                )) ||
-                            (i == 1 &&
-                                !can(
-                                  AdminPermissions.organizationsPaymentsView,
-                                )) ||
-                            (i == 2 &&
-                                !can(
-                                  AdminPermissions.organizationsAuditView,
-                                ))) {
-                          return;
-                        }
-                        _loadTab(i);
-                      },
-                      tabs: const [
-                        Tab(text: 'Members'),
-                        Tab(text: 'Payments'),
-                        Tab(text: 'Audit'),
-                      ],
-                    ),
-                    if (_busy)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(),
-                      ),
-                    if (_error.isNotEmpty) Text(_error),
-                    ..._tabItems.map(
-                      (item) => ListTile(
-                        dense: true,
-                        title: Text(
-                          (item['name'] ??
-                                  item['fullName'] ??
-                                  item['action'] ??
-                                  item['reference'] ??
-                                  'Record')
-                              .toString(),
-                        ),
-                        subtitle: Text(
-                          (item['email'] ??
-                                  item['status'] ??
-                                  item['createdAt'] ??
-                                  '')
-                              .toString(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+                      .toUpperCase()),
+                ]),
+                const SizedBox(height: 14),
+                _line(
+                    'Type',
+                    widget.details['organizationType'] ??
+                        widget.details['type']),
+                _line('Registration', widget.details['registrationNumber']),
+                _line('Contact', (widget.details['contact'] as Map?)?['name']),
+                _line('Email', (widget.details['contact'] as Map?)?['email']),
+                _line('Phone', (widget.details['contact'] as Map?)?['phone']),
+                if (widget.details['representative'] is Map) ...[
+                  const SizedBox(height: 6),
+                  const Text('Authorized representative',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  _line(
+                      'Name',
+                      organizationRepresentativeName(Map<String, dynamic>.from(
+                          widget.details['representative'] as Map))),
+                  _line('Email',
+                      (widget.details['representative'] as Map)['email']),
+                  _line('Phone',
+                      (widget.details['representative'] as Map)['phone']),
+                  _line(
+                      'Identity',
+                      (widget.details['representative'] as Map)['ninMasked'] ??
+                          'Identity redacted'),
+                ],
+                _line('Submitted', widget.details['submittedAt']),
+                _line('Reviewed', widget.details['reviewedAt']),
+                _line(
+                    'Deciding admin',
+                    (widget.details['reviewedBy'] is Map
+                        ? (widget.details['reviewedBy'] as Map)['name'] ??
+                            (widget.details['reviewedBy'] as Map)['email']
+                        : widget.details['reviewedBy'])),
+                if (canDocuments && widget.details['documents'] is List) ...[
+                  const SizedBox(height: 10),
+                  const Text('Evidence documents',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  ...(widget.details['documents'] as List)
+                      .whereType<Map>()
+                      .map((raw) {
+                    final document = Map<String, dynamic>.from(raw);
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.description_outlined),
+                      title: Text((document['name'] ??
+                              document['documentType'] ??
+                              'Document')
+                          .toString()),
+                      subtitle: Text(
+                          (document['mimeType'] ?? 'Private evidence')
+                              .toString()),
+                      trailing: Wrap(children: [
+                        IconButton(
+                            tooltip: 'Preview',
+                            onPressed: _busy
+                                ? null
+                                : () => _openDocument(document, 'preview'),
+                            icon: const Icon(Icons.visibility_outlined)),
+                        IconButton(
+                            tooltip: 'Download',
+                            onPressed: _busy
+                                ? null
+                                : () => _openDocument(document, 'download'),
+                            icon: const Icon(Icons.download_outlined)),
+                      ]),
+                    );
+                  }),
+                ],
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  _reviewActions(),
+                  if (can(AdminPermissions.organizationsWalletManage))
+                    OutlinedButton.icon(
+                        onPressed: _busy ? null : _freeze,
+                        icon: Icon(
+                            _frozen ? Icons.lock_open : Icons.lock_outline),
+                        label: Text(
+                            _frozen ? 'Unfreeze wallet' : 'Freeze wallet')),
+                ]),
+                const Divider(height: 28),
+                if (can(AdminPermissions.organizationsMembersView) ||
+                    can(AdminPermissions.organizationsPaymentsView) ||
+                    can(AdminPermissions.organizationsAuditView))
+                  DefaultTabController(
+                      length: 3,
+                      child: Column(children: [
+                        TabBar(
+                            onTap: (i) {
+                              if ((i == 0 &&
+                                      !can(AdminPermissions
+                                          .organizationsMembersView)) ||
+                                  (i == 1 &&
+                                      !can(AdminPermissions
+                                          .organizationsPaymentsView)) ||
+                                  (i == 2 &&
+                                      !can(AdminPermissions
+                                          .organizationsAuditView))) {
+                                return;
+                              }
+                              _loadTab(i);
+                            },
+                            tabs: const [
+                              Tab(text: 'Members'),
+                              Tab(text: 'Payments'),
+                              Tab(text: 'Audit')
+                            ]),
+                        if (_busy)
+                          const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator()),
+                        if (_error.isNotEmpty) Text(_error),
+                        ..._tabItems.map((item) => ListTile(
+                              dense: true,
+                              title: Text((item['name'] ??
+                                      item['fullName'] ??
+                                      item['action'] ??
+                                      item['reference'] ??
+                                      'Record')
+                                  .toString()),
+                              subtitle: Text(
+                                  '${organizationAuditActor(item)} • '
+                                  '${organizationAuditReasonStatus(item)} • '
+                                  '${item['createdAt'] ?? item['timestamp'] ?? '—'}'),
+                            )),
+                      ])),
+              ]),
         ),
       ),
-    ),
   );
 
   Widget _line(String label, dynamic value) => Padding(

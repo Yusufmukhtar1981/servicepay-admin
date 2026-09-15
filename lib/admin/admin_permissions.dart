@@ -89,6 +89,7 @@ abstract final class AdminPermissions {
   static const organizationsMembersView = 'organizations.members.view';
   static const organizationsPaymentsView = 'organizations.payments.view';
   static const organizationsAuditView = 'organizations.audit.view';
+  static const organizationsDocumentsView = 'organizations.documents.view';
   static const organizationsWithdrawalsView = 'organizations.withdrawals.view';
   static const organizationsWithdrawalsReview =
       'organizations.withdrawals.review';

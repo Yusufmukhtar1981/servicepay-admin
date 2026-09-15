@@ -103,6 +103,7 @@ abstract final class AdminPermissions {
   // intentionally separate from the partner portal's service permissions so
   // customer, financial and audit data is never exposed by a broad Admin role.
   static const businessPartnersView = 'business_partners.view';
+  static const referralsView = 'referrals.view';
   static const businessPartnersUpdate = 'business_partners.update';
   static const businessPartnersCreate = 'business_partners.create';
   static const businessPartnersAssign = 'business_partners.assign';

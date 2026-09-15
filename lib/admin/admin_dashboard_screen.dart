@@ -55,6 +55,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
         _FintechItem('Account Restrictions', Icons.block_outlined),
         _FintechItem('Beneficiaries', Icons.group_add_outlined),
+        _FintechItem('Referral Monitoring', Icons.card_giftcard_outlined),
       ],
     ),
     _FintechSection(

@@ -30,6 +30,7 @@ import 'admin_empowerment_screen.dart';
 import 'admin_partner_screen.dart';
 import 'admin_partner_applications_screen.dart';
 import 'admin_business_partners_screen.dart';
+import 'admin_referrals_screen.dart';
 import 'admin_branch_management_screen.dart';
 
 import 'admin_cards_screen.dart';
@@ -105,6 +106,9 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.isHeadOffice) {
       labels.add('Promo Leaderboard');
+    }
+    if (access.has(AdminPermissions.referralsView)) {
+      labels.add('Referral Monitoring');
     }
     return labels;
   }
@@ -403,6 +407,19 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.emoji_events_outlined,
         activeIcon: Icons.emoji_events_rounded,
         label: 'Promo Leaderboard',
+      );
+    }
+
+    if (canAccessAdminNavigationModule(
+      role: adminRole,
+      permissions: permissions,
+      permission: AdminPermissions.referralsView,
+    )) {
+      addNavigationPage(
+        page: const AdminReferralsScreen(),
+        icon: Icons.card_giftcard_outlined,
+        activeIcon: Icons.card_giftcard_rounded,
+        label: 'Referral Monitoring',
       );
     }
 

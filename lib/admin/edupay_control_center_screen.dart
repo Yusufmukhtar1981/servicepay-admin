@@ -21,8 +21,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   final _api = EduPayApi();
   Map<String, dynamic>? data;
   Map<String, dynamic>? readiness;
-  List<Map<String, dynamic>> eligibleUsers = [];
-  bool isSuperAdmin = false;
+  bool canConfigureDuties = false;
   Set<String> permissions = <String>{};
   String adminRole = '';
   String section = 'Overview';
@@ -67,6 +66,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   Future<void> _loadReadiness() async {
     try {
       readiness = await _api.readiness();
+      canConfigureDuties =
+          (readiness?['capabilities'] as Map?)?['configureDuties'] == true;
       final prefs = await SharedPreferences.getInstance();
       adminRole = (prefs.getString('user_role') ??
               prefs.getString('admin_role') ??
@@ -75,26 +76,15 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           .trim()
           .toUpperCase()
           .replaceAll(RegExp(r'[\s-]+'), '_');
-      isSuperAdmin = adminRole == 'SUPER_ADMIN' ||
-          adminRole == 'SERVICEPAY_SUPER_ADMIN';
       permissions = (prefs.getStringList('staff_permissions') ??
               prefs.getStringList('admin_effective_permissions') ??
               <String>[])
           .map((value) => value.toLowerCase()).toSet();
-      if (!isSuperAdmin) {
-        if (mounted) setState(() {});
-        return;
-      }
-      final eligible = await _api.eligibleDutyUsers();
-      final users = eligible['users'] ?? eligible['data'];
-      if (users is List) {
-        eligibleUsers = users.whereType<Map>()
-            .map((u) => Map<String, dynamic>.from(u)).where((u) =>
-              (u['role']?.toString().toUpperCase() == 'HEAD_OFFICE') &&
-              (u['active'] != false)).toList();
-      }
       if (mounted) setState(() {});
-    } catch (_) {}
+    } catch (_) {
+      canConfigureDuties = false;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _load() async {
@@ -579,18 +569,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     return 'Not configured';
   }
 
-  String? _holderId(Map<String, dynamic> holders, String permission) {
-    final value = holders[permission];
-    if (value is List && value.isNotEmpty && value.first is Map) {
-      final holder = Map<String, dynamic>.from(value.first as Map);
-      return (holder['id'] ?? holder['_id'])?.toString();
-    }
-    if (value is Map) {
-      return (value['id'] ?? value['_id'])?.toString();
-    }
-    return null;
-  }
-
   Widget _readinessRow({
     required String title,
     required bool ready,
@@ -750,8 +728,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                 spacing: 9,
                 runSpacing: 9,
                 children: [
-                  if (isSuperAdmin)
+                  if (canConfigureDuties)
                     OutlinedButton.icon(
+                      key: const Key('configure-edupay-officers'),
                       onPressed: _assignDuty,
                       icon: const Icon(Icons.person_add_alt_1),
                       label: const Text('Configure officers'),
@@ -776,60 +755,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Future<void> _assignDuty() async {
-    if (eligibleUsers.length < 3) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Three distinct active HEAD_OFFICE duty holders are required.')));
-      }
-      return;
-    }
     final holders =
         (readiness?['currentHolders'] as Map?)?.cast<String, dynamic>() ?? {};
-    final labels = ['account.manage', 'account.verify', 'settlement.process'];
-    final selected =
-        labels.map((label) => _holderId(holders, label)).toList();
-    final ok = await showDialog<bool>(context: context, builder: (d) => StatefulBuilder(
-      builder: (d, setDialogState) => AlertDialog(
-        title: const Text('Configure duty separation'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) =>
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: DropdownButtonFormField<String>(
-                isExpanded: true,
-                decoration: InputDecoration(labelText: eduPayDutyDisplayLabel(labels[i])),
-                value: eligibleUsers.any((u) => (u['id'] ?? u['_id']).toString() == selected[i])
-                    ? selected[i]
-                    : null,
-                items: eligibleUsers.map((u) {
-                  final id = (u['id'] ?? u['_id']).toString();
-                  return DropdownMenuItem(value: id, child: Text(u['name']?.toString() ?? id));
-                }).toList(),
-                onChanged: (v) => setDialogState(() => selected[i] = v),
-              ),
-            ))),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-          FilledButton(onPressed: selected.every((v) => v != null) && selected.toSet().length == 3
-            ? () => Navigator.pop(d, true) : null, child: const Text('Assign duties'))],
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => EduPayOfficerAssignmentsDialog(
+        api: _api,
+        currentHolders: holders,
       ),
-    ));
+    );
     if (ok != true) return;
-    try {
-      await _api.configureDuties(<String, String>{
-        for (var i = 0; i < labels.length; i++) labels[i]: selected[i]!,
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Duty officers saved and audit recorded.')));
-      }
-      await _loadReadiness();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
-      }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Duty officers saved and audit recorded.')));
     }
+    await _loadReadiness();
   }
 
   Future<void> _enableEduPay() async {
@@ -1158,6 +1098,226 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     };
     return actions.map((action) => IconButton(tooltip: action,
       icon: Icon(icons[action]), onPressed: () => _schoolAction(row, action))).toList();
+  }
+}
+
+class EduPayOfficerAssignmentsDialog extends StatefulWidget {
+  const EduPayOfficerAssignmentsDialog({
+    super.key,
+    required this.api,
+    required this.currentHolders,
+  });
+
+  final EduPayApi api;
+  final Map<String, dynamic> currentHolders;
+
+  @override
+  State<EduPayOfficerAssignmentsDialog> createState() =>
+      _EduPayOfficerAssignmentsDialogState();
+}
+
+class _EduPayOfficerAssignmentsDialogState
+    extends State<EduPayOfficerAssignmentsDialog> {
+  static const duties = <String>[
+    'account.manage',
+    'account.verify',
+    'settlement.process',
+  ];
+
+  List<Map<String, dynamic>> users = <Map<String, dynamic>>[];
+  late final List<String?> selected;
+  bool loading = true;
+  bool saving = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    selected = duties
+        .map((duty) => _currentHolderId(widget.currentHolders[duty]))
+        .toList();
+    _loadOfficers();
+  }
+
+  String? _currentHolderId(dynamic value) {
+    if (value is! List || value.isEmpty || value.first is! Map) return null;
+    final holder = Map<String, dynamic>.from(value.first as Map);
+    final id = (holder['id'] ?? holder['_id'])?.toString().trim();
+    return id == null || id.isEmpty ? null : id;
+  }
+
+  Future<void> _loadOfficers() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final response = await widget.api.eligibleDutyUsers();
+      final rows = response['users'] ?? response['data'];
+      final loaded = rows is List
+          ? rows
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .where((row) =>
+                  row['role']?.toString().toUpperCase() == 'HEAD_OFFICE' &&
+                  row['status']?.toString().toUpperCase() == 'ACTIVE')
+              .toList()
+          : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() {
+        users = loaded;
+        for (var index = 0; index < selected.length; index++) {
+          if (!users.any((user) =>
+              (user['id'] ?? user['_id']).toString() == selected[index])) {
+            selected[index] = null;
+          }
+        }
+        loading = false;
+      });
+    } catch (exception) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = exception.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  bool get hasCompleteDistinctSelection =>
+      selected.every((value) => value != null) &&
+      selected.toSet().length == duties.length;
+
+  Future<void> _save() async {
+    if (!hasCompleteDistinctSelection || saving) return;
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await widget.api.configureDuties(<String, String>{
+        for (var index = 0; index < duties.length; index++)
+          duties[index]: selected[index]!,
+      });
+      if (mounted) Navigator.pop(context, true);
+    } catch (exception) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+        error = exception.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final duplicateSelection = selected.whereType<String>().length > 1 &&
+        selected.whereType<String>().toSet().length !=
+            selected.whereType<String>().length;
+    return AlertDialog(
+      title: const Text('Configure officers'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: SingleChildScrollView(
+          child: loading
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 14),
+                        Text('Loading active Head Office officers…'),
+                      ],
+                    ),
+                  ),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Assign three distinct active Head Office officers. These assignments are saved together and audited.',
+                    ),
+                    const SizedBox(height: 18),
+                    if (error != null) ...[
+                      Text(
+                        error!,
+                        key: const Key('edupay-officer-error'),
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (users.isEmpty) ...[
+                      const Text(
+                        'No eligible active Head Office officers are available.',
+                        key: Key('edupay-officer-empty'),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _loadOfficers,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try again'),
+                      ),
+                    ] else
+                      ...List.generate(
+                        duties.length,
+                        (index) => Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: DropdownButtonFormField<String>(
+                            key: Key('edupay-officer-${duties[index]}'),
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: eduPayDutyDisplayLabel(duties[index]),
+                            ),
+                            value: selected[index],
+                            items: users.map((user) {
+                              final id =
+                                  (user['id'] ?? user['_id']).toString();
+                              return DropdownMenuItem<String>(
+                                value: id,
+                                child: Text(user['name']?.toString() ?? id),
+                              );
+                            }).toList(),
+                            onChanged: saving
+                                ? null
+                                : (value) =>
+                                    setState(() => selected[index] = value),
+                          ),
+                        ),
+                      ),
+                    if (duplicateSelection)
+                      Text(
+                        'Each duty must be assigned to a different officer.',
+                        key: const Key('edupay-officer-duplicate'),
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('save-edupay-officer-assignments'),
+          onPressed: !loading &&
+                  users.length >= duties.length &&
+                  hasCompleteDistinctSelection &&
+                  !saving
+              ? _save
+              : null,
+          child: saving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Save Assignments'),
+        ),
+      ],
+    );
   }
 }
 

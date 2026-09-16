@@ -54,6 +54,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       }.contains(adminRole);
   bool get canManageEduPay =>
       isHeadOffice || permissions.contains('edupay.manage');
+  bool get canEnableEduPay =>
+      adminRole == 'SERVICEPAY_SUPER_ADMIN' ||
+      permissions.contains('feature_control.protected_manage');
   @override
   void initState() {
     super.initState();
@@ -564,50 +567,207 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             .toList(),
       );
 
+  String _holderName(Map<String, dynamic> holders, String permission) {
+    final value = holders[permission];
+    if (value is List && value.isNotEmpty && value.first is Map) {
+      final holder = Map<String, dynamic>.from(value.first as Map);
+      return (holder['fullName'] ?? holder['name'] ?? 'Configured').toString();
+    }
+    if (value is Map) {
+      return (value['fullName'] ?? value['name'] ?? 'Configured').toString();
+    }
+    return 'Not configured';
+  }
+
+  String? _holderId(Map<String, dynamic> holders, String permission) {
+    final value = holders[permission];
+    if (value is List && value.isNotEmpty && value.first is Map) {
+      final holder = Map<String, dynamic>.from(value.first as Map);
+      return (holder['id'] ?? holder['_id'])?.toString();
+    }
+    if (value is Map) {
+      return (value['id'] ?? value['_id'])?.toString();
+    }
+    return null;
+  }
+
+  Widget _readinessRow({
+    required String title,
+    required bool ready,
+    String? detail,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              ready ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+              color: ready ? const Color(0xff08783e) : Colors.orange.shade800,
+              size: 21,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  if (detail != null) ...[
+                    const SizedBox(height: 2),
+                    Text(detail,
+                        style: TextStyle(
+                            color: Colors.grey.shade700, fontSize: 12)),
+                  ],
+                ],
+              ),
+            ),
+            Text(
+              ready ? 'READY' : 'CONFIGURE',
+              style: TextStyle(
+                color: ready ? const Color(0xff08783e) : Colors.orange.shade900,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      );
+
   Widget _readinessCard() {
     final coverage =
         (readiness?['dutyCoverage'] as Map?)?.cast<String, dynamic>() ?? {};
     final payout = (readiness?['payoutConfig'] as Map?)?.cast<String, dynamic>() ?? {};
     final ready = readiness?['ready'] == true;
     final holders = (readiness?['currentHolders'] as Map?)?.cast<String, dynamic>() ?? {};
+    final missing = (payout['missingEnvironment'] as List?)
+            ?.map((value) => value.toString())
+            .toList() ??
+        <String>[];
     return Card(
       color: ready ? const Color(0xffe9f6ee) : const Color(0xfffff4df),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 12, runSpacing: 8,
-              children: [
-                Icon(ready ? Icons.verified_outlined : Icons.info_outline,
-                    color: ready ? const Color(0xff08783e) : Colors.orange.shade800),
-                SizedBox(width: 280, child: Text(ready
-                    ? 'EduPay is ready for separated settlement operations.'
-                    : 'Readiness is blocked. Assign distinct duties. Coverage: ${coverage['manage'] ?? 0} / ${coverage['verify'] ?? 0} / ${coverage['process'] ?? 0}.')),
-              ],
+            Text(
+              'EDUPAY LAUNCH READINESS',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xff10231a),
+                  ),
             ),
-            const SizedBox(height: 10),
-            Wrap(spacing: 18, runSpacing: 6, children: [
-              Text('Payout provider: ${_display(payout['provider'])}'),
-              Text('Account encryption: ${_display(payout['accountEncryption'])}'),
-              Text('Settlement method: ${_display(payout['settlementMethod'])}'),
-              Text('Rates: ${_display(payout['rates'])}'),
-            ]),
-            const SizedBox(height: 6),
-            Wrap(spacing: 18, runSpacing: 6, children: [
-              Text('${eduPayDutyDisplayLabel('account.manage')}: ${_display(holders['account.manage'])}'),
-              Text('${eduPayDutyDisplayLabel('account.verify')}: ${_display(holders['account.verify'])}'),
-              Text('${eduPayDutyDisplayLabel('settlement.process')}: ${_display(holders['settlement.process'])}'),
-            ]),
-             if (canManageEduPay) ...[
+            const SizedBox(height: 4),
+            Text(
+              ready
+                  ? 'All launch controls are verified.'
+                  : 'Complete every required control before enabling customer initiation.',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 20),
+            const Text('Duty Separation',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            _readinessRow(
+              title: eduPayDutyDisplayLabel('account.manage'),
+              ready: (coverage['manage'] ?? 0) > 0,
+              detail: _holderName(holders, 'account.manage'),
+            ),
+            _readinessRow(
+              title: eduPayDutyDisplayLabel('account.verify'),
+              ready: (coverage['verify'] ?? 0) > 0,
+              detail: _holderName(holders, 'account.verify'),
+            ),
+            _readinessRow(
+              title: eduPayDutyDisplayLabel('settlement.process'),
+              ready: (coverage['process'] ?? 0) > 0,
+              detail: _holderName(holders, 'settlement.process'),
+            ),
+            const Divider(height: 28),
+            const Text('Financial Infrastructure',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            _readinessRow(
+              title: 'Payout Provider',
+              ready: payout['provider'] == true,
+              detail:
+                  '${payout['providerName'] ?? 'SQUAD'} · ${payout['configurationStatus'] ?? 'NOT READY'} · ${payout['connectionStatus'] ?? 'NOT READY'}',
+            ),
+            _readinessRow(
+              title: 'Account Encryption',
+              ready: payout['accountEncryption'] == true,
+              detail: payout['accountEncryption'] == true
+                  ? 'Deployment encryption key is configured.'
+                  : 'Deployment encryption key is required.',
+            ),
+            _readinessRow(
+              title: 'Settlement Method',
+              ready: payout['settlementMethod'] == true,
+            ),
+            _readinessRow(
+              title: 'Rates',
+              ready: payout['rates'] == true,
+            ),
+            if (missing.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Wrap(spacing: 8, children: [
-                if (isSuperAdmin) OutlinedButton.icon(onPressed: _assignDuty, icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('Assign distinct duty')),
-                 FilledButton.tonalIcon(onPressed: ready && (isHeadOffice || permissions.contains('feature_control.manage')) ? _enableEduPay : null,
-                    icon: const Icon(Icons.power_settings_new), label: const Text('Enable EduPay')),
-              ]),
+              const Text('Missing production environment configuration',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 7),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: missing
+                    .map((key) => Chip(
+                          avatar: const Icon(Icons.key_outlined, size: 16),
+                          label: Text(key),
+                        ))
+                    .toList(),
+              ),
+            ],
+            const Divider(height: 32),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: ready
+                    ? const Color(0xffd8f0e2)
+                    : Colors.orange.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Overall Readiness: ${ready ? 'READY' : 'NOT READY'}',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: ready
+                      ? const Color(0xff08783e)
+                      : Colors.orange.shade900,
+                ),
+              ),
+            ),
+            if (canManageEduPay) ...[
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 9,
+                runSpacing: 9,
+                children: [
+                  if (isSuperAdmin)
+                    OutlinedButton.icon(
+                      onPressed: _assignDuty,
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: const Text('Configure officers'),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: _loadReadiness,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Verify configuration'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: ready && canEnableEduPay ? _enableEduPay : null,
+                    icon: const Icon(Icons.power_settings_new),
+                    label: const Text('Enable EduPay'),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -617,21 +777,37 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
 
   Future<void> _assignDuty() async {
     if (eligibleUsers.length < 3) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Three distinct active HEAD_OFFICE duty holders are required.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Three distinct active HEAD_OFFICE duty holders are required.')));
+      }
       return;
     }
-    final selected = <String?>[null, null, null];
+    final holders =
+        (readiness?['currentHolders'] as Map?)?.cast<String, dynamic>() ?? {};
     final labels = ['account.manage', 'account.verify', 'settlement.process'];
+    final selected =
+        labels.map((label) => _holderId(holders, label)).toList();
     final ok = await showDialog<bool>(context: context, builder: (d) => StatefulBuilder(
       builder: (d, setDialogState) => AlertDialog(
-        title: const Text('Payout readiness: assign three distinct duties'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) =>
-          DropdownButton<String>(isExpanded: true, hint: Text(labels[i]),
-            value: selected[i], items: eligibleUsers.map((u) {
-              final id = (u['id'] ?? u['_id']).toString();
-              return DropdownMenuItem(value: id, child: Text(u['name']?.toString() ?? id));
-            }).toList(), onChanged: (v) => setDialogState(() => selected[i] = v))),
+        title: const Text('Configure duty separation'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) =>
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: DropdownButtonFormField<String>(
+                isExpanded: true,
+                decoration: InputDecoration(labelText: eduPayDutyDisplayLabel(labels[i])),
+                value: eligibleUsers.any((u) => (u['id'] ?? u['_id']).toString() == selected[i])
+                    ? selected[i]
+                    : null,
+                items: eligibleUsers.map((u) {
+                  final id = (u['id'] ?? u['_id']).toString();
+                  return DropdownMenuItem(value: id, child: Text(u['name']?.toString() ?? id));
+                }).toList(),
+                onChanged: (v) => setDialogState(() => selected[i] = v),
+              ),
+            ))),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
           FilledButton(onPressed: selected.every((v) => v != null) && selected.toSet().length == 3
@@ -640,28 +816,56 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     ));
     if (ok != true) return;
     try {
-      for (var i = 0; i < selected.length; i++) {
-        await _api.assignDuty(selected[i]!, [labels[i]]);
+      await _api.configureDuties(<String, String>{
+        for (var i = 0; i < labels.length; i++) labels[i]: selected[i]!,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Duty officers saved and audit recorded.')));
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Duty assigned and audit recorded.')));
-      _loadReadiness();
+      await _loadReadiness();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
     }
   }
 
   Future<void> _enableEduPay() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Enable EduPay?'),
+        content: const Text(
+          'This enables customer EduPay initiation. All readiness controls will be checked again by the Backend before the change is accepted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Enable EduPay'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await _api.enableFeature('edupay', 'EduPay launch readiness checklist completed');
       await _loadReadiness();
       await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('EduPay enabled and audit recorded.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('EduPay enabled and audit recorded.')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
     }
   }
 

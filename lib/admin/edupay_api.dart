@@ -92,6 +92,11 @@ class EduPayApi {
   ) =>
       request('PUT', '/admin/edupay/duties/$userId',
           body: {'permissions': permissions});
+  Future<Map<String, dynamic>> configureDuties(
+    Map<String, String> assignments,
+  ) =>
+      request('PUT', '/admin/edupay/duties',
+          body: {'assignments': assignments});
   Future<Map<String, dynamic>> revokeDuty(String userId) =>
       request('DELETE', '/admin/edupay/duties/$userId');
   Future<Map<String, dynamic>> schoolAction(String schoolId, String action,
@@ -118,5 +123,9 @@ class EduPayApi {
       request('GET', '/admin/edupay/duties/eligible-users');
   Future<Map<String, dynamic>> enableFeature(String feature, String reason) =>
       request('PATCH', '/feature-control/admin/$feature',
-          body: {'enabled': true, 'reason': reason});
+          body: {
+            'enabled': true,
+            'reason': reason,
+            'confirmationText': feature,
+          });
 }

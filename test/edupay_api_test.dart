@@ -73,6 +73,11 @@ void main() {
     await api.privateSchoolDocuments('school-1');
     await api.schoolRequests();
     await api.eligibleDutyUsers();
+    await api.configureDuties(<String, String>{
+      'account.manage': 'officer-1',
+      'account.verify': 'officer-2',
+      'settlement.process': 'officer-3',
+    });
     await api.enableFeature('edupay', 'checklist complete');
     expect(requests.map((r) => '${r.method} ${r.url.path}'), <String>[
       'PATCH /api/admin/edupay/schools/school-1',
@@ -80,12 +85,23 @@ void main() {
       'GET /api/admin/edupay/schools/school-1/private-assets',
       'GET /api/admin/edupay/school-requests',
       'GET /api/admin/edupay/duties/eligible-users',
+      'PUT /api/admin/edupay/duties',
       'PATCH /api/feature-control/admin/edupay',
     ]);
     expect(jsonDecode(requests[0].body),
         {'action': 'SUSPEND', 'note': 'Policy review'});
-    expect(jsonDecode(requests[5].body),
-        {'enabled': true, 'reason': 'checklist complete'});
+    expect(jsonDecode(requests[5].body), {
+      'assignments': {
+        'account.manage': 'officer-1',
+        'account.verify': 'officer-2',
+        'settlement.process': 'officer-3',
+      },
+    });
+    expect(jsonDecode(requests[6].body), {
+      'enabled': true,
+      'reason': 'checklist complete',
+      'confirmationText': 'edupay',
+    });
   });
 
   test('school application preserves required field names and data URLs', () async {

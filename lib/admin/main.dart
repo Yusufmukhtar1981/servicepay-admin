@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_control_center_screen.dart';
@@ -7,6 +8,8 @@ import 'admin_phone_financing_screen.dart';
 import 'login_screen.dart';
 import 'svp_management_screen.dart';
 import 'admin_theme.dart';
+import 'edupay_control_center_screen.dart';
+import '../school/school_login_screen.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -23,8 +26,14 @@ class ServicepayAdminApp extends StatelessWidget {
       theme: AdminTheme.light(),
       darkTheme: AdminTheme.dark(),
       themeMode: ThemeMode.system,
-      home: const AdminLoginScreen(),
+      home: kIsWeb &&
+              (Uri.base.path.startsWith('/school') ||
+                  Uri.base.queryParameters['entry'] == 'school')
+          ? const SchoolLoginScreen()
+          : const AdminLoginScreen(),
       routes: <String, WidgetBuilder>{
+        '/school': (_) => const SchoolLoginScreen(),
+        '/edupay': (_) => const _EduPayRouteGate(),
         '/svp': (_) => const _SvpRouteGate(),
         '/phone-financing': (_) => const _PhoneFinancingRouteGate(),
         '/control-center/audit-logs': (_) =>
@@ -50,6 +59,39 @@ class ServicepayAdminApp extends StatelessWidget {
       },
     );
   }
+}
+
+class _EduPayRouteGate extends StatefulWidget {
+  const _EduPayRouteGate();
+  @override
+  State<_EduPayRouteGate> createState() => _EduPayRouteGateState();
+}
+
+class _EduPayRouteGateState extends State<_EduPayRouteGate> {
+  late final Future<bool> _allowed = _check();
+  Future<bool> _check() async {
+    final p = await SharedPreferences.getInstance();
+    final token = p.getString('auth_token')?.trim() ?? '';
+    final role = p.getString('user_role')?.trim().toUpperCase() ?? '';
+    return token.isNotEmpty &&
+        const {
+          'HEAD_OFFICE',
+          'ADMIN',
+          'SUPER_ADMIN',
+          'HEAD_OFFICE_ADMIN',
+          'SERVICEPAY_SUPER_ADMIN',
+        }.contains(role);
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+        future: _allowed,
+        builder: (context, s) => s.connectionState != ConnectionState.done
+            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+            : s.data == true
+                ? const EduPayControlCenterScreen()
+                : const AdminLoginScreen(),
+      );
 }
 
 class _SvpRouteGate extends StatefulWidget {

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 abstract final class AdminPermissions {
+  static const edupayView = 'edupay.view';
   static const dashboardView = 'dashboard.view';
   static const staffCreate = 'staff.create';
   static const staffView = 'staff.view';

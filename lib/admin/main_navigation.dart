@@ -48,6 +48,7 @@ import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
 import 'svp_management_screen.dart';
+import 'edupay_control_center_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -87,10 +88,7 @@ bool canAccessPromoLeaderboardNavigation({
   required String role,
   required Set<String> permissions,
 }) {
-  return AdminAccess(
-    role: role,
-    permissions: permissions,
-  ).isHeadOffice;
+  return AdminAccess(role: role, permissions: permissions).isHeadOffice;
 }
 
 class AdminMainNavigation extends StatefulWidget {
@@ -109,6 +107,9 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.has(AdminPermissions.referralsView)) {
       labels.add('Referral Monitoring');
+    }
+    if (access.isHeadOffice || access.has(AdminPermissions.edupayView)) {
+      labels.add('EduPay');
     }
     return labels;
   }
@@ -203,6 +204,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   void configureNavigation() {
     pages = <Widget>[];
     items = <BottomNavigationBarItem>[];
+
+    if (isHeadOffice || hasPermission(AdminPermissions.edupayView)) {
+      addNavigationPage(
+        page: const EduPayControlCenterScreen(),
+        icon: Icons.school_outlined,
+        activeIcon: Icons.school_rounded,
+        label: 'EduPay',
+      );
+    }
 
     /*
      * =====================================================

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'school_portal_screen.dart';
+import 'school_registration_screen.dart';
 
 class SchoolLoginScreen extends StatefulWidget {
   const SchoolLoginScreen({super.key});
@@ -136,6 +137,11 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
                         ),
                       ),
                     ),
+                    Center(child: TextButton(
+                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const SchoolRegistrationScreen())),
+                      child: const Text('Register your school'),
+                    )),
                   ],
                 ),
               ),

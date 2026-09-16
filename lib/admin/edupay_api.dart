@@ -45,13 +45,18 @@ class EduPayApi {
       'DELETE' => await client.delete(uri, headers: headers),
       _ => await client.get(uri, headers: headers),
     };
-    final decoded = jsonDecode(response.body);
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception('EduPay service returned an invalid response.');
+    }
     final result = decoded is Map
         ? Map<String, dynamic>.from(decoded)
         : <String, dynamic>{};
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
-        result['success'] != true) {
+        (result['success'] != null && result['success'] != true)) {
       throw Exception(
         result['message']?.toString() ??
             'EduPay request failed (${response.statusCode}).',
@@ -85,4 +90,27 @@ class EduPayApi {
           body: {'permissions': permissions});
   Future<Map<String, dynamic>> revokeDuty(String userId) =>
       request('DELETE', '/admin/edupay/duties/$userId');
+  Future<Map<String, dynamic>> schoolAction(String schoolId, String action,
+          {String? note}) =>
+      request('PATCH', '/admin/edupay/schools/$schoolId',
+          body: {'action': action, if (note != null) 'note': note});
+  Future<Map<String, dynamic>> schoolDetail(String schoolId) =>
+      request('GET', '/admin/edupay/schools/$schoolId');
+  Future<Map<String, dynamic>> privateSchoolDocuments(String schoolId) =>
+      request('GET', '/admin/edupay/schools/$schoolId/private-assets');
+  Future<http.Response> privateAssetBytes(String schoolId, String fileId) async {
+    final token = await _token();
+    final response = await client.get(
+      Uri.parse('$baseUrl/admin/edupay/schools/$schoolId/private-assets/$fileId'),
+      headers: {'Accept': '*/*', 'Authorization': 'Bearer $token'});
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Unable to download private asset (${response.statusCode}).');
+    }
+    return response;
+  }
+  Future<Map<String, dynamic>> eligibleDutyUsers() =>
+      request('GET', '/admin/edupay/duties/eligible-users');
+  Future<Map<String, dynamic>> enableFeature(String feature, String reason) =>
+      request('PATCH', '/feature-control/admin/$feature',
+          body: {'enabled': true, 'reason': reason});
 }

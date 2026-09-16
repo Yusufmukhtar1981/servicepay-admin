@@ -84,6 +84,18 @@ bool canAccessFeatureControlsNavigation({
 }
 
 @visibleForTesting
+bool canAccessEduPayNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final access = AdminAccess(role: role, permissions: permissions);
+  return access.isHeadOffice &&
+      permissions.map((value) => value.toLowerCase()).contains(
+            AdminPermissions.edupayView,
+          );
+}
+
+@visibleForTesting
 bool canAccessPromoLeaderboardNavigation({
   required String role,
   required Set<String> permissions,
@@ -108,7 +120,10 @@ class AdminMainNavigation extends StatefulWidget {
     if (access.has(AdminPermissions.referralsView)) {
       labels.add('Referral Monitoring');
     }
-    if (access.isHeadOffice || access.has(AdminPermissions.edupayView)) {
+    if (canAccessEduPayNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
       labels.add('EduPay');
     }
     return labels;
@@ -205,7 +220,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     pages = <Widget>[];
     items = <BottomNavigationBarItem>[];
 
-    if (isHeadOffice || hasPermission(AdminPermissions.edupayView)) {
+    if (canAccessEduPayNavigation(role: adminRole, permissions: permissions)) {
       addNavigationPage(
         page: const EduPayControlCenterScreen(),
         icon: Icons.school_outlined,

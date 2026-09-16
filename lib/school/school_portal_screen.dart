@@ -20,7 +20,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     'Sessions & classes',
     'Draft fees',
     'Students',
-    'Settlements & reports',
+    'Settlements',
+    'Reconciliation',
+    'Reports',
   ];
   @override
   void initState() {
@@ -39,7 +41,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Profile' => '/edupay/school/profile',
         'Sessions & classes' => '/edupay/school/sessions',
         'Students' => '/edupay/school/students',
-        'Settlements & reports' => '/edupay/school/settlements',
+        'Settlements' => '/edupay/school/settlements',
+        'Reconciliation' => '/edupay/school/reconciliation',
+        'Reports' => '/edupay/school/reports',
         _ => '/edupay/school/dashboard',
       };
       data = await api.request('GET', path);
@@ -152,6 +156,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Sessions & classes' => Icons.calendar_month_outlined,
         'Draft fees' => Icons.request_quote_outlined,
         'Students' => Icons.groups_outlined,
+        'Settlements' => Icons.payments_outlined,
+        'Reconciliation' => Icons.compare_arrows_outlined,
+        'Reports' => Icons.assessment_outlined,
         _ => Icons.payments_outlined,
       };
   Widget _dashboard() {
@@ -199,17 +206,41 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     final key = switch (tab) {
       'Sessions & classes' => 'sessions',
       'Students' => 'students',
-      'Settlements & reports' => 'settlements',
+      'Settlements' => 'settlements',
+      'Reconciliation' => 'reconciliation',
+      'Reports' => 'report',
       _ => 'school',
     };
     final value = data?[key];
-    if (value is! List || value.isEmpty)
+    if (value is Map) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Wrap(
+            spacing: 24,
+            runSpacing: 16,
+            children: value.entries
+                .map((entry) => SizedBox(
+                      width: 220,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(entry.key.toString()),
+                        subtitle: Text('${entry.value}'),
+                      ),
+                    ))
+                .toList(),
+          ),
+        ),
+      );
+    }
+    if (value is! List || value.isEmpty) {
       return const Card(
         child: Padding(
           padding: EdgeInsets.all(40),
           child: Text('No records are available yet.'),
         ),
       );
+    }
     final rows = value
         .whereType<Map>()
         .map((m) => Map<String, dynamic>.from(m))
@@ -276,7 +307,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      return;
+    }
     try {
       await api.request('POST', '/edupay/school/fees', {
         'amount': double.tryParse(amount.text.trim()) ?? 0,
@@ -284,13 +317,15 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'session': session.text.trim(),
         'term': term.text.trim(),
       });
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Draft fee submitted for approval.')));
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
     }
   }
 }

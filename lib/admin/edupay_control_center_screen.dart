@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'edupay_api.dart';
 
 class EduPayControlCenterScreen extends StatefulWidget {
@@ -11,6 +12,8 @@ class EduPayControlCenterScreen extends StatefulWidget {
 class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   final _api = EduPayApi();
   Map<String, dynamic>? data;
+  Map<String, dynamic>? readiness;
+  Set<String> permissions = <String>{};
   String section = 'Overview';
   bool loading = true;
   String? error;
@@ -32,6 +35,18 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadReadiness();
+  }
+
+  Future<void> _loadReadiness() async {
+    try {
+      readiness = await _api.readiness();
+      final prefs = await SharedPreferences.getInstance();
+      permissions = (prefs.getStringList('staff_permissions') ?? <String>[])
+          .map((value) => value.toLowerCase())
+          .toSet();
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -137,10 +152,12 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                               style: TextStyle(color: Colors.grey.shade700),
                             ),
                             const SizedBox(height: 22),
+                            if (readiness != null) _readinessCard(),
                             if (section == 'Overview')
                               _summary(summary)
                             else
                               _table(_rows()),
+                            if (section == 'Settlements') _settlementTools(),
                           ],
                         ),
                       ),
@@ -205,6 +222,136 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             )
             .toList(),
       );
+
+  Widget _readinessCard() {
+    final coverage =
+        (readiness?['dutyCoverage'] as Map?)?.cast<String, dynamic>() ?? {};
+    final ready = readiness?['ready'] == true;
+    return Card(
+      color: ready ? const Color(0xffe9f6ee) : const Color(0xfffff4df),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(ready ? Icons.verified_outlined : Icons.info_outline,
+                color:
+                    ready ? const Color(0xff08783e) : Colors.orange.shade800),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(ready
+                  ? 'EduPay is ready for separated settlement operations.'
+                  : 'Readiness is blocked. A Super Admin must assign distinct account, verification and settlement duties. Coverage: ${coverage['manage'] ?? 0} / ${coverage['verify'] ?? 0} / ${coverage['process'] ?? 0}.'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settlementTools() {
+    final canManage = permissions.contains('edupay.manage');
+    final canProcess = permissions.contains('edupay.settlement.process') &&
+        readiness?['ready'] == true;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Settlement lifecycle',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          const Text(
+              'Approve under Manage, then use explicit Squad process and requery routes. Legacy PATCH PROCESS and CONFIRM are never used.'),
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, children: [
+            FilledButton.tonal(
+                onPressed:
+                    canManage ? () => _settlementAction('APPROVE') : null,
+                child: const Text('Approve settlement')),
+            FilledButton(
+                onPressed:
+                    canProcess ? () => _settlementAction('PROCESS') : null,
+                child: const Text('Process payout')),
+            OutlinedButton(
+                onPressed:
+                    canProcess ? () => _settlementAction('REQUERY') : null,
+                child: const Text('Requery payout')),
+          ]),
+          if (!canProcess)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                  'Process and requery stay disabled until permission and viable duty separation are confirmed.'),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _settlementAction(String action) async {
+    final id = await _promptForId('settlement ID');
+    if (id == null || id.isEmpty) return;
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$action settlement?'),
+        content: const Text(
+            'This sensitive financial action will be recorded in the audit log.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      if (action == 'APPROVE') {
+        await _api.request('PATCH', '/admin/edupay/settlements/$id',
+            body: {'action': 'APPROVE'});
+      } else if (action == 'PROCESS') {
+        await _api.processSettlement(id);
+      } else {
+        await _api.requerySettlement(id);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Server action completed and audited.')));
+      }
+      _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
+    }
+  }
+
+  Future<String?> _promptForId(String label) async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Enter $label'),
+        content: TextField(
+            controller: controller,
+            decoration: InputDecoration(labelText: label)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('Continue')),
+        ],
+      ),
+    );
+  }
+
   Widget _table(List<Map<String, dynamic>> rows) => rows.isEmpty
       ? const _Empty()
       : Card(

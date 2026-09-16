@@ -73,6 +73,9 @@ class _EduPayRouteGateState extends State<_EduPayRouteGate> {
     final p = await SharedPreferences.getInstance();
     final token = p.getString('auth_token')?.trim() ?? '';
     final role = p.getString('user_role')?.trim().toUpperCase() ?? '';
+    final permissions = (p.getStringList('staff_permissions') ?? <String>[])
+        .map((value) => value.toLowerCase())
+        .toSet();
     return token.isNotEmpty &&
         const {
           'HEAD_OFFICE',
@@ -80,7 +83,8 @@ class _EduPayRouteGateState extends State<_EduPayRouteGate> {
           'SUPER_ADMIN',
           'HEAD_OFFICE_ADMIN',
           'SERVICEPAY_SUPER_ADMIN',
-        }.contains(role);
+        }.contains(role) &&
+        permissions.contains(AdminPermissions.edupayView);
   }
 
   @override

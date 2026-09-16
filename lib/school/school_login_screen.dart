@@ -52,8 +52,9 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      }
     }
     if (mounted) setState(() => loading = false);
   }

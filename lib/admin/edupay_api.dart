@@ -40,6 +40,9 @@ class EduPayApi {
           headers: headers,
           body: jsonEncode(body ?? {}),
         ),
+      'PUT' =>
+        await client.put(uri, headers: headers, body: jsonEncode(body ?? {})),
+      'DELETE' => await client.delete(uri, headers: headers),
       _ => await client.get(uri, headers: headers),
     };
     final decoded = jsonDecode(response.body);
@@ -56,4 +59,30 @@ class EduPayApi {
     }
     return result;
   }
+
+  Future<Map<String, dynamic>> readiness() =>
+      request('GET', '/admin/edupay/readiness');
+  Future<Map<String, dynamic>> processSettlement(String id) =>
+      request('POST', '/admin/edupay/settlements/$id/process');
+  Future<Map<String, dynamic>> requerySettlement(String id) =>
+      request('POST', '/admin/edupay/settlements/$id/requery');
+  Future<Map<String, dynamic>> saveSettlementAccount(
+    String schoolId,
+    Map<String, dynamic> body,
+  ) =>
+      request('PUT', '/admin/edupay/schools/$schoolId/settlement-account',
+          body: body);
+  Future<Map<String, dynamic>> verifySettlementAccount(String schoolId,
+          {String? accountId, int? version}) =>
+      request(
+          'POST', '/admin/edupay/schools/$schoolId/settlement-account/verify',
+          body: {'accountId': accountId, 'version': version});
+  Future<Map<String, dynamic>> assignDuty(
+    String userId,
+    List<String> permissions,
+  ) =>
+      request('PUT', '/admin/edupay/duties/$userId',
+          body: {'permissions': permissions});
+  Future<Map<String, dynamic>> revokeDuty(String userId) =>
+      request('DELETE', '/admin/edupay/duties/$userId');
 }

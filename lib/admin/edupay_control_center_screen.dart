@@ -3,6 +3,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'edupay_api.dart';
 import 'private_asset_download.dart';
 
+String eduPayDutyDisplayLabel(String permission) => switch (permission) {
+      'account.manage' => 'Account Management Officer',
+      'account.verify' => 'Account Verification Officer',
+      'settlement.process' => 'Settlement Processing Officer',
+      _ => permission,
+    };
+
 class EduPayControlCenterScreen extends StatefulWidget {
   const EduPayControlCenterScreen({super.key});
   @override
@@ -589,9 +596,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             ]),
             const SizedBox(height: 6),
             Wrap(spacing: 18, runSpacing: 6, children: [
-              Text('account.manage: ${_display(holders['account.manage'])}'),
-              Text('account.verify: ${_display(holders['account.verify'])}'),
-              Text('settlement.process: ${_display(holders['settlement.process'])}'),
+              Text('${eduPayDutyDisplayLabel('account.manage')}: ${_display(holders['account.manage'])}'),
+              Text('${eduPayDutyDisplayLabel('account.verify')}: ${_display(holders['account.verify'])}'),
+              Text('${eduPayDutyDisplayLabel('settlement.process')}: ${_display(holders['settlement.process'])}'),
             ]),
              if (canManageEduPay) ...[
               const SizedBox(height: 12),

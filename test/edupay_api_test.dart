@@ -26,10 +26,15 @@ void main() {
     await api.readiness();
     await api.processSettlement('set-1');
     await api.requerySettlement('set-1');
+    await api.saveSettings(<String, dynamic>{
+      'schoolCommissionRate': 5,
+      'settlementMethod': 'DEDUCT_COMMISSION',
+    });
     expect(requests.map((r) => '${r.method} ${r.url.path}'), <String>[
       'GET /api/admin/edupay/readiness',
       'POST /api/admin/edupay/settlements/set-1/process',
       'POST /api/admin/edupay/settlements/set-1/requery',
+      'PATCH /api/admin/edupay/settings',
     ]);
     expect(requests[1].url.path, isNot(contains('confirm')));
   });
@@ -66,18 +71,20 @@ void main() {
     await api.schoolAction('school-1', 'SUSPEND', note: 'Policy review');
     await api.schoolDetail('school-1');
     await api.privateSchoolDocuments('school-1');
+    await api.schoolRequests();
     await api.eligibleDutyUsers();
     await api.enableFeature('edupay', 'checklist complete');
     expect(requests.map((r) => '${r.method} ${r.url.path}'), <String>[
       'PATCH /api/admin/edupay/schools/school-1',
       'GET /api/admin/edupay/schools/school-1',
       'GET /api/admin/edupay/schools/school-1/private-assets',
+      'GET /api/admin/edupay/school-requests',
       'GET /api/admin/edupay/duties/eligible-users',
       'PATCH /api/feature-control/admin/edupay',
     ]);
     expect(jsonDecode(requests[0].body),
         {'action': 'SUSPEND', 'note': 'Policy review'});
-    expect(jsonDecode(requests[4].body),
+    expect(jsonDecode(requests[5].body),
         {'enabled': true, 'reason': 'checklist complete'});
   });
 

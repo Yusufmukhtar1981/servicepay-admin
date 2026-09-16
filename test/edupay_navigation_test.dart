@@ -3,13 +3,13 @@ import 'package:servicepay_app/admin/admin_permissions.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
 
 void main() {
-  test('EduPay navigation requires the final view permission', () {
+  test('legacy Head Office sees EduPay without projected permissions', () {
     expect(
         canAccessEduPayNavigation(
           role: 'HEAD_OFFICE',
           permissions: <String>{},
         ),
-        isFalse);
+        isTrue);
     expect(
         canAccessEduPayNavigation(
           role: 'HEAD_OFFICE',

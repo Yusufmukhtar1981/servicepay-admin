@@ -88,11 +88,10 @@ bool canAccessEduPayNavigation({
   required String role,
   required Set<String> permissions,
 }) {
-  final access = AdminAccess(role: role, permissions: permissions);
-  return access.isHeadOffice &&
-      permissions.map((value) => value.toLowerCase()).contains(
-            AdminPermissions.edupayView,
-          );
+  // Legacy Head Office accounts are already full-access at the backend
+  // boundary, but may not have the newer projected staff permission.
+  // Keep ordinary STAFF permission-gated and hidden.
+  return AdminAccess(role: role, permissions: permissions).isHeadOffice;
 }
 
 @visibleForTesting

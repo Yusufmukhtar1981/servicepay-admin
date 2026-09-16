@@ -67,6 +67,10 @@ class EduPayApi {
 
   Future<Map<String, dynamic>> readiness() =>
       request('GET', '/admin/edupay/readiness');
+  Future<Map<String, dynamic>> saveSettings(
+    Map<String, dynamic> settings,
+  ) =>
+      request('PATCH', '/admin/edupay/settings', body: settings);
   Future<Map<String, dynamic>> processSettlement(String id) =>
       request('POST', '/admin/edupay/settlements/$id/process');
   Future<Map<String, dynamic>> requerySettlement(String id) =>
@@ -96,6 +100,8 @@ class EduPayApi {
           body: {'action': action, if (note != null) 'note': note});
   Future<Map<String, dynamic>> schoolDetail(String schoolId) =>
       request('GET', '/admin/edupay/schools/$schoolId');
+  Future<Map<String, dynamic>> schoolRequests() =>
+      request('GET', '/admin/edupay/school-requests');
   Future<Map<String, dynamic>> privateSchoolDocuments(String schoolId) =>
       request('GET', '/admin/edupay/schools/$schoolId/private-assets');
   Future<http.Response> privateAssetBytes(String schoolId, String fileId) async {

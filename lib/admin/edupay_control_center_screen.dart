@@ -17,6 +17,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   List<Map<String, dynamic>> eligibleUsers = [];
   bool isSuperAdmin = false;
   Set<String> permissions = <String>{};
+  String adminRole = '';
   String section = 'Overview';
   bool loading = true;
   String? error;
@@ -33,9 +34,19 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     'Sponsors',
     'Reconciliation',
     'Reports',
+    'Launch Readiness',
     'Settings',
     'Audit logs',
   ];
+  bool get isHeadOffice => const <String>{
+        'HEAD_OFFICE',
+        'HEAD_OFFICE_ADMIN',
+        'ADMIN',
+        'SUPER_ADMIN',
+        'SERVICEPAY_SUPER_ADMIN',
+      }.contains(adminRole);
+  bool get canManageEduPay =>
+      isHeadOffice || permissions.contains('edupay.manage');
   @override
   void initState() {
     super.initState();
@@ -47,8 +58,18 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     try {
       readiness = await _api.readiness();
       final prefs = await SharedPreferences.getInstance();
-      isSuperAdmin = (prefs.getString('user_role') ?? '').toUpperCase() == 'SUPER_ADMIN';
-      permissions = (prefs.getStringList('staff_permissions') ?? <String>[])
+      adminRole = (prefs.getString('user_role') ??
+              prefs.getString('admin_role') ??
+              prefs.getString('role') ??
+              '')
+          .trim()
+          .toUpperCase()
+          .replaceAll(RegExp(r'[\s-]+'), '_');
+      isSuperAdmin = adminRole == 'SUPER_ADMIN' ||
+          adminRole == 'SERVICEPAY_SUPER_ADMIN';
+      permissions = (prefs.getStringList('staff_permissions') ??
+              prefs.getStringList('admin_effective_permissions') ??
+              <String>[])
           .map((value) => value.toLowerCase()).toSet();
       if (!isSuperAdmin) {
         if (mounted) setState(() {});
@@ -89,6 +110,12 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         if (mounted) setState(() => loading = false);
         return;
       }
+      if (section == 'Launch Readiness') {
+        await _loadReadiness();
+        data = await _api.request('GET', '/admin/edupay/settings');
+        if (mounted) setState(() => loading = false);
+        return;
+      }
       final path = switch (section) {
         'Overview' => '/admin/edupay/overview',
         'Schools & onboarding' => '/admin/edupay/schools',
@@ -104,6 +131,19 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         _ => '/admin/edupay/overview',
       };
       data = await _api.request('GET', path);
+      if (section == 'Schools & onboarding' &&
+          data?['onboardingRequests'] == null) {
+        try {
+          final requests = await _api.schoolRequests();
+          data = <String, dynamic>{
+            ...data!,
+            'onboardingRequests':
+                requests['requests'] ?? requests['onboardingRequests'] ?? [],
+          };
+        } catch (_) {
+          // Keep school review usable on older backends without this endpoint.
+        }
+      }
     } catch (e) {
       error = e.toString().replaceFirst('Exception: ', '');
     }
@@ -156,9 +196,25 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       'Reconciliation': 'transactions',
       'Audit logs': 'logs',
     }[section]];
-    return value is List
+    final rows = value is List
         ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
         : <Map<String, dynamic>>[];
+    if (section == 'Schools & onboarding' &&
+        data?['onboardingRequests'] is List) {
+      rows.insertAll(
+        0,
+        (data!['onboardingRequests'] as List).whereType<Map>().map((request) => {
+              'type': 'SCHOOL_REQUEST',
+              'schoolName': request['schoolName'] ?? request['name'],
+              'location': request['location'],
+              'contactPhone': request['contactPhone'],
+              'status': request['status'] ?? 'PENDING',
+              'createdAt': request['createdAt'],
+              '_requestId': request['_id'] ?? request['id'],
+            }),
+      );
+    }
+    return rows;
   }
 
   String _display(dynamic v) => v == null ? '—' : v.toString();
@@ -256,11 +312,13 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                               style: TextStyle(color: Colors.grey.shade700),
                             ),
                             const SizedBox(height: 22),
-                            if (readiness != null) _readinessCard(),
+                             if (readiness != null && section != 'Launch Readiness') _readinessCard(),
                             if (section == 'Overview')
                               _summary(summary)
                             else if (section == 'Reports')
                               _reportsView()
+                             else if (section == 'Launch Readiness')
+                               _readinessView()
                             else if (section == 'Settings')
                               _settingsView()
                             else
@@ -286,6 +344,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         'Sponsors' => Icons.handshake_outlined,
         'Reconciliation' => Icons.compare_arrows_outlined,
         'Reports' => Icons.assessment_outlined,
+        'Launch Readiness' => Icons.verified_outlined,
         'Settings' => Icons.tune_outlined,
         _ => Icons.history_outlined,
       };
@@ -296,8 +355,168 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     final settings = (data?['settings'] as Map?)?.cast<String, dynamic>() ?? {};
     return Card(child: Column(children: settings.entries.map((entry) =>
       ListTile(title: Text(entry.key), subtitle: Text('${entry.value}'),
-        trailing: permissions.contains('edupay.manage')
-            ? const Icon(Icons.edit_outlined) : null)).toList()));
+        trailing: canManageEduPay && entry.key != 'enabled'
+            ? IconButton(
+                tooltip: 'Edit operating settings',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: _editSettings,
+              )
+            : null)).toList()));
+  }
+
+  Widget _readinessView() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _readinessCard(),
+          const SizedBox(height: 14),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                ((data?['settings'] as Map?)?['enabled'] == true)
+                    ? Icons.check_circle
+                    : Icons.pause_circle_outline,
+              ),
+              title: const Text('Feature status'),
+              subtitle: Text(
+                ((data?['settings'] as Map?)?['enabled'] == true)
+                    ? 'ENABLED'
+                    : 'DISABLED',
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Provider credentials and account encryption are deployment-controlled. '
+                'They cannot be entered or exposed in this dashboard.',
+              ),
+            ),
+          ),
+        ],
+      );
+
+  Future<void> _editSettings() async {
+    if (!canManageEduPay) return;
+    final source = (data?['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+    final fields = <String>[
+      'schoolCommissionRate',
+      'parentShortfallChargeRate',
+      'minimumSavingsRequirement',
+      'maximumEduPayCover',
+      'maximumCoverPercentage',
+      'defaultRepaymentPeriodDays',
+      'settlementLeadDays',
+      'gracePeriodDays',
+    ];
+    final controllers = <String, TextEditingController>{
+      for (final key in fields)
+        key: TextEditingController(text: '${source[key] ?? ''}'),
+    };
+    var settlementMethod =
+        '${source['settlementMethod'] ?? 'DEDUCT_COMMISSION'}';
+    var autosave = source['autosaveEnabled'] == true;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('EduPay operating settings'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final key in fields)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      controller: controllers[key],
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: key,
+                        helperText: key.contains('Rate') ||
+                                key == 'maximumCoverPercentage'
+                            ? 'Enter a percentage from 0 to 100'
+                            : null,
+                      ),
+                    ),
+                  ),
+                DropdownButtonFormField<String>(
+                  value: settlementMethod,
+                  decoration:
+                      const InputDecoration(labelText: 'settlementMethod'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'DEDUCT_COMMISSION',
+                      child: Text('Deduct commission'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'GROSS_AND_RECEIVABLE',
+                      child: Text('Gross and receivable'),
+                    ),
+                  ],
+                  onChanged: (value) => setDialogState(
+                    () => settlementMethod = value ?? settlementMethod,
+                  ),
+                ),
+                SwitchListTile(
+                  value: autosave,
+                  title: const Text('autosaveEnabled'),
+                  onChanged: (value) =>
+                      setDialogState(() => autosave = value),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Validate and save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != true) return;
+    final payload = <String, dynamic>{};
+    for (final key in fields) {
+      final value = double.tryParse(controllers[key]!.text.trim());
+      final isPercentage =
+          key.contains('Rate') || key == 'maximumCoverPercentage';
+      if (value == null || value < 0 || (isPercentage && value > 100)) {
+        _showError('Enter valid non-negative settings; percentages must be 0–100.');
+        return;
+      }
+      payload[key] = value;
+    }
+    payload['settlementMethod'] = settlementMethod;
+    payload['autosaveEnabled'] = autosave;
+    try {
+      await _api.saveSettings(payload);
+      await _load();
+      await _loadReadiness();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('EduPay settings saved and audited.')),
+        );
+      }
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
   Widget _summary(Map<String, dynamic> s) => GridView.count(
         shrinkWrap: true,
@@ -374,12 +593,12 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               Text('account.verify: ${_display(holders['account.verify'])}'),
               Text('settlement.process: ${_display(holders['settlement.process'])}'),
             ]),
-            if (permissions.contains('edupay.manage')) ...[
+             if (canManageEduPay) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 8, children: [
                 if (isSuperAdmin) OutlinedButton.icon(onPressed: _assignDuty, icon: const Icon(Icons.person_add_alt_1),
                     label: const Text('Assign distinct duty')),
-                FilledButton.tonalIcon(onPressed: ready && permissions.contains('feature_control.manage') ? _enableEduPay : null,
+                 FilledButton.tonalIcon(onPressed: ready && (isHeadOffice || permissions.contains('feature_control.manage')) ? _enableEduPay : null,
                     icon: const Icon(Icons.power_settings_new), label: const Text('Enable EduPay')),
               ]),
             ],
@@ -429,6 +648,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   Future<void> _enableEduPay() async {
     try {
       await _api.enableFeature('edupay', 'EduPay launch readiness checklist completed');
+      await _loadReadiness();
+      await _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('EduPay enabled and audit recorded.')));
     } catch (e) {
@@ -570,7 +791,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                            if (section == 'Schools & onboarding')
                              IconButton(tooltip: 'View details', icon: const Icon(Icons.visibility_outlined),
                                onPressed: () => _schoolDetails(r)),
-                           if (section == 'Schools & onboarding') ...[
+                            if (section == 'Schools & onboarding' &&
+                                r['type'] != 'SCHOOL_REQUEST') ...[
                              ..._schoolActionButtons(r),
                            ],
                          ]))),
@@ -709,6 +931,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   List<Widget> _schoolActionButtons(Map<String, dynamic> row) {
+    if (row['type'] == 'SCHOOL_REQUEST') return const <Widget>[];
     final state = row['status']?.toString().toUpperCase() ?? '';
     final actions = switch (state) {
       'PENDING_REVIEW' => ['APPROVE', 'REJECT', 'REQUEST_UPDATE'],

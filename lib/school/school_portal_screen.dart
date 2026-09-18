@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'edupay_school_api.dart';
+import 'student_activity_center_screen.dart';
 
 class SchoolPortalScreen extends StatefulWidget {
   const SchoolPortalScreen({super.key});
@@ -20,10 +21,23 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   List<Map<String, dynamic>> fees = [];
   Map<String, dynamic>? selectedSession, selectedTerm, selectedClass;
   final tabs = const [
-    'Overview', 'Students', 'Academic Sessions', 'Terms', 'Classes',
-    'Fee Structures', 'EduPay Students', 'Expected School Fees',
-    'Upcoming Settlements', 'Completed Settlements', 'Servicepay 5% Commission',
-    'Reconciliation', 'Reports', 'School Profile', 'Settings', 'Logout',
+    'Overview',
+    'Students',
+    'Academic Sessions',
+    'Terms',
+    'Classes',
+    'Fee Structures',
+    'EduPay Students',
+    'Expected School Fees',
+    'Student Activity Center',
+    'Upcoming Settlements',
+    'Completed Settlements',
+    'Servicepay 5% Commission',
+    'Reconciliation',
+    'Reports',
+    'School Profile',
+    'Settings',
+    'Logout',
   ];
   @override
   void initState() {
@@ -52,6 +66,8 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Settlements' => '/edupay/school/settlements',
         'Reconciliation' => '/edupay/school/reconciliation',
         'Reports' => '/edupay/school/reports',
+        'Student Activity Center' =>
+          '/edupay/activity-center/school/records?type=dashboard',
         'School Profile' => '/edupay/school/profile',
         'Settings' => '/edupay/school/profile',
         'Logout' => '/edupay/school/dashboard',
@@ -79,16 +95,27 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         drawer: MediaQuery.sizeOf(context).width < 700
-            ? Drawer(child: ListView(children: tabs.map((t) => ListTile(
-                title: Text(t), selected: tab == t, onTap: () {
-                  Navigator.pop(context);
-                  if (t == 'Logout') {
-                    _logout();
-                    return;
-                  }
-                  setState(() => tab = t);
-                  _load();
-                })).toList()))
+            ? Drawer(
+                child: ListView(
+                  children: tabs
+                      .map(
+                        (t) => ListTile(
+                          title: Text(t),
+                          selected: tab == t,
+                          onTap: () {
+                            Navigator.pop(context);
+                            if (t == 'Logout') {
+                              _logout();
+                              return;
+                            }
+                            setState(() => tab = t);
+                            _load();
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+              )
             : null,
         appBar: AppBar(
           title: const Text('EduPay School Portal'),
@@ -102,32 +129,34 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         ),
         body: Row(
           children: [
-            Visibility(visible: MediaQuery.sizeOf(context).width >= 700,
+            Visibility(
+              visible: MediaQuery.sizeOf(context).width >= 700,
               child: SingleChildScrollView(
                 child: NavigationRail(
-              selectedIndex: tabs.indexOf(tab),
-              labelType: MediaQuery.sizeOf(context).width < 700
-                  ? NavigationRailLabelType.none
-                  : NavigationRailLabelType.all,
-              onDestinationSelected: (i) {
-                if (tabs[i] == 'Logout') {
-                  _logout();
-                  return;
-                }
-                setState(() => tab = tabs[i]);
-                _load();
-              },
-              destinations: tabs
-                  .map(
-                    (t) => NavigationRailDestination(
-                      icon: Icon(_icon(t)),
-                      selectedIcon: Icon(_icon(t)),
-                      label: Text(t),
-                    ),
-                  )
-                  .toList(),
+                  selectedIndex: tabs.indexOf(tab),
+                  labelType: MediaQuery.sizeOf(context).width < 700
+                      ? NavigationRailLabelType.none
+                      : NavigationRailLabelType.all,
+                  onDestinationSelected: (i) {
+                    if (tabs[i] == 'Logout') {
+                      _logout();
+                      return;
+                    }
+                    setState(() => tab = tabs[i]);
+                    _load();
+                  },
+                  destinations: tabs
+                      .map(
+                        (t) => NavigationRailDestination(
+                          icon: Icon(_icon(t)),
+                          selectedIcon: Icon(_icon(t)),
+                          label: Text(t),
+                        ),
+                      )
+                      .toList(),
                 ),
-              )),
+              ),
+            ),
             const VerticalDivider(width: 1),
             Expanded(
               child: loading
@@ -157,54 +186,90 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 20),
-                            tab == 'Overview'
-                                ? _dashboard()
-                                : tab == 'Academic setup'
-                                    ? _academicSetup()
-                                : const {'Academic Sessions', 'Terms', 'Classes',
-                                    'Fee Structures'}.contains(tab)
-                                    ? Column(children: [
-                                        Align(alignment: Alignment.centerLeft,
-                                          child: FilledButton.icon(
-                                            onPressed: tab == 'Fee Structures'
-                                                ? _createFee
-                                                : () => _academicDialog(
-                                                    tab == 'Academic Sessions'
-                                                        ? 'session'
-                                                        : tab == 'Terms'
-                                                            ? 'term' : 'class'),
-                                            icon: const Icon(Icons.add),
-                                            label: Text('Create $tab')),
-                                        ),
-                                        const SizedBox(height: 12), _records(),
-                                      ])
-                                : tab == 'Draft fees'
-                                    ? Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          FilledButton.icon(
-                                            onPressed: _createFee,
-                                            icon: const Icon(Icons.add),
-                                            label:
-                                                const Text('Create draft fee'),
-                                          ),
-                                          const SizedBox(height: 18),
-                                          const Card(
-                                            child: Padding(
-                                              padding: EdgeInsets.all(24),
-                                              child: Text(
-                                                'Draft fees are submitted to Head Office for approval.',
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                : tab == 'Settings'
-                                    ? const Card(child: Padding(
-                                        padding: EdgeInsets.all(24),
-                                        child: Text('School settings are managed by Head Office.')))
-                                    : _records(),
+                            tab == 'Student Activity Center'
+                                ? StudentActivityCenterScreen(
+                                    api: api,
+                                    onOpenStudents: () {
+                                      setState(() => tab = 'Students');
+                                      _load();
+                                    },
+                                  )
+                                : tab == 'Overview'
+                                    ? _dashboard()
+                                    : tab == 'Academic setup'
+                                        ? _academicSetup()
+                                        : const {
+                                            'Academic Sessions',
+                                            'Terms',
+                                            'Classes',
+                                            'Fee Structures',
+                                          }.contains(tab)
+                                            ? Column(
+                                                children: [
+                                                  Align(
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    child: FilledButton.icon(
+                                                      onPressed: tab ==
+                                                              'Fee Structures'
+                                                          ? _createFee
+                                                          : () =>
+                                                              _academicDialog(
+                                                                tab == 'Academic Sessions'
+                                                                    ? 'session'
+                                                                    : tab == 'Terms'
+                                                                        ? 'term'
+                                                                        : 'class',
+                                                              ),
+                                                      icon:
+                                                          const Icon(Icons.add),
+                                                      label:
+                                                          Text('Create $tab'),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  _records(),
+                                                ],
+                                              )
+                                            : tab == 'Draft fees'
+                                                ? Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      FilledButton.icon(
+                                                        onPressed: _createFee,
+                                                        icon: const Icon(
+                                                            Icons.add),
+                                                        label: const Text(
+                                                            'Create draft fee'),
+                                                      ),
+                                                      const SizedBox(
+                                                          height: 18),
+                                                      const Card(
+                                                        child: Padding(
+                                                          padding:
+                                                              EdgeInsets.all(
+                                                                  24),
+                                                          child: Text(
+                                                            'Draft fees are submitted to Head Office for approval.',
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  )
+                                                : tab == 'Settings'
+                                                    ? const Card(
+                                                        child: Padding(
+                                                          padding:
+                                                              EdgeInsets.all(
+                                                                  24),
+                                                          child: Text(
+                                                            'School settings are managed by Head Office.',
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : _records(),
                           ],
                         ),
             ),
@@ -222,15 +287,21 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Settlements' => Icons.payments_outlined,
         'Reconciliation' => Icons.compare_arrows_outlined,
         'Reports' => Icons.assessment_outlined,
+        'Student Activity Center' => Icons.auto_stories_outlined,
         'Settings' => Icons.settings_outlined,
         'Logout' => Icons.logout,
         _ => Icons.payments_outlined,
       };
   List<Map<String, dynamic>> _list(Map<String, dynamic> value, String key) {
     final rows = value[key];
-    return rows is List ? rows.whereType<Map>()
-        .map((row) => Map<String, dynamic>.from(row)).toList() : [];
+    return rows is List
+        ? rows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList()
+        : [];
   }
+
   Widget _dashboard() {
     final s = (data?['summary'] as Map?)?.cast<String, dynamic>() ?? {};
     return Wrap(
@@ -298,14 +369,16 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
             spacing: 24,
             runSpacing: 16,
             children: value.entries
-                .map((entry) => SizedBox(
-                      width: 220,
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(entry.key.toString()),
-                        subtitle: Text('${entry.value}'),
-                      ),
-                    ))
+                .map(
+                  (entry) => SizedBox(
+                    width: 220,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(entry.key.toString()),
+                      subtitle: Text('${entry.value}'),
+                    ),
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -324,23 +397,42 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         .map((m) => Map<String, dynamic>.from(m))
         .toList();
     final filtered = switch (tab) {
-      'Upcoming Settlements' => rows.where((r) =>
-          !{'SETTLED', 'COMPLETED', 'REVERSED'}.contains(
-              r['status']?.toString().toUpperCase())).toList(),
-      'Completed Settlements' => rows.where((r) =>
-          {'SETTLED', 'COMPLETED'}.contains(
-              r['status']?.toString().toUpperCase())).toList(),
-      'Servicepay 5% Commission' => rows.map((r) => {
-          'schoolCommissionAmount': r['schoolCommissionAmount'],
-          'grossAmount': r['grossAmount'],
-          'netAmount': r['netAmount'],
-          'reference': r['reference'],
-        }).toList(),
+      'Upcoming Settlements' => rows
+          .where(
+            (r) => !{
+              'SETTLED',
+              'COMPLETED',
+              'REVERSED',
+            }.contains(r['status']?.toString().toUpperCase()),
+          )
+          .toList(),
+      'Completed Settlements' => rows
+          .where(
+            (r) => {
+              'SETTLED',
+              'COMPLETED',
+            }.contains(r['status']?.toString().toUpperCase()),
+          )
+          .toList(),
+      'Servicepay 5% Commission' => rows
+          .map(
+            (r) => {
+              'schoolCommissionAmount': r['schoolCommissionAmount'],
+              'grossAmount': r['grossAmount'],
+              'netAmount': r['netAmount'],
+              'reference': r['reference'],
+            },
+          )
+          .toList(),
       _ => rows,
     };
     if (filtered.isEmpty) {
-      return const Card(child: Padding(
-        padding: EdgeInsets.all(40), child: Text('No records are available yet.')));
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(40),
+          child: Text('No records are available yet.'),
+        ),
+      );
     }
     return Card(
       child: SingleChildScrollView(
@@ -368,18 +460,34 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   Widget _academicSetup() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Create in order: academic session → term → class',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+          const Text(
+            'Create in order: academic session → term → class',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 14),
-          Wrap(spacing: 10, runSpacing: 10, children: [
-            FilledButton.icon(onPressed: () => _academicDialog('session'),
-                icon: const Icon(Icons.calendar_today), label: const Text('Create session')),
-            FilledButton.tonalIcon(onPressed: () => _academicDialog('term'),
-                icon: const Icon(Icons.event), label: const Text('Create term')),
-            FilledButton.tonalIcon(onPressed: () => _academicDialog('class'),
-                icon: const Icon(Icons.class_outlined), label: const Text('Create class')),
-          ]),
-          const SizedBox(height: 16), _records(),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: () => _academicDialog('session'),
+                icon: const Icon(Icons.calendar_today),
+                label: const Text('Create session'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () => _academicDialog('term'),
+                icon: const Icon(Icons.event),
+                label: const Text('Create term'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () => _academicDialog('class'),
+                icon: const Icon(Icons.class_outlined),
+                label: const Text('Create class'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _records(),
         ],
       );
 
@@ -391,36 +499,71 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     final name = TextEditingController();
     final parent = TextEditingController();
     String? selectedSession;
-    final ok = await showDialog<bool>(context: context, builder: (d) => StatefulBuilder(
-      builder: (d, setDialogState) => AlertDialog(
-      title: Text('Create academic $type'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: name, decoration: InputDecoration(labelText: '$type name')),
-        if (type == 'term') DropdownButton<String>(isExpanded: true,
-          value: selectedSession, hint: const Text('Select academic session'),
-          items: sessions.map((row) {
-            final id = (row['_id'] ?? row['id']).toString();
-            return DropdownMenuItem(value: id, child: Text('${row['name']}'));
-          }).toList(), onChanged: (value) => setDialogState(() {
-            selectedSession = value;
-            parent.text = value ?? '';
-          })),
-      ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Create'))],
-    )));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, setDialogState) => AlertDialog(
+          title: Text('Create academic $type'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: InputDecoration(labelText: '$type name'),
+              ),
+              if (type == 'term')
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: selectedSession,
+                  hint: const Text('Select academic session'),
+                  items: sessions.map((row) {
+                    final id = (row['_id'] ?? row['id']).toString();
+                    return DropdownMenuItem(
+                      value: id,
+                      child: Text('${row['name']}'),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setDialogState(() {
+                    selectedSession = value;
+                    parent.text = value ?? '';
+                  }),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
     if (ok != true || name.text.trim().isEmpty) return;
     try {
-      final body = {'name': name.text.trim(), if (type == 'term' && parent.text.trim().isNotEmpty)
-        'session': parent.text.trim()};
+      final body = {
+        'name': name.text.trim(),
+        if (type == 'term' && parent.text.trim().isNotEmpty)
+          'session': parent.text.trim(),
+      };
       if (type == 'session') await api.createAcademicSession(body);
       if (type == 'term') await api.createTerm(body);
       if (type == 'class') await api.createClass(body);
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Academic $type created.'))); _load(); }
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Academic $type created.')));
+        _load();
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
     }
   }
 
@@ -445,40 +588,84 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Create draft fee'),
         content: SingleChildScrollView(
-          child: StatefulBuilder(builder: (context, setDialogState) => Column(
-            children: [
-              TextField(
+          child: StatefulBuilder(
+            builder: (context, setDialogState) => Column(
+              children: [
+                TextField(
                   controller: amount,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Amount')),
-              DropdownButton<String>(isExpanded: true, value: sessionId,
-                hint: const Text('Select session'), items: sessions.map((row) =>
-                  DropdownMenuItem(value: id(row), child: Text('${row['name']}'))).toList(),
-                onChanged: (value) => setDialogState(() { sessionId = value; termId = null; })),
-              DropdownButton<String>(isExpanded: true, value: termId,
-                hint: const Text('Select term'), items: terms.where((row) =>
-                  (row['session'] is Map
-                      ? ((row['session'] as Map)['_id'] ??
-                          (row['session'] as Map)['id']).toString()
-                      : row['session']?.toString()) == sessionId ||
-                  row['sessionId']?.toString() == sessionId).map((row) =>
-                  DropdownMenuItem(value: id(row), child: Text('${row['name']}'))).toList(),
-                onChanged: (value) => setDialogState(() => termId = value)),
-              DropdownButton<String>(isExpanded: true, value: classId,
-                hint: const Text('Select class'), items: classes.map((row) =>
-                  DropdownMenuItem(value: id(row), child: Text('${row['name']}'))).toList(),
-                onChanged: (value) => setDialogState(() => classId = value)),
-            ],
-          )),
+                  decoration: const InputDecoration(labelText: 'Amount'),
+                ),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: sessionId,
+                  hint: const Text('Select session'),
+                  items: sessions
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: id(row),
+                          child: Text('${row['name']}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setDialogState(() {
+                    sessionId = value;
+                    termId = null;
+                  }),
+                ),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: termId,
+                  hint: const Text('Select term'),
+                  items: terms
+                      .where(
+                        (row) =>
+                            (row['session'] is Map
+                                    ? ((row['session'] as Map)['_id'] ??
+                                            (row['session'] as Map)['id'])
+                                        .toString()
+                                    : row['session']?.toString()) ==
+                                sessionId ||
+                            row['sessionId']?.toString() == sessionId,
+                      )
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: id(row),
+                          child: Text('${row['name']}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setDialogState(() => termId = value),
+                ),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: classId,
+                  hint: const Text('Select class'),
+                  items: classes
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: id(row),
+                          child: Text('${row['name']}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setDialogState(() => classId = value),
+                ),
+              ],
+            ),
+          ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: sessionId != null && termId != null && classId != null
-                  ? () => Navigator.pop(dialogContext, true) : null,
-              child: const Text('Submit draft')),
+            onPressed: sessionId != null && termId != null && classId != null
+                ? () => Navigator.pop(dialogContext, true)
+                : null,
+            child: const Text('Submit draft'),
+          ),
         ],
       ),
     );
@@ -494,12 +681,14 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Draft fee submitted for approval.')));
+          const SnackBar(content: Text('Draft fee submitted for approval.')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
   }

@@ -3,13 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'edupay_api.dart';
 import 'private_asset_download.dart';
 
-String eduPayDutyDisplayLabel(String permission) => switch (permission) {
-      'account.manage' => 'Account Management Officer',
-      'account.verify' => 'Account Verification Officer',
-      'settlement.process' => 'Settlement Processing Officer',
-      _ => permission,
-    };
-
 class EduPayControlCenterScreen extends StatefulWidget {
   const EduPayControlCenterScreen({super.key});
   @override
@@ -21,7 +14,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   final _api = EduPayApi();
   Map<String, dynamic>? data;
   Map<String, dynamic>? readiness;
-  bool canConfigureDuties = false;
   Set<String> permissions = <String>{};
   String adminRole = '';
   String section = 'Overview';
@@ -53,9 +45,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       }.contains(adminRole);
   bool get canManageEduPay =>
       isHeadOffice || permissions.contains('edupay.manage');
-  bool get canEnableEduPay =>
-      adminRole == 'SERVICEPAY_SUPER_ADMIN' ||
-      permissions.contains('feature_control.protected_manage');
   @override
   void initState() {
     super.initState();
@@ -66,8 +55,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   Future<void> _loadReadiness() async {
     try {
       readiness = await _api.readiness();
-      canConfigureDuties =
-          (readiness?['capabilities'] as Map?)?['configureDuties'] == true;
       final prefs = await SharedPreferences.getInstance();
       adminRole = (prefs.getString('user_role') ??
               prefs.getString('admin_role') ??
@@ -82,7 +69,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           .map((value) => value.toLowerCase()).toSet();
       if (mounted) setState(() {});
     } catch (_) {
-      canConfigureDuties = false;
       if (mounted) setState(() {});
     }
   }
@@ -372,16 +358,16 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           Card(
             child: ListTile(
               leading: Icon(
-                ((data?['settings'] as Map?)?['enabled'] == true)
+                _eduPayActive
                     ? Icons.check_circle
                     : Icons.pause_circle_outline,
               ),
-              title: const Text('Feature status'),
-              subtitle: Text(
-                ((data?['settings'] as Map?)?['enabled'] == true)
-                    ? 'ENABLED'
-                    : 'DISABLED',
+              title: Text(
+                'EduPay Status ${_eduPayActive ? 'ACTIVE' : 'NOT ACTIVE'}',
               ),
+              subtitle: Text(_eduPayActive
+                  ? 'Automatically enabled'
+                  : 'Not automatically enabled'),
             ),
           ),
           const SizedBox(height: 8),
@@ -557,17 +543,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             .toList(),
       );
 
-  String _holderName(Map<String, dynamic> holders, String permission) {
-    final value = holders[permission];
-    if (value is List && value.isNotEmpty && value.first is Map) {
-      final holder = Map<String, dynamic>.from(value.first as Map);
-      return (holder['fullName'] ?? holder['name'] ?? 'Configured').toString();
-    }
-    if (value is Map) {
-      return (value['fullName'] ?? value['name'] ?? 'Configured').toString();
-    }
-    return 'Not configured';
-  }
+  bool get _eduPayActive =>
+      readiness?['ready'] == true &&
+      readiness?['eduPayActive'] == true &&
+      readiness?['customerInitiationEnabled'] == true;
 
   Widget _readinessRow({
     required String title,
@@ -601,7 +580,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               ),
             ),
             Text(
-              ready ? 'READY' : 'CONFIGURE',
+              ready ? 'READY' : 'NOT READY',
               style: TextStyle(
                 color: ready ? const Color(0xff08783e) : Colors.orange.shade900,
                 fontSize: 11,
@@ -613,17 +592,13 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       );
 
   Widget _readinessCard() {
-    final coverage =
-        (readiness?['dutyCoverage'] as Map?)?.cast<String, dynamic>() ?? {};
     final payout = (readiness?['payoutConfig'] as Map?)?.cast<String, dynamic>() ?? {};
-    final ready = readiness?['ready'] == true;
-    final holders = (readiness?['currentHolders'] as Map?)?.cast<String, dynamic>() ?? {};
     final missing = (payout['missingEnvironment'] as List?)
             ?.map((value) => value.toString())
             .toList() ??
         <String>[];
     return Card(
-      color: ready ? const Color(0xffe9f6ee) : const Color(0xfffff4df),
+      color: _eduPayActive ? const Color(0xffe9f6ee) : const Color(0xfffff4df),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -638,30 +613,12 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              ready
-                  ? 'All launch controls are verified.'
-                  : 'Complete every required control before enabling customer initiation.',
+              _eduPayActive
+                  ? 'EduPay is automatically enabled for customer initiation.'
+                  : 'EduPay is not automatically enabled.',
               style: TextStyle(color: Colors.grey.shade700),
             ),
             const SizedBox(height: 20),
-            const Text('Duty Separation',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-            _readinessRow(
-              title: eduPayDutyDisplayLabel('account.manage'),
-              ready: (coverage['manage'] ?? 0) > 0,
-              detail: _holderName(holders, 'account.manage'),
-            ),
-            _readinessRow(
-              title: eduPayDutyDisplayLabel('account.verify'),
-              ready: (coverage['verify'] ?? 0) > 0,
-              detail: _holderName(holders, 'account.verify'),
-            ),
-            _readinessRow(
-              title: eduPayDutyDisplayLabel('settlement.process'),
-              ready: (coverage['process'] ?? 0) > 0,
-              detail: _holderName(holders, 'settlement.process'),
-            ),
-            const Divider(height: 28),
             const Text('Financial Infrastructure',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
             _readinessRow(
@@ -706,107 +663,26 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: ready
+                color: _eduPayActive
                     ? const Color(0xffd8f0e2)
                     : Colors.orange.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                'Overall Readiness: ${ready ? 'READY' : 'NOT READY'}',
+                'EduPay Status: ${_eduPayActive ? 'ACTIVE' : 'NOT ACTIVE'}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                  color: ready
+                    color: _eduPayActive
                       ? const Color(0xff08783e)
                       : Colors.orange.shade900,
                 ),
               ),
             ),
-            if (canManageEduPay) ...[
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 9,
-                runSpacing: 9,
-                children: [
-                  if (canConfigureDuties)
-                    OutlinedButton.icon(
-                      key: const Key('configure-edupay-officers'),
-                      onPressed: _assignDuty,
-                      icon: const Icon(Icons.person_add_alt_1),
-                      label: const Text('Configure officers'),
-                    ),
-                  OutlinedButton.icon(
-                    onPressed: _loadReadiness,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Verify configuration'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: ready && canEnableEduPay ? _enableEduPay : null,
-                    icon: const Icon(Icons.power_settings_new),
-                    label: const Text('Enable EduPay'),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _assignDuty() async {
-    final holders =
-        (readiness?['currentHolders'] as Map?)?.cast<String, dynamic>() ?? {};
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => EduPayOfficerAssignmentsDialog(
-        api: _api,
-        currentHolders: holders,
-      ),
-    );
-    if (ok != true) return;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Duty officers saved and audit recorded.')));
-    }
-    await _loadReadiness();
-  }
-
-  Future<void> _enableEduPay() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Enable EduPay?'),
-        content: const Text(
-          'This enables customer EduPay initiation. All readiness controls will be checked again by the Backend before the change is accepted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Enable EduPay'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await _api.enableFeature('edupay', 'EduPay launch readiness checklist completed');
-      await _loadReadiness();
-      await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('EduPay enabled and audit recorded.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
-      }
-    }
   }
 
   Widget _settlementTools() {
@@ -1098,226 +974,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     };
     return actions.map((action) => IconButton(tooltip: action,
       icon: Icon(icons[action]), onPressed: () => _schoolAction(row, action))).toList();
-  }
-}
-
-class EduPayOfficerAssignmentsDialog extends StatefulWidget {
-  const EduPayOfficerAssignmentsDialog({
-    super.key,
-    required this.api,
-    required this.currentHolders,
-  });
-
-  final EduPayApi api;
-  final Map<String, dynamic> currentHolders;
-
-  @override
-  State<EduPayOfficerAssignmentsDialog> createState() =>
-      _EduPayOfficerAssignmentsDialogState();
-}
-
-class _EduPayOfficerAssignmentsDialogState
-    extends State<EduPayOfficerAssignmentsDialog> {
-  static const duties = <String>[
-    'account.manage',
-    'account.verify',
-    'settlement.process',
-  ];
-
-  List<Map<String, dynamic>> users = <Map<String, dynamic>>[];
-  late final List<String?> selected;
-  bool loading = true;
-  bool saving = false;
-  String? error;
-
-  @override
-  void initState() {
-    super.initState();
-    selected = duties
-        .map((duty) => _currentHolderId(widget.currentHolders[duty]))
-        .toList();
-    _loadOfficers();
-  }
-
-  String? _currentHolderId(dynamic value) {
-    if (value is! List || value.isEmpty || value.first is! Map) return null;
-    final holder = Map<String, dynamic>.from(value.first as Map);
-    final id = (holder['id'] ?? holder['_id'])?.toString().trim();
-    return id == null || id.isEmpty ? null : id;
-  }
-
-  Future<void> _loadOfficers() async {
-    setState(() {
-      loading = true;
-      error = null;
-    });
-    try {
-      final response = await widget.api.eligibleDutyUsers();
-      final rows = response['users'] ?? response['data'];
-      final loaded = rows is List
-          ? rows
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .where((row) =>
-                  row['role']?.toString().toUpperCase() == 'HEAD_OFFICE' &&
-                  row['status']?.toString().toUpperCase() == 'ACTIVE')
-              .toList()
-          : <Map<String, dynamic>>[];
-      if (!mounted) return;
-      setState(() {
-        users = loaded;
-        for (var index = 0; index < selected.length; index++) {
-          if (!users.any((user) =>
-              (user['id'] ?? user['_id']).toString() == selected[index])) {
-            selected[index] = null;
-          }
-        }
-        loading = false;
-      });
-    } catch (exception) {
-      if (!mounted) return;
-      setState(() {
-        loading = false;
-        error = exception.toString().replaceFirst('Exception: ', '');
-      });
-    }
-  }
-
-  bool get hasCompleteDistinctSelection =>
-      selected.every((value) => value != null) &&
-      selected.toSet().length == duties.length;
-
-  Future<void> _save() async {
-    if (!hasCompleteDistinctSelection || saving) return;
-    setState(() {
-      saving = true;
-      error = null;
-    });
-    try {
-      await widget.api.configureDuties(<String, String>{
-        for (var index = 0; index < duties.length; index++)
-          duties[index]: selected[index]!,
-      });
-      if (mounted) Navigator.pop(context, true);
-    } catch (exception) {
-      if (!mounted) return;
-      setState(() {
-        saving = false;
-        error = exception.toString().replaceFirst('Exception: ', '');
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final duplicateSelection = selected.whereType<String>().length > 1 &&
-        selected.whereType<String>().toSet().length !=
-            selected.whereType<String>().length;
-    return AlertDialog(
-      title: const Text('Configure officers'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: SingleChildScrollView(
-          child: loading
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 28),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 14),
-                        Text('Loading active Head Office officers…'),
-                      ],
-                    ),
-                  ),
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Assign three distinct active Head Office officers. These assignments are saved together and audited.',
-                    ),
-                    const SizedBox(height: 18),
-                    if (error != null) ...[
-                      Text(
-                        error!,
-                        key: const Key('edupay-officer-error'),
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (users.isEmpty) ...[
-                      const Text(
-                        'No eligible active Head Office officers are available.',
-                        key: Key('edupay-officer-empty'),
-                      ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: _loadOfficers,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Try again'),
-                      ),
-                    ] else
-                      ...List.generate(
-                        duties.length,
-                        (index) => Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: DropdownButtonFormField<String>(
-                            key: Key('edupay-officer-${duties[index]}'),
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              labelText: eduPayDutyDisplayLabel(duties[index]),
-                            ),
-                            value: selected[index],
-                            items: users.map((user) {
-                              final id =
-                                  (user['id'] ?? user['_id']).toString();
-                              return DropdownMenuItem<String>(
-                                value: id,
-                                child: Text(user['name']?.toString() ?? id),
-                              );
-                            }).toList(),
-                            onChanged: saving
-                                ? null
-                                : (value) =>
-                                    setState(() => selected[index] = value),
-                          ),
-                        ),
-                      ),
-                    if (duplicateSelection)
-                      Text(
-                        'Each duty must be assigned to a different officer.',
-                        key: const Key('edupay-officer-duplicate'),
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                      ),
-                  ],
-                ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: saving ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('save-edupay-officer-assignments'),
-          onPressed: !loading &&
-                  users.length >= duties.length &&
-                  hasCompleteDistinctSelection &&
-                  !saving
-              ? _save
-              : null,
-          child: saving
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save Assignments'),
-        ),
-      ],
-    );
   }
 }
 

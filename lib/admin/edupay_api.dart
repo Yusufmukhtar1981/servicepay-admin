@@ -107,6 +107,25 @@ class EduPayApi {
       request('GET', '/admin/edupay/schools/$schoolId');
   Future<Map<String, dynamic>> schoolRequests() =>
       request('GET', '/admin/edupay/school-requests');
+  Future<Map<String, dynamic>> schoolRequestDetail(String requestId) =>
+      request('GET', '/admin/edupay/school-requests/$requestId');
+  Future<Map<String, dynamic>> schoolRequestAction(
+    String requestId,
+    String action, {
+    String? rejectionReason,
+    bool? representativeAuthorityConfirmed,
+  }) =>
+      request(
+        'PATCH',
+        '/admin/edupay/school-requests/$requestId',
+        body: {
+          'action': action,
+          if (rejectionReason != null) 'rejectionReason': rejectionReason,
+          if (representativeAuthorityConfirmed != null)
+            'representativeAuthorityConfirmed':
+                representativeAuthorityConfirmed,
+        },
+      );
   Future<Map<String, dynamic>> privateSchoolDocuments(String schoolId) =>
       request('GET', '/admin/edupay/schools/$schoolId/private-assets');
   Future<http.Response> privateAssetBytes(String schoolId, String fileId) async {

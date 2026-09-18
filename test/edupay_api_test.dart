@@ -73,6 +73,9 @@ void main() {
     await api.schoolDetail('school-1');
     await api.privateSchoolDocuments('school-1');
     await api.schoolRequests();
+    await api.schoolRequestDetail('request-1');
+    await api.schoolRequestAction('request-1', 'REJECT',
+        rejectionReason: 'Incomplete application');
     await api.eligibleDutyUsers();
     await api.configureDuties(<String, String>{
       'account.manage': 'officer-1',
@@ -85,6 +88,8 @@ void main() {
       'GET /api/admin/edupay/schools/school-1',
       'GET /api/admin/edupay/schools/school-1/private-assets',
       'GET /api/admin/edupay/school-requests',
+      'GET /api/admin/edupay/school-requests/request-1',
+      'PATCH /api/admin/edupay/school-requests/request-1',
       'GET /api/admin/edupay/duties/eligible-users',
       'PUT /api/admin/edupay/duties',
       'PATCH /api/feature-control/admin/edupay',
@@ -92,16 +97,45 @@ void main() {
     expect(jsonDecode(requests[0].body),
         {'action': 'SUSPEND', 'note': 'Policy review'});
     expect(jsonDecode(requests[5].body), {
+      'action': 'REJECT',
+      'rejectionReason': 'Incomplete application',
+    });
+    expect(jsonDecode(requests[7].body), {
       'assignments': {
         'account.manage': 'officer-1',
         'account.verify': 'officer-2',
         'settlement.process': 'officer-3',
       },
     });
-    expect(jsonDecode(requests[6].body), {
+    expect(jsonDecode(requests[8].body), {
       'enabled': true,
       'reason': 'checklist complete',
       'confirmationText': 'edupay',
+    });
+  });
+
+  test('school request approval sends representative authority confirmation',
+      () async {
+    late http.Request request;
+    final api = EduPayApi(
+      baseUrl: 'https://example.test/api',
+      client: MockClient((value) async {
+        request = value;
+        return http.Response(
+            jsonEncode(<String, dynamic>{'success': true}), 200);
+      }),
+    );
+    await api.schoolRequestAction(
+      'request-approve',
+      'APPROVE',
+      representativeAuthorityConfirmed: true,
+    );
+    expect(request.method, 'PATCH');
+    expect(request.url.path,
+        '/api/admin/edupay/school-requests/request-approve');
+    expect(jsonDecode(request.body), {
+      'action': 'APPROVE',
+      'representativeAuthorityConfirmed': true,
     });
   });
 

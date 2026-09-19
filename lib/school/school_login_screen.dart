@@ -43,6 +43,18 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('school_auth_token', decoded['token'].toString());
       final school = decoded['school'] as Map?;
+      final user = decoded['user'] as Map?;
+      final role =
+          decoded['role'] ??
+          decoded['schoolRole'] ??
+          school?['role'] ??
+          user?['role'];
+      if (role != null) {
+        await prefs.setString(
+          'school_role',
+          role.toString().trim().toUpperCase(),
+        );
+      }
       await prefs.setString(
         'school_name',
         school?['name']?.toString() ?? 'School',
@@ -137,11 +149,16 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
                         ),
                       ),
                     ),
-                    Center(child: TextButton(
-                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const SchoolRegistrationScreen())),
-                      child: const Text('Register your school'),
-                    )),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SchoolRegistrationScreen(),
+                          ),
+                        ),
+                        child: const Text('Register your school'),
+                      ),
+                    ),
                   ],
                 ),
               ),

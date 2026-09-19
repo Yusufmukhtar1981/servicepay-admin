@@ -175,7 +175,7 @@ void main() {
         ),
       );
 
-      expect(find.text('View'), findsOneWidget);
+      expect(find.text('View School'), findsOneWidget);
       expect(find.text('Approve'), findsOneWidget);
       expect(find.text('Reject'), findsOneWidget);
       expect(find.byType(SingleChildScrollView), findsNothing);
@@ -205,7 +205,9 @@ void main() {
     },
   );
 
-  testWidgets('unauthorized pending viewer retains only View', (tester) async {
+  testWidgets('unauthorized pending viewer retains only View School', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -223,7 +225,7 @@ void main() {
       ),
     );
 
-    expect(find.text('View'), findsOneWidget);
+    expect(find.text('View School'), findsOneWidget);
     expect(find.text('Approve'), findsNothing);
     expect(find.text('Reject'), findsNothing);
   });

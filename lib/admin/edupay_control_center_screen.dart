@@ -25,6 +25,19 @@ bool eduPayAdminRoleCanManage(String role) => const <String>{
       'SERVICEPAY_SUPER_ADMIN',
     }.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
 
+class _NavHeading extends StatelessWidget {
+  const _NavHeading(this.label);
+  final String label;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 12, 6),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+        ),
+      );
+}
+
 class SchoolRequestActionControls extends StatelessWidget {
   const SchoolRequestActionControls({
     super.key,
@@ -51,7 +64,7 @@ class SchoolRequestActionControls extends StatelessWidget {
         TextButton.icon(
           onPressed: onView,
           icon: const Icon(Icons.visibility_outlined),
-          label: const Text('View'),
+          label: const Text('View School'),
         ),
         if (pending && canManage) ...[
           TextButton.icon(
@@ -119,29 +132,28 @@ List<Map<String, dynamic>> eduPaySchoolReviewRows(
   List<Map<String, dynamic>> requests,
 ) {
   final schoolIds = schools.map(_reviewRowId).whereType<String>().toSet();
-  final requestRows = requests
-      .where((request) {
-        final status = (request['status'] ?? 'PENDING_REVIEW')
-            .toString()
-            .toUpperCase();
-        final linkedId = _requestLinkedSchoolId(request);
-        return !(status == 'APPROVED' &&
-            linkedId != null &&
-            schoolIds.contains(linkedId));
-      })
-      .map((request) => <String, dynamic>{
-            'type': 'SCHOOL_REQUEST',
-            'schoolName': request['schoolName'] ?? request['name'],
-            'location': request['location'],
-            'contactPhone': request['contactPhone'],
-            'status': (request['status'] ?? 'PENDING_REVIEW')
-                .toString()
-                .trim()
-                .toUpperCase(),
-            'createdAt': request['createdAt'],
-            '_requestId': request['_id'] ?? request['id'],
-            '_request': request,
-          });
+  final requestRows = requests.where((request) {
+    final status =
+        (request['status'] ?? 'PENDING_REVIEW').toString().toUpperCase();
+    final linkedId = _requestLinkedSchoolId(request);
+    return !(status == 'APPROVED' &&
+        linkedId != null &&
+        schoolIds.contains(linkedId));
+  }).map(
+    (request) => <String, dynamic>{
+      'type': 'SCHOOL_REQUEST',
+      'schoolName': request['schoolName'] ?? request['name'],
+      'location': request['location'],
+      'contactPhone': request['contactPhone'],
+      'status': (request['status'] ?? 'PENDING_REVIEW')
+          .toString()
+          .trim()
+          .toUpperCase(),
+      'createdAt': request['createdAt'],
+      '_requestId': request['_id'] ?? request['id'],
+      '_request': request,
+    },
+  );
   return [...requestRows, ...schools];
 }
 
@@ -163,7 +175,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   String? error;
   final schoolSearch = TextEditingController();
   String schoolStatus = 'ALL';
-  final sections = const <String>[
+  final financeSections = const <String>[
     'Overview',
     'Schools & onboarding',
     'Fee approvals',
@@ -178,6 +190,20 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     'Settings',
     'Audit logs',
   ];
+  final academicSections = const <String>[
+    'Academic Overview',
+    'Schools',
+    'Students',
+    'Teachers',
+    'Classes',
+    'Subjects',
+    'Attendance',
+    'Exams & Results',
+    'Academic Sessions',
+    'Timetable',
+    'School Activities',
+  ];
+  List<String> get sections => [...financeSections, ...academicSections];
   bool get isHeadOffice => eduPayAdminRoleCanManage(adminRole);
   bool get canManageEduPay =>
       isHeadOffice || permissions.contains('edupay.manage');
@@ -221,6 +247,22 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       error = null;
     });
     try {
+      if (academicSections.contains(section)) {
+        if (section == 'Schools') {
+          final responses = await Future.wait([
+            _api.request('GET', '/admin/edupay/schools'),
+            _api.academicOverview(),
+          ]);
+          data = <String, dynamic>{
+            ...responses[0],
+            'academicOverview': responses[1],
+          };
+        } else {
+          data = await _api.academicOverview();
+        }
+        if (mounted) setState(() => loading = false);
+        return;
+      }
       if (section == 'Reports') {
         final responses = await Future.wait([
           _api.request('GET', '/admin/edupay/transactions'),
@@ -256,12 +298,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         data = <String, dynamic>{
           ...overview,
           'summary': <String, dynamic>{
-            ...((overview['summary'] as Map?)
-                    ?.cast<String, dynamic>() ??
+            ...((overview['summary'] as Map?)?.cast<String, dynamic>() ??
                 <String, dynamic>{}),
-            ...academic.map(
-              (key, value) => MapEntry('academic_$key', value),
-            ),
+            ...academic.map((key, value) => MapEntry('academic_$key', value)),
           },
         };
         if (mounted) setState(() => loading = false);
@@ -308,13 +347,101 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   List<Map<String, dynamic>> _rows() {
+    if (academicSections.contains(section)) {
+      final academicKey = <String, String>{
+        'Students': 'students',
+        'Teachers': 'teachers',
+        'Classes': 'classes',
+        'Subjects': 'subjects',
+        'Attendance': 'attendance',
+        'Exams & Results': 'assessments',
+        'Academic Sessions': 'sessions',
+        'Timetable': 'timetable',
+        'School Activities': 'activities',
+      }[section];
+      final sourceData = data;
+      final source = section == 'Schools'
+          ? (sourceData == null ? null : sourceData['schools'])
+          : academicKey == null
+              ? null
+              : sourceData![academicKey];
+      if (source is List) {
+        return source
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+      }
+      final overview = data?['academicOverview'];
+      if (overview is Map) {
+        final value = overview[{
+          'Students': 'students',
+          'Teachers': 'teachers',
+          'Classes': 'classes',
+          'Subjects': 'subjects',
+          'Attendance': 'attendance',
+          'Exams & Results': 'assessments',
+          'Academic Sessions': 'sessions',
+          'Timetable': 'timetable',
+          'School Activities': 'activities',
+        }[section]];
+        if (value is List) {
+          return value
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList();
+        }
+      }
+      if (section == 'Academic Overview') {
+        final summary = (data?['usage'] ?? data?['summary']) as Map?;
+        if (summary != null) {
+          return summary.entries
+              .map(
+                (entry) => <String, dynamic>{entry.key.toString(): entry.value},
+              )
+              .toList();
+        }
+      }
+      final profiles = data?['schoolProfiles'];
+      final metricKey = <String, String>{
+        'Students': 'students',
+        'Teachers': 'teachers',
+        'Classes': 'classes',
+        'Subjects': 'subjects',
+        'Attendance': 'attendanceRecords',
+        'Exams & Results': 'publishedResults',
+        'Academic Sessions': 'academicSessions',
+        'Timetable': 'timetableEntries',
+        'School Activities': 'schoolActivities',
+      }[section];
+      if (profiles is List && metricKey != null) {
+        return profiles.whereType<Map>().map((profile) {
+          final row = Map<String, dynamic>.from(profile);
+          final activityKey = switch (section) {
+            'Attendance' => 'lastAttendanceAt',
+            'Exams & Results' => 'lastPublishedResultAt',
+            'School Activities' => 'lastSchoolActivityAt',
+            _ => null,
+          };
+          return <String, dynamic>{
+            'school': row['name'] ?? 'School',
+            metricKey: row[metricKey] ?? 0,
+            if (activityKey != null) 'latestActivity': row[activityKey],
+            'status': row['status'] ?? 'APPROVED',
+          };
+        }).toList();
+      }
+      return const [];
+    }
     if (section == 'Savings & transactions' || section == 'Reconciliation') {
       final rows = <Map<String, dynamic>>[];
       for (final key in ['contributions', 'ledger', 'repaymentTransactions']) {
         final value = data?[key];
         if (value is List) {
-          rows.addAll(value.whereType<Map>().map((row) =>
-              {...Map<String, dynamic>.from(row), '_source': key}));
+          rows.addAll(
+            value.whereType<Map>().map(
+                  (row) => {...Map<String, dynamic>.from(row), '_source': key},
+                ),
+          );
         }
       }
       return rows;
@@ -324,8 +451,11 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       for (final key in ['invites', 'contributions']) {
         final value = data?[key];
         if (value is List) {
-          rows.addAll(value.whereType<Map>().map((row) =>
-              {...Map<String, dynamic>.from(row), '_source': key}));
+          rows.addAll(
+            value.whereType<Map>().map(
+                  (row) => {...Map<String, dynamic>.from(row), '_source': key},
+                ),
+          );
         }
       }
       return rows;
@@ -364,41 +494,81 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   String _display(dynamic v) => v == null ? '—' : v.toString();
   Widget _reportsView() {
     final contributionRows = (data?['transactionContributions'] is List)
-        ? (data!['transactionContributions'] as List).length : 0;
+        ? (data!['transactionContributions'] as List).length
+        : 0;
     final ledgerRows = (data?['transactionLedger'] is List)
-        ? (data!['transactionLedger'] as List).length : 0;
+        ? (data!['transactionLedger'] as List).length
+        : 0;
     final repaymentRows = (data?['repaymentTransactions'] is List)
-        ? (data!['repaymentTransactions'] as List).length : 0;
+        ? (data!['repaymentTransactions'] as List).length
+        : 0;
     final values = <String, dynamic>{
       'Contributions': contributionRows,
       'Ledger': ledgerRows,
       'Repayment transactions': repaymentRows,
       'Sponsor invites': data?['sponsorInvites'] is List
-          ? (data!['sponsorInvites'] as List).length : 0,
+          ? (data!['sponsorInvites'] as List).length
+          : 0,
       'Sponsor contributions': data?['sponsorContributions'] is List
-          ? (data!['sponsorContributions'] as List).length : 0,
-      'Audit events': data?['audit'] is List
-          ? (data!['audit'] as List).length : 0,
+          ? (data!['sponsorContributions'] as List).length
+          : 0,
+      'Audit events':
+          data?['audit'] is List ? (data!['audit'] as List).length : 0,
     };
-    return GridView.count(shrinkWrap: true,
+    return GridView.count(
+      shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: MediaQuery.sizeOf(context).width < 700 ? 1 : 3,
-      children: values.entries.map((e) => Card(child: ListTile(
-        leading: const Icon(Icons.analytics_outlined), title: Text(e.key),
-        subtitle: Text(_display(e.value))))).toList());
+      children: values.entries
+          .map(
+            (e) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.analytics_outlined),
+                title: Text(e.key),
+                subtitle: Text(_display(e.value)),
+              ),
+            ),
+          )
+          .toList(),
+    );
   }
+
   @override
   Widget build(BuildContext context) {
     final summary = (data?['summary'] as Map?)?.cast<String, dynamic>() ?? {};
     return Scaffold(
       backgroundColor: const Color(0xfff4f7f5),
       drawer: MediaQuery.sizeOf(context).width < 700
-          ? Drawer(child: ListView(children: sections.map((s) => ListTile(
-              title: Text(s), selected: section == s, onTap: () {
-                Navigator.pop(context);
-                setState(() => section = s);
-                _load();
-              })).toList()))
+          ? Drawer(
+              child: ListView(
+                children: [
+                  const _NavHeading('EDUPAY FINANCE'),
+                  ...financeSections.map(
+                    (s) => ListTile(
+                      title: Text(s),
+                      selected: section == s,
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() => section = s);
+                        _load();
+                      },
+                    ),
+                  ),
+                  const _NavHeading('ACADEMIC MANAGEMENT'),
+                  ...academicSections.map(
+                    (s) => ListTile(
+                      title: Text(s),
+                      selected: section == s,
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() => section = s);
+                        _load();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            )
           : null,
       appBar: AppBar(
         title: const Text('EduPay Control Center'),
@@ -412,26 +582,20 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       ),
       body: Row(
         children: [
-          Visibility(visible: MediaQuery.sizeOf(context).width >= 700,
-            child: SingleChildScrollView(
-              child: NavigationRail(
-            selectedIndex: sections.indexOf(section),
-            onDestinationSelected: (i) {
-              setState(() => section = sections[i]);
-              _load();
-            },
-            labelType: NavigationRailLabelType.all,
-            destinations: sections
-                .map(
-                  (s) => NavigationRailDestination(
-                    icon: Icon(_icon(s)),
-                    selectedIcon: Icon(_icon(s)),
-                    label: Text(s),
-                  ),
-                )
-                .toList(),
+          Visibility(
+            visible: MediaQuery.sizeOf(context).width >= 700,
+            child: SizedBox(
+              width: 220,
+              child: ListView(
+                children: [
+                  const _NavHeading('EDUPAY FINANCE'),
+                  ...financeSections.map(_desktopNav),
+                  const _NavHeading('ACADEMIC MANAGEMENT'),
+                  ...academicSections.map(_desktopNav),
+                ],
               ),
-            )),
+            ),
+          ),
           const VerticalDivider(width: 1),
           Expanded(
             child: loading
@@ -456,13 +620,16 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                               style: TextStyle(color: Colors.grey.shade700),
                             ),
                             const SizedBox(height: 22),
-                             if (readiness != null && section != 'Launch Readiness') _readinessCard(),
+                            if (readiness != null &&
+                                (section == 'Overview' ||
+                                    section == 'Launch Readiness'))
+                              _readinessCard(),
                             if (section == 'Overview')
                               _summary(summary)
                             else if (section == 'Reports')
                               _reportsView()
-                             else if (section == 'Launch Readiness')
-                               _readinessView()
+                            else if (section == 'Launch Readiness')
+                              _readinessView()
                             else if (section == 'Settings')
                               _settingsView()
                             else
@@ -476,6 +643,16 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       ),
     );
   }
+
+  Widget _desktopNav(String value) => ListTile(
+        leading: Icon(_icon(value)),
+        title: Text(value),
+        selected: section == value,
+        onTap: () {
+          setState(() => section = value);
+          _load();
+        },
+      );
 
   IconData _icon(String s) => switch (s) {
         'Overview' => Icons.dashboard_outlined,
@@ -497,15 +674,25 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       : 'Traceable records from the EduPay API.';
   Widget _settingsView() {
     final settings = (data?['settings'] as Map?)?.cast<String, dynamic>() ?? {};
-    return Card(child: Column(children: settings.entries.map((entry) =>
-      ListTile(title: Text(entry.key), subtitle: Text('${entry.value}'),
-        trailing: canManageEduPay && entry.key != 'enabled'
-            ? IconButton(
-                tooltip: 'Edit operating settings',
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: _editSettings,
-              )
-            : null)).toList()));
+    return Card(
+      child: Column(
+        children: settings.entries
+            .map(
+              (entry) => ListTile(
+                title: Text(entry.key),
+                subtitle: Text('${entry.value}'),
+                trailing: canManageEduPay && entry.key != 'enabled'
+                    ? IconButton(
+                        tooltip: 'Edit operating settings',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: _editSettings,
+                      )
+                    : null,
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
 
   Widget _readinessView() => Column(
@@ -516,16 +703,16 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           Card(
             child: ListTile(
               leading: Icon(
-                _eduPayActive
-                    ? Icons.check_circle
-                    : Icons.pause_circle_outline,
+                _eduPayActive ? Icons.check_circle : Icons.pause_circle_outline,
               ),
               title: Text(
                 'EduPay Status ${_eduPayActive ? 'ACTIVE' : 'NOT ACTIVE'}',
               ),
-              subtitle: Text(_eduPayActive
-                  ? 'Automatically enabled'
-                  : 'Not automatically enabled'),
+              subtitle: Text(
+                _eduPayActive
+                    ? 'Automatically enabled'
+                    : 'Not automatically enabled',
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -589,8 +776,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                   ),
                 DropdownButtonFormField<String>(
                   value: settlementMethod,
-                  decoration:
-                      const InputDecoration(labelText: 'settlementMethod'),
+                  decoration: const InputDecoration(
+                    labelText: 'settlementMethod',
+                  ),
                   items: const [
                     DropdownMenuItem(
                       value: 'DEDUCT_COMMISSION',
@@ -608,8 +796,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                 SwitchListTile(
                   value: autosave,
                   title: const Text('autosaveEnabled'),
-                  onChanged: (value) =>
-                      setDialogState(() => autosave = value),
+                  onChanged: (value) => setDialogState(() => autosave = value),
                 ),
               ],
             ),
@@ -634,7 +821,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       final isPercentage =
           key.contains('Rate') || key == 'maximumCoverPercentage';
       if (value == null || value < 0 || (isPercentage && value > 100)) {
-        _showError('Enter valid non-negative settings; percentages must be 0–100.');
+        _showError(
+          'Enter valid non-negative settings; percentages must be 0–100.',
+        );
         return;
       }
       payload[key] = value;
@@ -657,11 +846,12 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
 
   void _showError(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
+
   Widget _summary(Map<String, dynamic> s) => GridView.count(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -730,9 +920,11 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   if (detail != null) ...[
                     const SizedBox(height: 2),
-                    Text(detail,
-                        style: TextStyle(
-                            color: Colors.grey.shade700, fontSize: 12)),
+                    Text(
+                      detail,
+                      style:
+                          TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                    ),
                   ],
                 ],
               ),
@@ -750,7 +942,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       );
 
   Widget _readinessCard() {
-    final payout = (readiness?['payoutConfig'] as Map?)?.cast<String, dynamic>() ?? {};
+    final payout =
+        (readiness?['payoutConfig'] as Map?)?.cast<String, dynamic>() ?? {};
     final missing = (payout['missingEnvironment'] as List?)
             ?.map((value) => value.toString())
             .toList() ??
@@ -777,8 +970,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               style: TextStyle(color: Colors.grey.shade700),
             ),
             const SizedBox(height: 20),
-            const Text('Financial Infrastructure',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            const Text(
+              'Financial Infrastructure',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
             _readinessRow(
               title: 'Payout Provider',
               ready: payout['provider'] == true,
@@ -796,23 +991,24 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               title: 'Settlement Method',
               ready: payout['settlementMethod'] == true,
             ),
-            _readinessRow(
-              title: 'Rates',
-              ready: payout['rates'] == true,
-            ),
+            _readinessRow(title: 'Rates', ready: payout['rates'] == true),
             if (missing.isNotEmpty) ...[
               const SizedBox(height: 12),
-              const Text('Missing production environment configuration',
-                  style: TextStyle(fontWeight: FontWeight.w800)),
+              const Text(
+                'Missing production environment configuration',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 7),
               Wrap(
                 spacing: 7,
                 runSpacing: 7,
                 children: missing
-                    .map((key) => Chip(
-                          avatar: const Icon(Icons.key_outlined, size: 16),
-                          label: Text(key),
-                        ))
+                    .map(
+                      (key) => Chip(
+                        avatar: const Icon(Icons.key_outlined, size: 16),
+                        label: Text(key),
+                      ),
+                    )
                     .toList(),
               ),
             ],
@@ -831,7 +1027,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                    color: _eduPayActive
+                  color: _eduPayActive
                       ? const Color(0xff08783e)
                       : Colors.orange.shade900,
                 ),
@@ -850,34 +1046,47 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Settlement lifecycle',
-              style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          const Text(
-              'Approve under Manage, then use explicit Squad process and requery routes. Legacy PATCH PROCESS and CONFIRM are never used.'),
-          const SizedBox(height: 12),
-          Wrap(spacing: 10, children: [
-            FilledButton.tonal(
-                onPressed:
-                    canManage ? () => _settlementAction('APPROVE') : null,
-                child: const Text('Approve settlement')),
-            FilledButton(
-                onPressed:
-                    canProcess ? () => _settlementAction('PROCESS') : null,
-                child: const Text('Process payout')),
-            OutlinedButton(
-                onPressed:
-                    canProcess ? () => _settlementAction('REQUERY') : null,
-                child: const Text('Requery payout')),
-          ]),
-          if (!canProcess)
-            const Padding(
-              padding: EdgeInsets.only(top: 10),
-              child: Text(
-                  'Process and requery stay disabled until permission and viable duty separation are confirmed.'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Settlement lifecycle',
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
-        ]),
+            const SizedBox(height: 8),
+            const Text(
+              'Approve under Manage, then use explicit Squad process and requery routes. Legacy PATCH PROCESS and CONFIRM are never used.',
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              children: [
+                FilledButton.tonal(
+                  onPressed:
+                      canManage ? () => _settlementAction('APPROVE') : null,
+                  child: const Text('Approve settlement'),
+                ),
+                FilledButton(
+                  onPressed:
+                      canProcess ? () => _settlementAction('PROCESS') : null,
+                  child: const Text('Process payout'),
+                ),
+                OutlinedButton(
+                  onPressed:
+                      canProcess ? () => _settlementAction('REQUERY') : null,
+                  child: const Text('Requery payout'),
+                ),
+              ],
+            ),
+            if (!canProcess)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Text(
+                  'Process and requery stay disabled until permission and viable duty separation are confirmed.',
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -891,36 +1100,44 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Text('$action settlement?'),
         content: const Text(
-            'This sensitive financial action will be recorded in the audit log.'),
+          'This sensitive financial action will be recorded in the audit log.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Confirm')),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
       if (action == 'APPROVE') {
-        await _api.request('PATCH', '/admin/edupay/settlements/$id',
-            body: {'action': 'APPROVE'});
+        await _api.request(
+          'PATCH',
+          '/admin/edupay/settlements/$id',
+          body: {'action': 'APPROVE'},
+        );
       } else if (action == 'PROCESS') {
         await _api.processSettlement(id);
       } else {
         await _api.requerySettlement(id);
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Server action completed and audited.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Server action completed and audited.')),
+        );
       }
       _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
   }
@@ -932,16 +1149,19 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Enter $label'),
         content: TextField(
-            controller: controller,
-            decoration: InputDecoration(labelText: label)),
+          controller: controller,
+          decoration: InputDecoration(labelText: label),
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, controller.text.trim()),
-              child: const Text('Continue')),
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Continue'),
+          ),
         ],
       ),
     );
@@ -952,78 +1172,129 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       rows = rows.where((r) {
         final q = schoolSearch.text.trim().toLowerCase();
         final status = _reviewStatus(r);
-        return (q.isEmpty || r.values.any((v) => '$v'.toLowerCase().contains(q))) &&
+        return (q.isEmpty ||
+                r.values.any((v) => '$v'.toLowerCase().contains(q))) &&
             (schoolStatus == 'ALL' ||
                 status == schoolStatus.trim().toUpperCase());
       }).toList();
     }
     final table = rows.isEmpty
-      ? const _Empty()
-      : LayoutBuilder(builder: (context, constraints) {
-          if (section == 'Schools & onboarding' &&
-              constraints.maxWidth < 700) {
-            return _mobileSchoolReviewCards(rows);
-          }
-          return Card(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: (rows.first.keys.take(
-                6,
-              )).map((k) => DataColumn(label: Text(k))).toList()
-                ..add(const DataColumn(label: Text('Actions'))),
-              rows: rows
-                  .map(
-                    (r) => DataRow(
-                       cells: r.entries
-                           .take(6)
-                            .map((entry) => DataCell(Text(
-                              entry.key == 'status'
-                                  ? _schoolStatusLabel(entry.value)
-                                  : _display(entry.value),
-                            ))).toList()
-                         ..add(DataCell(Wrap(spacing: 4, children: [
-                            if (section == 'Schools & onboarding' &&
-                                _isSchoolRequestRow(r))
-                              SchoolRequestActionControls(
-                                row: r,
-                                canManage: canManageEduPay,
-                                onView: () => _schoolDetails(r),
-                                onApprove: () =>
-                                    _schoolRequestAction(r, 'APPROVE'),
-                                onReject: () =>
-                                    _schoolRequestAction(r, 'REJECT'),
-                              ),
-                             if (section == 'Schools & onboarding' &&
-                                  !_isSchoolRequestRow(r)) ...[
-                                IconButton(
-                                  tooltip: 'View details',
-                                  icon: const Icon(
-                                      Icons.visibility_outlined),
-                                  onPressed: () => _schoolDetails(r),
+        ? const _Empty()
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              if ((section == 'Schools' || section == 'Schools & onboarding') &&
+                  constraints.maxWidth < 700) {
+                return section == 'Schools'
+                    ? _mobileAcademicSchoolCards(rows)
+                    : _mobileSchoolReviewCards(rows);
+              }
+              return Card(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columns: (rows.first.keys.take(
+                      6,
+                    )).map((k) => DataColumn(label: Text(k))).toList()
+                      ..add(const DataColumn(label: Text('Actions'))),
+                    rows: rows
+                        .map(
+                          (r) => DataRow(
+                            cells: r.entries
+                                .take(6)
+                                .map(
+                                  (entry) => DataCell(
+                                    Text(
+                                      entry.key == 'status'
+                                          ? _schoolStatusLabel(entry.value)
+                                          : _display(entry.value),
+                                    ),
+                                  ),
+                                )
+                                .toList()
+                              ..add(
+                                DataCell(
+                                  Wrap(
+                                    spacing: 4,
+                                    children: [
+                                      if (section == 'Schools & onboarding' &&
+                                          _isSchoolRequestRow(r))
+                                        SchoolRequestActionControls(
+                                          row: r,
+                                          canManage: canManageEduPay,
+                                          onView: () => _schoolDetails(r),
+                                          onApprove: () => _schoolRequestAction(
+                                            r,
+                                            'APPROVE',
+                                          ),
+                                          onReject: () => _schoolRequestAction(
+                                            r,
+                                            'REJECT',
+                                          ),
+                                        ),
+                                      if (section == 'Schools' &&
+                                          !_isSchoolRequestRow(r))
+                                        TextButton(
+                                          onPressed: () =>
+                                              _openAcademicProfile(r),
+                                          child: const Text(
+                                            'Open Academic Profile',
+                                          ),
+                                        ),
+                                      if (section == 'Schools & onboarding' &&
+                                          !_isSchoolRequestRow(r)) ...[
+                                        IconButton(
+                                          tooltip: 'View details',
+                                          icon: const Icon(
+                                            Icons.visibility_outlined,
+                                          ),
+                                          onPressed: () => _schoolDetails(r),
+                                        ),
+                                        ..._schoolActionButtons(r),
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                                ..._schoolActionButtons(r),
-                              ],
-                         ]))),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-         );
-        });
+                              ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              );
+            },
+          );
     if (section != 'Schools & onboarding') return table;
-    return Column(children: [
-      Row(children: [
-        Expanded(child: TextField(controller: schoolSearch, onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search schools'))),
-        const SizedBox(width: 12),
-         DropdownButton<String>(value: schoolStatus, items: const ['ALL', 'PENDING_REVIEW', 'APPROVED', 'REJECTED']
-          .map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-          onChanged: (v) => setState(() => schoolStatus = v ?? 'All')),
-      ]),
-      const SizedBox(height: 14), table,
-    ]);
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: schoolSearch,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  labelText: 'Search schools',
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            DropdownButton<String>(
+              value: schoolStatus,
+              items: const [
+                'ALL',
+                'PENDING_REVIEW',
+                'APPROVED',
+                'REJECTED',
+              ].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+              onChanged: (v) => setState(() => schoolStatus = v ?? 'All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        table,
+      ],
+    );
   }
 
   Widget _mobileSchoolReviewCards(List<Map<String, dynamic>> rows) {
@@ -1039,8 +1310,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('$name',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  '$name',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 if (location != null && '$location'.trim().isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -1056,8 +1329,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                         row: row,
                         canManage: canManageEduPay,
                         onView: () => _schoolDetails(row),
-                        onApprove: () =>
-                            _schoolRequestAction(row, 'APPROVE'),
+                        onApprove: () => _schoolRequestAction(row, 'APPROVE'),
                         onReject: () => _schoolRequestAction(row, 'REJECT'),
                       )
                     : Wrap(
@@ -1079,6 +1351,58 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     );
   }
 
+  Widget _mobileAcademicSchoolCards(List<Map<String, dynamic>> rows) => Column(
+        children: rows
+            .map(
+              (row) => Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  title:
+                      Text('${row['name'] ?? row['schoolName'] ?? 'School'}'),
+                  subtitle: Text('${row['location'] ?? row['address'] ?? ''}'),
+                  trailing: TextButton(
+                    onPressed: () => _openAcademicProfile(row),
+                    child: const Text('Open Academic Profile'),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      );
+
+  Future<void> _openAcademicProfile(Map<String, dynamic> row) async {
+    final id = (row['id'] ?? row['_id'])?.toString();
+    if (id == null || id.isEmpty) {
+      _showError('This school has no profile identifier.');
+      return;
+    }
+    try {
+      final response = await _api.academicOverview(id);
+      if (!mounted) return;
+      final profiles = response['schoolProfiles'];
+      final overview = profiles is List && profiles.isNotEmpty
+          ? profiles.first
+          : response['usage'] ?? response['summary'] ?? response;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            '${row['name'] ?? row['schoolName'] ?? 'School'} · Academic Profile',
+          ),
+          content: SingleChildScrollView(child: Text('$overview')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> _schoolDetails(Map<String, dynamic> row) async {
     if (!mounted) return;
     if (_isSchoolRequestRow(row)) {
@@ -1095,49 +1419,97 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         if (permissions.contains('edupay.school.private_assets.view')) {
           final privateData = await _api.privateSchoolDocuments(id);
           final assets = privateData['assets'];
-          details = {...details, 'privateAssets': assets is Map
-              ? [if (assets['logo'] is Map) assets['logo'],
-                 ...((assets['supportingDocuments'] as List?) ?? const [])]
-              : (assets ?? privateData['documents'] ?? privateData['data'])};
+          details = {
+            ...details,
+            'privateAssets': assets is Map
+                ? [
+                    if (assets['logo'] is Map) assets['logo'],
+                    ...((assets['supportingDocuments'] as List?) ?? const []),
+                  ]
+                : (assets ?? privateData['documents'] ?? privateData['data']),
+          };
         }
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceFirst('Exception: ', '')),
+            ),
+          );
       }
     }
-    showDialog<void>(context: context, builder: (_) => AlertDialog(
-      title: Text(details['name']?.toString() ?? 'School details'),
-      content: SingleChildScrollView(child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SelectableText(details.entries.where((e) => e.key != 'privateAssets')
-              .map((e) => '${e.key}: ${e.value}').join('\n')),
-          if (permissions.contains('edupay.school.private_assets.view') &&
-              details['privateAssets'] is List) ...[
-            const Divider(), const Text('Private assets',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-            ...(details['privateAssets'] as List).whereType<Map>().map((asset) {
-              final id = (asset['fileId'] ?? asset['id'] ?? asset['_id']).toString();
-              return ListTile(title: Text(asset['originalName']?.toString() ?? 'Document'),
-                subtitle: Text(asset['mimeType']?.toString() ?? 'Private file'),
-                trailing: Wrap(children: [
-                  IconButton(tooltip: 'Preview', icon: const Icon(Icons.visibility_outlined),
-                    onPressed: () => _downloadAsset(
-                      (details['id'] ?? details['_id']).toString(), id,
-                      mimeType: asset['mimeType']?.toString(),
-                      assetName: asset['originalName']?.toString(), preview: true)),
-                  IconButton(tooltip: 'Download', icon: const Icon(Icons.download_outlined),
-                    onPressed: () => _downloadAsset(
-                      (details['id'] ?? details['_id']).toString(), id,
-                      mimeType: asset['mimeType']?.toString(),
-                      assetName: asset['originalName']?.toString())),
-                ]));
-            }),
-          ],
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(details['name']?.toString() ?? 'School details'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(
+                details.entries
+                    .where((e) => e.key != 'privateAssets')
+                    .map((e) => '${e.key}: ${e.value}')
+                    .join('\n'),
+              ),
+              if (permissions.contains('edupay.school.private_assets.view') &&
+                  details['privateAssets'] is List) ...[
+                const Divider(),
+                const Text(
+                  'Private assets',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                ...(details['privateAssets'] as List).whereType<Map>().map((
+                  asset,
+                ) {
+                  final id = (asset['fileId'] ?? asset['id'] ?? asset['_id'])
+                      .toString();
+                  return ListTile(
+                    title: Text(
+                      asset['originalName']?.toString() ?? 'Document',
+                    ),
+                    subtitle: Text(
+                      asset['mimeType']?.toString() ?? 'Private file',
+                    ),
+                    trailing: Wrap(
+                      children: [
+                        IconButton(
+                          tooltip: 'Preview',
+                          icon: const Icon(Icons.visibility_outlined),
+                          onPressed: () => _downloadAsset(
+                            (details['id'] ?? details['_id']).toString(),
+                            id,
+                            mimeType: asset['mimeType']?.toString(),
+                            assetName: asset['originalName']?.toString(),
+                            preview: true,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Download',
+                          icon: const Icon(Icons.download_outlined),
+                          onPressed: () => _downloadAsset(
+                            (details['id'] ?? details['_id']).toString(),
+                            id,
+                            mimeType: asset['mimeType']?.toString(),
+                            assetName: asset['originalName']?.toString(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
-      )),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-    ));
+      ),
+    );
   }
 
   Future<void> _schoolRequestDetails(Map<String, dynamic> row) async {
@@ -1145,16 +1517,17 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     if (id == null || id.isEmpty) return;
     Map<String, dynamic> details =
         (row['_request'] as Map?)?.cast<String, dynamic>() ??
-        <String, dynamic>{...row};
+            <String, dynamic>{...row};
     try {
       final response = await _api.schoolRequestDetail(id);
-      final value = response['request'] ?? response['schoolRequest'] ?? response['data'];
+      final value =
+          response['request'] ?? response['schoolRequest'] ?? response['data'];
       if (value is Map) details = Map<String, dynamic>.from(value);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
     if (!mounted) return;
@@ -1175,17 +1548,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     final selectedAction = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(details['schoolName']?.toString() ??
-            details['name']?.toString() ??
-            'School Application Details'),
+        title: Text(
+          details['schoolName']?.toString() ??
+              details['name']?.toString() ??
+              'School Application Details',
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: fields.entries
-                .map((entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: SelectableText('${entry.key}: ${entry.value}'),
-                    ))
+                .map(
+                  (entry) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: SelectableText('${entry.key}: ${entry.value}'),
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -1205,8 +1582,13 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     }
   }
 
-  Future<void> _downloadAsset(String schoolId, String fileId,
-      {String? mimeType, String? assetName, bool preview = false}) async {
+  Future<void> _downloadAsset(
+    String schoolId,
+    String fileId, {
+    String? mimeType,
+    String? assetName,
+    bool preview = false,
+  }) async {
     // The authenticated response is intentionally kept in memory; no private
     // URL or document reference is rendered into the public UI.
     if (schoolId.isEmpty) return;
@@ -1214,26 +1596,46 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       final response = await _api.privateAssetBytes(schoolId, fileId);
       if (!mounted) return;
       if (preview) {
-        await showDialog<void>(context: context, builder: (_) => AlertDialog(
-          title: const Text('Private asset preview'),
-          content: mimeType?.startsWith('image/') == true
-              ? Image.memory(response.bodyBytes, fit: BoxFit.contain)
-              : Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.picture_as_pdf, size: 48),
-                  Text('Authenticated PDF loaded (${response.bodyBytes.length} bytes).'),
-                ]),
-          actions: [TextButton(onPressed: () => Navigator.pop(context),
-            child: const Text('Close'))],
-        ));
+        await showDialog<void>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Private asset preview'),
+            content: mimeType?.startsWith('image/') == true
+                ? Image.memory(response.bodyBytes, fit: BoxFit.contain)
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.picture_as_pdf, size: 48),
+                      Text(
+                        'Authenticated PDF loaded (${response.bodyBytes.length} bytes).',
+                      ),
+                    ],
+                  ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
       } else {
-        await savePrivateAsset(response.bodyBytes, assetName ?? 'private-asset',
-            mimeType ?? 'application/octet-stream');
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Authenticated private asset downloaded.')));
+        await savePrivateAsset(
+          response.bodyBytes,
+          assetName ?? 'private-asset',
+          mimeType ?? 'application/octet-stream',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Authenticated private asset downloaded.'),
+          ),
+        );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
     }
   }
 
@@ -1241,29 +1643,50 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     final id = row['id']?.toString() ?? row['_id']?.toString();
     if (id == null || id.isEmpty) return;
     final note = TextEditingController();
-    final confirmed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-      title: Text('$action school'),
-      content: TextField(controller: note, maxLines: 3,
-        decoration: const InputDecoration(labelText: 'Review note (required)')),
-      actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(d, note.text.trim().isNotEmpty),
-          child: const Text('Confirm'))],
-    ));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('$action school'),
+        content: TextField(
+          controller: note,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Review note (required)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(d, note.text.trim().isNotEmpty),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
     if (confirmed != true) return;
     try {
       await _api.schoolAction(id, action, note: note.text.trim());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('School $action completed and audited.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('School $action completed and audited.')),
+        );
         _load();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
     }
   }
 
   Future<void> _schoolRequestAction(
-      Map<String, dynamic> row, String action) async {
+    Map<String, dynamic> row,
+    String action,
+  ) async {
     final id = row['_requestId']?.toString() ?? row['id']?.toString();
     if (id == null || id.isEmpty) return;
     String? rejectionReason;
@@ -1298,17 +1721,20 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     } else {
       Map<String, dynamic> details =
           (row['_request'] as Map?)?.cast<String, dynamic>() ??
-          <String, dynamic>{...row};
+              <String, dynamic>{...row};
       try {
         final response = await _api.schoolRequestDetail(id);
-        final value =
-            response['request'] ?? response['schoolRequest'] ?? response['data'];
+        final value = response['request'] ??
+            response['schoolRequest'] ??
+            response['data'];
         if (value is Map) details = Map<String, dynamic>.from(value);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceFirst('Exception: ', '')),
+            ),
+          );
         }
         return;
       }
@@ -1328,23 +1754,26 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                      'Approve this school for Servicepay EduPay?'),
+                  const Text('Approve this school for Servicepay EduPay?'),
                   if (representativeFields.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    ...representativeFields.entries.map((entry) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text('${entry.key}: ${entry.value}'),
-                        )),
+                    ...representativeFields.entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('${entry.key}: ${entry.value}'),
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 8),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     value: authorityConfirmed,
                     onChanged: (value) => setDialogState(
-                        () => authorityConfirmed = value ?? false),
+                      () => authorityConfirmed = value ?? false,
+                    ),
                     title: const Text(
-                        'I verified this requester is authorized to represent the school.'),
+                      'I verified this requester is authorized to represent the school.',
+                    ),
                   ),
                 ],
               ),
@@ -1366,38 +1795,52 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       );
       if (confirmed != true) return;
       try {
-        await _api.schoolRequestAction(id, action,
-            representativeAuthorityConfirmed: true);
+        await _api.schoolRequestAction(
+          id,
+          action,
+          representativeAuthorityConfirmed: true,
+        );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceFirst('Exception: ', '')),
+            ),
+          );
         }
         return;
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('School approved and admitted to EduPay.'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('School approved and admitted to EduPay.'),
+        ),
+      );
       await _load();
       return;
     }
     try {
-      await _api.schoolRequestAction(id, action,
-          rejectionReason: rejectionReason);
+      await _api.schoolRequestAction(
+        id,
+        action,
+        rejectionReason: rejectionReason,
+      );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(action == 'APPROVE'
-            ? 'School approved and admitted to EduPay.'
-            : 'School application rejected and audited.'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            action == 'APPROVE'
+                ? 'School approved and admitted to EduPay.'
+                : 'School application rejected and audited.',
+          ),
+        ),
+      );
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
   }
@@ -1430,12 +1873,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       _ => <String>[],
     };
     final icons = <String, IconData>{
-      'APPROVE': Icons.check_circle_outline, 'REJECT': Icons.cancel_outlined,
-      'REQUEST_UPDATE': Icons.edit_note, 'SUSPEND': Icons.pause_circle_outline,
+      'APPROVE': Icons.check_circle_outline,
+      'REJECT': Icons.cancel_outlined,
+      'REQUEST_UPDATE': Icons.edit_note,
+      'SUSPEND': Icons.pause_circle_outline,
       'REACTIVATE': Icons.play_circle_outline,
     };
-    return actions.map((action) => IconButton(tooltip: action,
-      icon: Icon(icons[action]), onPressed: () => _schoolAction(row, action))).toList();
+    return actions
+        .map(
+          (action) => IconButton(
+            tooltip: action,
+            icon: Icon(icons[action]),
+            onPressed: () => _schoolAction(row, action),
+          ),
+        )
+        .toList();
   }
 }
 

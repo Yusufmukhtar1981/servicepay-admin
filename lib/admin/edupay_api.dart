@@ -67,6 +67,8 @@ class EduPayApi {
 
   Future<Map<String, dynamic>> readiness() =>
       request('GET', '/admin/edupay/readiness');
+  Future<Map<String, dynamic>> academicOverview() =>
+      request('GET', '/admin/edupay/academic-overview');
   Future<Map<String, dynamic>> saveSettings(
     Map<String, dynamic> settings,
   ) =>

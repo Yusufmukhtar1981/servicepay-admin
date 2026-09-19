@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'edupay_school_api.dart';
 import 'student_activity_center_screen.dart';
+import 'academic_operations_screen.dart';
 
 class SchoolPortalScreen extends StatefulWidget {
   const SchoolPortalScreen({super.key});
@@ -22,6 +23,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   Map<String, dynamic>? selectedSession, selectedTerm, selectedClass;
   final tabs = const [
     'Overview',
+    'Academic workspace',
     'Students',
     'Academic Sessions',
     'Terms',
@@ -53,6 +55,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     try {
       final path = switch (tab) {
         'Overview' => '/edupay/school/dashboard',
+        'Academic workspace' => '/edupay/school/academic/dashboard',
         'Academic Sessions' => '/edupay/school/sessions',
         'Terms' => '/edupay/school/terms',
         'Classes' => '/edupay/school/classes',
@@ -194,6 +197,8 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                       _load();
                                     },
                                   )
+                                : tab == 'Academic workspace'
+                                    ? AcademicOperationsScreen(api: api)
                                 : tab == 'Overview'
                                     ? _dashboard()
                                     : tab == 'Academic setup'
@@ -278,6 +283,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       );
   IconData _icon(String t) => switch (t) {
         'Overview' => Icons.dashboard_outlined,
+         'Academic workspace' => Icons.menu_book_outlined,
         'School Profile' => Icons.school_outlined,
         'Academic Sessions' => Icons.calendar_month_outlined,
         'Terms' => Icons.event_outlined,

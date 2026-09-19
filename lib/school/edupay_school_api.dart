@@ -166,4 +166,48 @@ class EduPaySchoolApi {
       'POST',
       '/edupay/activity-center/school/guardians/invites',
       {'childId': childId});
+
+  Future<Map<String, dynamic>> academicDashboard() =>
+      request('GET', '/edupay/school/academic/dashboard');
+  Future<Map<String, dynamic>> academicOverview() =>
+      request('GET', '/edupay/school/academic');
+  Future<Map<String, dynamic>> createSubject(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/subjects', body);
+  Future<Map<String, dynamic>> academicStudents() =>
+      request('GET', '/edupay/school/academic/students');
+  Future<Map<String, dynamic>> createAcademicStudent(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/students', body);
+  Future<Map<String, dynamic>> updateAcademicStudent(
+          String id, Map<String, dynamic> body) =>
+      request('PATCH', '/edupay/school/academic/students/$id', body);
+  Future<Map<String, dynamic>> validateStudentImport(List<Map<String, dynamic>> rows) =>
+      request('POST', '/edupay/school/academic/students/import/validate', {'rows': rows});
+  Future<Map<String, dynamic>> commitStudentImport(List<Map<String, dynamic>> rows) =>
+      request('POST', '/edupay/school/academic/students/import/commit', {'rows': rows});
+  Future<Map<String, dynamic>> academicTeachers() =>
+      request('GET', '/edupay/school/academic/teachers');
+  Future<Map<String, dynamic>> createTeacher(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/teachers', body);
+  Future<Map<String, dynamic>> assignTeacher(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/teachers/assignments', body);
+  Future<Map<String, dynamic>> attendanceRoster(String classId) =>
+      request('GET', '/edupay/school/academic/attendance/roster?classId=${Uri.encodeQueryComponent(classId)}');
+  Future<Map<String, dynamic>> submitAcademicAttendance(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/attendance', body);
+  Future<Map<String, dynamic>> assessments() =>
+      request('GET', '/edupay/school/academic/assessments');
+  Future<Map<String, dynamic>> createAssessment(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/assessments', body);
+  Future<Map<String, dynamic>> saveScores(String id, Map<String, dynamic> body) =>
+      request('PUT', '/edupay/school/academic/assessments/$id/scores', body);
+  Future<Map<String, dynamic>> reviewAssessment(String id, String action, {String? note}) =>
+      request('POST', '/edupay/school/academic/assessments/$id/review', {'action': action, if (note != null) 'note': note});
+  Future<Map<String, dynamic>> timetable() =>
+      request('GET', '/edupay/school/academic/timetable');
+  Future<Map<String, dynamic>> createTimetable(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/timetable', body);
+  Future<Map<String, dynamic>> activities() =>
+      request('GET', '/edupay/school/academic/activities');
+  Future<Map<String, dynamic>> createActivity(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/academic/activities', body);
 }

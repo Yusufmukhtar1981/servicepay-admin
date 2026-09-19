@@ -244,6 +244,29 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         if (mounted) setState(() => loading = false);
         return;
       }
+      if (section == 'Overview') {
+        final responses = await Future.wait([
+          _api.request('GET', '/admin/edupay/overview'),
+          _api.academicOverview(),
+        ]);
+        final overview = responses[0];
+        final academic =
+            (responses[1]['usage'] as Map?)?.cast<String, dynamic>() ??
+                <String, dynamic>{};
+        data = <String, dynamic>{
+          ...overview,
+          'summary': <String, dynamic>{
+            ...((overview['summary'] as Map?)
+                    ?.cast<String, dynamic>() ??
+                <String, dynamic>{}),
+            ...academic.map(
+              (key, value) => MapEntry('academic_$key', value),
+            ),
+          },
+        };
+        if (mounted) setState(() => loading = false);
+        return;
+      }
       final path = switch (section) {
         'Overview' => '/admin/edupay/overview',
         'Schools & onboarding' => '/admin/edupay/schools',

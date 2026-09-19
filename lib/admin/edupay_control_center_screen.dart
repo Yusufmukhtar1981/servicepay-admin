@@ -8,6 +8,97 @@ String? _reviewRowId(Map<String, dynamic> row) {
   return value?.toString().trim().isNotEmpty == true ? value.toString() : null;
 }
 
+String _reviewType(Map<String, dynamic> row) =>
+    (row['type'] ?? '').toString().trim().toUpperCase();
+
+String _reviewStatus(Map<String, dynamic> row) =>
+    (row['status'] ?? 'PENDING_REVIEW').toString().trim().toUpperCase();
+
+bool _isSchoolRequestRow(Map<String, dynamic> row) =>
+    _reviewType(row) == 'SCHOOL_REQUEST';
+
+bool eduPayAdminRoleCanManage(String role) => const <String>{
+      'HEAD_OFFICE',
+      'HEAD_OFFICE_ADMIN',
+      'ADMIN',
+      'SUPER_ADMIN',
+      'SERVICEPAY_SUPER_ADMIN',
+    }.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
+
+class SchoolRequestActionControls extends StatelessWidget {
+  const SchoolRequestActionControls({
+    super.key,
+    required this.row,
+    required this.canManage,
+    required this.onView,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final Map<String, dynamic> row;
+  final bool canManage;
+  final VoidCallback onView;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = _reviewStatus(row) == 'PENDING_REVIEW';
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        TextButton.icon(
+          onPressed: onView,
+          icon: const Icon(Icons.visibility_outlined),
+          label: const Text('View'),
+        ),
+        if (pending && canManage) ...[
+          TextButton.icon(
+            onPressed: onApprove,
+            icon: const Icon(Icons.check_circle_outline),
+            label: const Text('Approve'),
+          ),
+          TextButton.icon(
+            onPressed: onReject,
+            icon: const Icon(Icons.cancel_outlined),
+            label: const Text('Reject'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class SchoolRequestDetailsActions extends StatelessWidget {
+  const SchoolRequestDetailsActions({
+    super.key,
+    required this.pending,
+    required this.canManage,
+    required this.onApprove,
+    required this.onReject,
+    required this.onClose,
+  });
+
+  final bool pending;
+  final bool canManage;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        spacing: 8,
+        children: [
+          if (pending && canManage) ...[
+            TextButton(onPressed: onReject, child: const Text('Reject')),
+            FilledButton(onPressed: onApprove, child: const Text('Approve')),
+          ],
+          TextButton(onPressed: onClose, child: const Text('Close')),
+        ],
+      );
+}
+
 String? _requestLinkedSchoolId(Map<String, dynamic> request) {
   final scalar = request['schoolId']?.toString().trim();
   if (scalar != null && scalar.isNotEmpty) return scalar;
@@ -43,7 +134,10 @@ List<Map<String, dynamic>> eduPaySchoolReviewRows(
             'schoolName': request['schoolName'] ?? request['name'],
             'location': request['location'],
             'contactPhone': request['contactPhone'],
-            'status': request['status'] ?? 'PENDING_REVIEW',
+            'status': (request['status'] ?? 'PENDING_REVIEW')
+                .toString()
+                .trim()
+                .toUpperCase(),
             'createdAt': request['createdAt'],
             '_requestId': request['_id'] ?? request['id'],
             '_request': request,
@@ -84,37 +178,37 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     'Settings',
     'Audit logs',
   ];
-  bool get isHeadOffice => const <String>{
-        'HEAD_OFFICE',
-        'HEAD_OFFICE_ADMIN',
-        'ADMIN',
-        'SUPER_ADMIN',
-        'SERVICEPAY_SUPER_ADMIN',
-      }.contains(adminRole);
+  bool get isHeadOffice => eduPayAdminRoleCanManage(adminRole);
   bool get canManageEduPay =>
       isHeadOffice || permissions.contains('edupay.manage');
   @override
   void initState() {
     super.initState();
+    _loadAccess();
     _load();
     _loadReadiness();
+  }
+
+  Future<void> _loadAccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    adminRole = (prefs.getString('user_role') ??
+            prefs.getString('admin_role') ??
+            prefs.getString('role') ??
+            '')
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
+    permissions = (prefs.getStringList('staff_permissions') ??
+            prefs.getStringList('admin_effective_permissions') ??
+            <String>[])
+        .map((value) => value.trim().toLowerCase())
+        .toSet();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadReadiness() async {
     try {
       readiness = await _api.readiness();
-      final prefs = await SharedPreferences.getInstance();
-      adminRole = (prefs.getString('user_role') ??
-              prefs.getString('admin_role') ??
-              prefs.getString('role') ??
-              '')
-          .trim()
-          .toUpperCase()
-          .replaceAll(RegExp(r'[\s-]+'), '_');
-      permissions = (prefs.getStringList('staff_permissions') ??
-              prefs.getStringList('admin_effective_permissions') ??
-              <String>[])
-          .map((value) => value.toLowerCase()).toSet();
       if (mounted) setState(() {});
     } catch (_) {
       if (mounted) setState(() {});
@@ -834,14 +928,20 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     if (section == 'Schools & onboarding') {
       rows = rows.where((r) {
         final q = schoolSearch.text.trim().toLowerCase();
-        final status = r['status']?.toString() ?? '';
+        final status = _reviewStatus(r);
         return (q.isEmpty || r.values.any((v) => '$v'.toLowerCase().contains(q))) &&
-            (schoolStatus == 'ALL' || status.toLowerCase() == schoolStatus.toLowerCase());
+            (schoolStatus == 'ALL' ||
+                status == schoolStatus.trim().toUpperCase());
       }).toList();
     }
     final table = rows.isEmpty
       ? const _Empty()
-      : Card(
+      : LayoutBuilder(builder: (context, constraints) {
+          if (section == 'Schools & onboarding' &&
+              constraints.maxWidth < 700) {
+            return _mobileSchoolReviewCards(rows);
+          }
+          return Card(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
@@ -860,22 +960,35 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                                   : _display(entry.value),
                             ))).toList()
                          ..add(DataCell(Wrap(spacing: 4, children: [
-                           if (section == 'Schools & onboarding')
-                             IconButton(tooltip: 'View details', icon: const Icon(Icons.visibility_outlined),
-                               onPressed: () => _schoolDetails(r)),
+                            if (section == 'Schools & onboarding' &&
+                                _isSchoolRequestRow(r))
+                              SchoolRequestActionControls(
+                                row: r,
+                                canManage: canManageEduPay,
+                                onView: () => _schoolDetails(r),
+                                onApprove: () =>
+                                    _schoolRequestAction(r, 'APPROVE'),
+                                onReject: () =>
+                                    _schoolRequestAction(r, 'REJECT'),
+                              ),
                              if (section == 'Schools & onboarding' &&
-                                 r['type'] == 'SCHOOL_REQUEST')
-                               ..._schoolRequestActionButtons(r),
-                             if (section == 'Schools & onboarding' &&
-                                 r['type'] != 'SCHOOL_REQUEST')
-                               ..._schoolActionButtons(r),
+                                  !_isSchoolRequestRow(r)) ...[
+                                IconButton(
+                                  tooltip: 'View details',
+                                  icon: const Icon(
+                                      Icons.visibility_outlined),
+                                  onPressed: () => _schoolDetails(r),
+                                ),
+                                ..._schoolActionButtons(r),
+                              ],
                          ]))),
                     ),
                   )
                   .toList(),
             ),
           ),
-        );
+         );
+        });
     if (section != 'Schools & onboarding') return table;
     return Column(children: [
       Row(children: [
@@ -890,9 +1003,62 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     ]);
   }
 
+  Widget _mobileSchoolReviewCards(List<Map<String, dynamic>> rows) {
+    return Column(
+      children: rows.map((row) {
+        final request = _isSchoolRequestRow(row);
+        final name = row['schoolName'] ?? row['name'] ?? 'School';
+        final location = row['location'] ?? row['address'];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$name',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (location != null && '$location'.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('$location'),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(_schoolStatusLabel(_reviewStatus(row))),
+                ),
+                const SizedBox(height: 8),
+                request
+                    ? SchoolRequestActionControls(
+                        row: row,
+                        canManage: canManageEduPay,
+                        onView: () => _schoolDetails(row),
+                        onApprove: () =>
+                            _schoolRequestAction(row, 'APPROVE'),
+                        onReject: () => _schoolRequestAction(row, 'REJECT'),
+                      )
+                    : Wrap(
+                        spacing: 4,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => _schoolDetails(row),
+                            icon: const Icon(Icons.visibility_outlined),
+                            label: const Text('View'),
+                          ),
+                          ..._schoolActionButtons(row),
+                        ],
+                      ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Future<void> _schoolDetails(Map<String, dynamic> row) async {
     if (!mounted) return;
-    if (row['type'] == 'SCHOOL_REQUEST') {
+    if (_isSchoolRequestRow(row)) {
       await _schoolRequestDetails(row);
       return;
     }
@@ -983,9 +1149,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       'Current Status': details['status'] ?? 'PENDING_REVIEW',
       'Request ID': details['id'] ?? details['_id'] ?? id,
     }..removeWhere((_, value) => value == null || '$value'.trim().isEmpty);
-    await showDialog<void>(
+    final selectedAction = await showDialog<String>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(details['schoolName']?.toString() ??
             details['name']?.toString() ??
             'School Application Details'),
@@ -1001,13 +1167,19 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+          SchoolRequestDetailsActions(
+            pending: _reviewStatus(details) == 'PENDING_REVIEW',
+            canManage: canManageEduPay,
+            onReject: () => Navigator.pop(dialogContext, 'REJECT'),
+            onApprove: () => Navigator.pop(dialogContext, 'APPROVE'),
+            onClose: () => Navigator.pop(dialogContext),
           ),
         ],
       ),
     );
+    if (selectedAction != null) {
+      await _schoolRequestAction(row, selectedAction);
+    }
   }
 
   Future<void> _downloadAsset(String schoolId, String fileId,
@@ -1207,42 +1379,6 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     }
   }
 
-  List<Widget> _schoolRequestActionButtons(Map<String, dynamic> row) {
-    final state = row['status']?.toString().toUpperCase() ?? 'PENDING_REVIEW';
-    final requestId = row['_requestId']?.toString() ?? '';
-    if (requestId.isEmpty) return const <Widget>[];
-    if (state == 'CONTACTED' || state == 'CLOSED') {
-      return [
-        Tooltip(
-          message: _schoolStatusLabel(state),
-          child: const Icon(Icons.info_outline, color: Colors.blueGrey),
-        ),
-      ];
-    }
-    if (state != 'PENDING_REVIEW') {
-      return [
-        Tooltip(
-          message: _schoolStatusLabel(state),
-          child: Icon(
-            state == 'APPROVED' ? Icons.check_circle : Icons.cancel,
-            color: state == 'APPROVED' ? Colors.green : Colors.red,
-          ),
-        ),
-      ];
-    }
-    return [
-      PopupMenuButton<String>(
-        tooltip: 'Review school application',
-        icon: const Icon(Icons.more_horiz),
-        onSelected: (action) => _schoolRequestAction(row, action),
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'APPROVE', child: Text('Approve')),
-          PopupMenuItem(value: 'REJECT', child: Text('Reject')),
-        ],
-      ),
-    ];
-  }
-
   String _schoolStatusLabel(dynamic value) {
     switch (value?.toString().toUpperCase()) {
       case 'PENDING_REVIEW':
@@ -1261,8 +1397,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   List<Widget> _schoolActionButtons(Map<String, dynamic> row) {
-    if (row['type'] == 'SCHOOL_REQUEST') return const <Widget>[];
-    final state = row['status']?.toString().toUpperCase() ?? '';
+    if (_isSchoolRequestRow(row)) return const <Widget>[];
+    final state = _reviewStatus(row);
     final actions = switch (state) {
       'PENDING_REVIEW' => ['APPROVE', 'REJECT', 'REQUEST_UPDATE'],
       'UNDER_REVIEW' => ['APPROVE', 'REJECT', 'REQUEST_UPDATE'],

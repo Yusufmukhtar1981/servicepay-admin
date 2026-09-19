@@ -311,6 +311,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         'HEAD_OFFICE',
         'ADMIN',
         'SUPER_ADMIN',
+        'SERVICEPAY_SUPER_ADMIN',
         'HEAD_OFFICE_ADMIN',
         'STAFF',
         'ZONAL_MANAGER',

@@ -8,9 +8,11 @@ class StudentActivityCenterScreen extends StatefulWidget {
     super.key,
     required this.api,
     this.onOpenStudents,
+    this.initialSection = 'Overview',
   });
   final EduPaySchoolApi api;
   final VoidCallback? onOpenStudents;
+  final String initialSection;
 
   @override
   State<StudentActivityCenterScreen> createState() =>
@@ -41,6 +43,8 @@ class _StudentActivityCenterScreenState
   @override
   void initState() {
     super.initState();
+    section =
+        sections.contains(widget.initialSection) ? widget.initialSection : 'Overview';
     _load();
   }
 

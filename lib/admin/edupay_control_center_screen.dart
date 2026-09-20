@@ -209,11 +209,11 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   ];
   List<String> get sections => [...financeSections, ...academicSections];
   bool get isHeadOffice => eduPayAdminRoleCanManage(adminRole);
-  bool get canManageEduPay =>
-      isHeadOffice && permissions.contains('edupay.manage');
+  bool get canManageEduPay => isHeadOffice;
   bool get canReviewSchoolRequests =>
-      eduPayAdminRoleCanReviewSchoolRequests(adminRole) &&
-      permissions.contains('edupay.manage');
+      isHeadOffice ||
+      (eduPayAdminRoleCanReviewSchoolRequests(adminRole) &&
+          permissions.contains('edupay.manage'));
   @override
   void initState() {
     super.initState();
@@ -1294,7 +1294,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             FilledButton.icon(
               onPressed: _createSchool,
               icon: const Icon(Icons.add_business_outlined),
-              label: const Text('Create school'),
+              label: const Text('Create School'),
             ),
           const SizedBox(height: 12),
           table,
@@ -1694,7 +1694,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        title: const Text('Create school'),
+        title: const Text('Create School'),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520, maxHeight: 560),
           child: SingleChildScrollView(

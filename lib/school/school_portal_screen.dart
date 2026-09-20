@@ -15,8 +15,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   Map<String, dynamic>? data;
   String tab = 'Dashboard';
   bool loading = true;
+  bool roleLoaded = false;
   String? error;
-  String schoolRole = 'OWNER';
+  String schoolRole = '';
   List<Map<String, dynamic>> sessions = [];
   List<Map<String, dynamic>> terms = [];
   List<Map<String, dynamic>> classes = [];
@@ -52,25 +53,24 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
           'Classes',
           'Subjects',
           'Attendance',
-          'Exams & Results',
+          'Results / Report Cards',
           'Timetable',
-          'School Activities',
+          'Activities / Updates',
+          'Parents',
           'Academic Sessions',
-          'EduPay Finance',
+          'Fees / EduPay',
+          'Notifications',
           'Settings',
           'Logout',
         ]
       : const [
           'Dashboard',
           'My Classes',
-          'My Subjects',
-          'Take Attendance',
-          'Attendance History',
-          'Exams & Scores',
-          'Assignments',
-          'Timetable',
+          'My Students',
+          'Attendance',
+          'Results / Assessments',
+          'Activities',
           'Announcements',
-          'Profile',
           'Logout',
         ];
   @override
@@ -83,10 +83,11 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   Future<void> _loadRole() async {
     final prefs = await SharedPreferences.getInstance();
     final value = prefs.getString('school_role');
-    if (mounted && value != null && value.trim().isNotEmpty) {
+    if (mounted) {
       setState(() {
-        schoolRole = value.trim().toUpperCase();
-        if (tab == 'Overview') tab = 'Dashboard';
+        schoolRole = value?.trim().toUpperCase() ?? '';
+        roleLoaded = true;
+        tab = 'Dashboard';
       });
     }
   }
@@ -137,6 +138,8 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   Future<void> _logout() async {
     final p = await SharedPreferences.getInstance();
     await p.remove('school_auth_token');
+    await p.remove('school_role');
+    await p.remove('school_name');
     if (mounted) Navigator.of(context).pushReplacementNamed('/');
   }
 
@@ -170,7 +173,13 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    if (!roleLoaded) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Scaffold(
         drawer: MediaQuery.sizeOf(context).width < 700
             ? Drawer(
                 child: ListView(
@@ -271,9 +280,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                           'Classes',
                                           'Subjects',
                                           'Attendance',
-                                          'Exams & Results',
+                                          'Results / Report Cards',
                                           'Timetable',
-                                          'School Activities',
+                                          'Activities / Updates',
                                           'Academic Sessions',
                                         }.contains(tab))
                                     ? AcademicOperationsScreen(
@@ -281,16 +290,18 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                         manager: managerRole,
                                         initialSection: switch (tab) {
                                           'My Classes' => 'Classes & subjects',
-                                          'My Subjects' => 'Classes & subjects',
+                                          'My Students' => 'Students',
                                           'Teachers' => 'Teachers',
                                           'Classes' => 'Classes & subjects',
                                           'Subjects' => 'Classes & subjects',
-                                          'Take Attendance' => 'Attendance',
-                                          'Attendance History' => 'Attendance',
-                                          'Exams & Results' => 'Assessments',
-                                          'Exams & Scores' => 'Assessments',
+                                          'Attendance' => 'Attendance',
+                                          'Results / Report Cards' =>
+                                            'Assessments',
+                                          'Results / Assessments' =>
+                                            'Assessments',
                                           'Timetable' => 'Timetable',
-                                          'School Activities' => 'Activities',
+                                          'Activities / Updates' => 'Activities',
+                                          'Activities' => 'Activities',
                                           'Academic Sessions' =>
                                             'Sessions & terms',
                                           'Announcements' => 'Activities',
@@ -302,20 +313,27 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                             : const [
                                                 'Dashboard',
                                                 'Classes & subjects',
+                                                'Students',
                                                 'Attendance',
                                                 'Assessments',
                                                 'Timetable',
                                                 'Activities',
                                               ],
                                       )
-                                    : tab == 'Student Activity Center'
+                                    : tab == 'Parents'
                                         ? StudentActivityCenterScreen(
                                             api: api,
+                                            initialSection: 'Parents/Guardians',
                                             onOpenStudents: () {
                                               setState(() => tab = 'Students');
                                               _load();
                                             },
                                           )
+                                        : tab == 'Notifications'
+                                            ? StudentActivityCenterScreen(
+                                                api: api,
+                                                initialSection: 'Announcements',
+                                              )
                                         : tab == 'Academic workspace'
                                             ? AcademicOperationsScreen(api: api)
                                             : tab == 'Dashboard'
@@ -412,6 +430,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
           ],
         ),
       );
+  }
   IconData _icon(String t) => switch (t) {
         'Overview' => Icons.dashboard_outlined,
         'Academic workspace' => Icons.menu_book_outlined,
@@ -421,6 +440,16 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Classes' => Icons.class_outlined,
         'Fee Structures' => Icons.request_quote_outlined,
         'Students' => Icons.groups_outlined,
+        'Teachers' => Icons.co_present_outlined,
+        'My Students' => Icons.groups_outlined,
+        'Attendance' => Icons.fact_check_outlined,
+        'Results / Report Cards' ||
+        'Results / Assessments' =>
+          Icons.assignment_turned_in_outlined,
+        'Activities / Updates' || 'Activities' => Icons.campaign_outlined,
+        'Parents' => Icons.family_restroom_outlined,
+        'Fees / EduPay' => Icons.account_balance_wallet_outlined,
+        'Notifications' || 'Announcements' => Icons.notifications_outlined,
         'Settlements' => Icons.payments_outlined,
         'Reconciliation' => Icons.compare_arrows_outlined,
         'Reports' => Icons.assessment_outlined,

@@ -290,7 +290,7 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
             FilledButton.icon(
               onPressed: action,
               icon: const Icon(Icons.add),
-              label: Text('Add $title'),
+              label: Text(title == 'Teachers' ? 'Add Teacher' : 'Add $title'),
             ),
           const SizedBox(height: 12),
           const Card(
@@ -311,7 +311,7 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
             child: FilledButton.icon(
               onPressed: action,
               icon: const Icon(Icons.add),
-              label: Text('Add $title'),
+              label: Text(title == 'Teachers' ? 'Add Teacher' : 'Add $title'),
             ),
           ),
         Card(

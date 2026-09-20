@@ -108,6 +108,43 @@ void main() {
     expect(source, contains("['DRAFT', 'RETURNED']"));
   });
 
+  test('live hierarchy controls remain discoverable for production roles', () {
+    final admin = File(
+      'lib/admin/edupay_control_center_screen.dart',
+    ).readAsStringSync();
+    final portal =
+        File('lib/school/school_portal_screen.dart').readAsStringSync();
+    final academic =
+        File('lib/school/academic_operations_screen.dart').readAsStringSync();
+
+    expect(admin, contains('bool get canManageEduPay => isHeadOffice;'));
+    expect(admin, contains("Text('Create School')"));
+    for (final label in const [
+      'Teachers',
+      'Students',
+      'Classes',
+      'Subjects',
+      'Attendance',
+      'Results / Report Cards',
+      'Activities / Updates',
+      'Parents',
+      'Fees / EduPay',
+      'Notifications',
+      'Settings',
+      'My Classes',
+      'My Students',
+      'Results / Assessments',
+      'Activities',
+      'Announcements',
+    ]) {
+      expect(portal, contains("'$label'"), reason: label);
+    }
+    expect(portal, contains("initialSection: 'Parents/Guardians'"));
+    expect(portal, contains("initialSection: 'Announcements'"));
+    expect(portal, contains("await p.remove('school_role');"));
+    expect(academic, contains("'Add Teacher'"));
+  });
+
   test('school request rows cannot use full-school mutation endpoint', () {
     final source = File(
       'lib/admin/edupay_control_center_screen.dart',

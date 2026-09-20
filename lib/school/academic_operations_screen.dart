@@ -176,11 +176,11 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     if (section == 'Dashboard') return _dashboard();
     if (section == 'Attendance') return _attendance();
     if (section == 'Students') return _students();
+    if (section == 'Teachers') return _teachers(compact);
     if (section == 'Assessments') return _assessments();
     final key = switch (section) {
       'Sessions & terms' => 'sessions',
       'Classes & subjects' => 'classes',
-      'Teachers' => 'teachers',
       'Timetable' => 'timetable',
       _ => 'activities',
     };
@@ -188,7 +188,6 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     final action = widget.manager
         ? switch (section) {
             'Classes & subjects' => _createSubject,
-            'Teachers' => _teacherActions,
             'Timetable' => _createTimetable,
             'Activities' => _createActivity,
             _ => null,
@@ -197,6 +196,148 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
             ? _createActivity
             : null;
     return _table(rows, compact, title: section, action: action);
+  }
+
+  List<Map<String, dynamic>> _assignmentsForTeacher(
+    Map<String, dynamic> teacher,
+  ) {
+    final teacherId = _id(teacher);
+    return _rows('assignments').where((assignment) {
+      final value = assignment['teacher'];
+      if (value is Map)
+        return _id(Map<String, dynamic>.from(value)) == teacherId;
+      return '$value' == teacherId;
+    }).toList();
+  }
+
+  String _assignmentNames(
+    Map<String, dynamic> teacher,
+    String key,
+  ) {
+    final names = _assignmentsForTeacher(teacher)
+        .map((assignment) => assignment[key])
+        .whereType<Map>()
+        .map((value) => '${value['name'] ?? ''}'.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+    return names.isEmpty ? 'Not assigned' : names.join(', ');
+  }
+
+  Widget _teachers(bool compact) {
+    final teachers = _rows('teachers');
+    final addButton = FilledButton.icon(
+      key: const Key('add-teacher-button'),
+      onPressed: _createTeacher,
+      icon: const Icon(Icons.person_add_alt_1),
+      label: const Text('Add Teacher'),
+    );
+    if (teachers.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          addButton,
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No teachers have been created yet.'),
+            ),
+          ),
+        ],
+      );
+    }
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          addButton,
+          const SizedBox(height: 12),
+          ...teachers.map((teacher) {
+            final assignments = _assignmentsForTeacher(teacher);
+            return Card(
+              child: ListTile(
+                title: Text('${teacher['fullName'] ?? 'Teacher'}'),
+                subtitle: Text(
+                  'Staff ID: ${teacher['staffId'] ?? ''}\n'
+                  'Classes: ${_assignmentNames(teacher, 'classLevel')}\n'
+                  'Subjects: ${_assignmentNames(teacher, 'subject')}\n'
+                  'Status: ${assignments.isEmpty ? 'Not Assigned' : teacher['status'] ?? 'ACTIVE'}',
+                ),
+                isThreeLine: true,
+                trailing: PopupMenuButton<String>(
+                  onSelected: (action) {
+                    if (action == 'VIEW') _viewTeacher(teacher);
+                    if (action == 'ASSIGN') _assignTeacher(teacher);
+                    if (action == 'EDIT') _editTeacher(teacher);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'VIEW', child: Text('View')),
+                    PopupMenuItem(
+                      value: 'ASSIGN',
+                      child: Text('Assign Class & Subject'),
+                    ),
+                    PopupMenuItem(value: 'EDIT', child: Text('Edit')),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        addButton,
+        const SizedBox(height: 12),
+        Card(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: const [
+                DataColumn(label: Text('Name')),
+                DataColumn(label: Text('Staff ID')),
+                DataColumn(label: Text('Phone')),
+                DataColumn(label: Text('Assigned Classes')),
+                DataColumn(label: Text('Assigned Subjects')),
+                DataColumn(label: Text('Status')),
+                DataColumn(label: Text('Actions')),
+              ],
+              rows: teachers.map((teacher) {
+                final assignments = _assignmentsForTeacher(teacher);
+                return DataRow(cells: [
+                  DataCell(Text('${teacher['fullName'] ?? 'Teacher'}')),
+                  DataCell(Text('${teacher['staffId'] ?? ''}')),
+                  DataCell(Text('${teacher['phone'] ?? ''}')),
+                  DataCell(Text(_assignmentNames(teacher, 'classLevel'))),
+                  DataCell(Text(_assignmentNames(teacher, 'subject'))),
+                  DataCell(Text(
+                    assignments.isEmpty
+                        ? 'Not Assigned'
+                        : '${teacher['status'] ?? 'ACTIVE'}',
+                  )),
+                  DataCell(Wrap(children: [
+                    TextButton(
+                      onPressed: () => _viewTeacher(teacher),
+                      child: const Text('View'),
+                    ),
+                    TextButton(
+                      onPressed: () => _assignTeacher(teacher),
+                      child: const Text('Assign Class & Subject'),
+                    ),
+                    TextButton(
+                      onPressed: () => _editTeacher(teacher),
+                      child: const Text('Edit'),
+                    ),
+                  ])),
+                ]);
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _dashboard() {
@@ -767,119 +908,121 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     }
   }
 
-  Future<void> _teacherActions() async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.person_add_alt_1),
-              title: const Text('Create teacher'),
-              onTap: () => Navigator.pop(sheetContext, 'CREATE'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.assignment_ind_outlined),
-              title: const Text('Assign class and subject'),
-              onTap: () => Navigator.pop(sheetContext, 'ASSIGN'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (action == 'CREATE') await _createTeacher();
-    if (action == 'ASSIGN') await _assignTeacher();
-  }
-
   Future<void> _createTeacher() async {
-    final user = TextEditingController(),
-        staff = TextEditingController(),
+    final staff = TextEditingController(),
         name = TextEditingController(),
         email = TextEditingController(),
         phone = TextEditingController(),
-        responsibility = TextEditingController(),
-        password = TextEditingController(),
-        classIds = TextEditingController(),
-        subjectIds = TextEditingController();
+        password = TextEditingController();
     String gender = '';
-    final ok = await _form('Create teacher', [
-      TextField(
-        controller: user,
-        decoration: const InputDecoration(
-          labelText: 'Existing ServicePay user ID (optional)',
-        ),
-      ),
-      TextField(
-          controller: name,
-          decoration: const InputDecoration(labelText: 'Full name')),
-      TextField(
-          controller: email,
-          decoration: const InputDecoration(labelText: 'Email')),
-      TextField(
-          controller: phone,
-          decoration: const InputDecoration(labelText: 'Phone')),
-      TextField(
-        controller: staff,
-        decoration: const InputDecoration(labelText: 'Staff ID'),
-      ),
-      DropdownButtonFormField<String>(
-        decoration: const InputDecoration(labelText: 'Gender (optional)'),
-        items: const ['FEMALE', 'MALE', 'OTHER']
-            .map((v) => DropdownMenuItem(value: v, child: Text(v)))
-            .toList(),
-        onChanged: (v) => gender = v ?? '',
-      ),
-      TextField(
-          controller: responsibility,
-          decoration: const InputDecoration(labelText: 'Responsibility')),
-      TextField(
-          controller: password,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Temporary password')),
-      TextField(
-          controller: classIds,
-          decoration: const InputDecoration(
-              labelText: 'Initial class IDs (comma separated)')),
-      TextField(
-          controller: subjectIds,
-          decoration: const InputDecoration(
-              labelText: 'Initial subject IDs (comma separated)')),
-    ]);
-    if (ok != true ||
-        staff.text.trim().isEmpty ||
-        (user.text.trim().isEmpty &&
-            (name.text.trim().isEmpty || email.text.trim().isEmpty))) {
-      _notice(
-          'Enter staff ID and either an existing user ID or full account details.');
-      return;
+    String responsibility = '';
+    final ok = await _form(
+        'CREATE TEACHER',
+        [
+          TextField(
+              controller: name,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Full Name *')),
+          TextField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Phone Number *')),
+          TextField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Email *')),
+          TextField(
+            controller: staff,
+            decoration: const InputDecoration(labelText: 'Staff ID *'),
+          ),
+          DropdownButtonFormField<String>(
+            decoration: const InputDecoration(labelText: 'Gender (optional)'),
+            items: const ['FEMALE', 'MALE', 'OTHER']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                .toList(),
+            onChanged: (v) => gender = v ?? '',
+          ),
+          DropdownButtonFormField<String>(
+            decoration: const InputDecoration(
+              labelText: 'Responsibility / Position (optional)',
+            ),
+            items: const [
+              'Teacher',
+              'Class Teacher',
+              'Head Teacher',
+              'Academic Officer',
+              'Principal',
+              'Vice Principal',
+              'Other',
+            ]
+                .map((value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value),
+                    ))
+                .toList(),
+            onChanged: (value) => responsibility = value ?? '',
+          ),
+          TextField(
+              controller: password,
+              obscureText: true,
+              decoration:
+                  const InputDecoration(labelText: 'Temporary Password *')),
+        ],
+        submitLabel: 'Create Teacher');
+    if (ok != true) return;
+    if (name.text.trim().isEmpty) return _notice('Full name is required.');
+    final normalizedPhone = phone.text.replaceAll(RegExp(r'[\s()-]'), '');
+    if (!RegExp(r'^\+?[0-9]{7,15}$').hasMatch(normalizedPhone)) {
+      return _notice('Enter a valid phone number.');
+    }
+    final normalizedEmail = email.text.trim().toLowerCase();
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(normalizedEmail)) {
+      return _notice('Enter a valid email address.');
+    }
+    if (staff.text.trim().isEmpty) {
+      return _notice('Staff ID is required.');
+    }
+    if (password.text.isEmpty) {
+      return _notice('Temporary password is required.');
     }
     try {
       await widget.api.createTeacher({
-        if (user.text.trim().isNotEmpty) 'userId': user.text.trim(),
         'staffId': staff.text.trim(),
-        if (name.text.trim().isNotEmpty) 'fullName': name.text.trim(),
-        if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
-        if (phone.text.trim().isNotEmpty) 'phone': phone.text.trim(),
+        'fullName': name.text.trim(),
+        'email': normalizedEmail,
+        'phone': normalizedPhone,
         if (gender.isNotEmpty) 'gender': gender,
-        if (responsibility.text.trim().isNotEmpty)
-          'responsibility': responsibility.text.trim(),
-        if (password.text.isNotEmpty) 'temporaryPassword': password.text,
-        'classIds': classIds.text
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(),
-        'subjectIds': subjectIds.text
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(),
+        if (responsibility.isNotEmpty) 'responsibility': responsibility,
+        'temporaryPassword': password.text,
       });
-      _load();
+      _notice('Teacher created successfully.');
+      await _load();
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
     }
+  }
+
+  Future<void> _viewTeacher(Map<String, dynamic> teacher) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('${teacher['fullName'] ?? 'Teacher'}'),
+        content: Text(
+          'Staff ID: ${teacher['staffId'] ?? ''}\n'
+          'Phone: ${teacher['phone'] ?? ''}\n'
+          'Email: ${teacher['email'] ?? ''}\n'
+          'Classes: ${_assignmentNames(teacher, 'classLevel')}\n'
+          'Subjects: ${_assignmentNames(teacher, 'subject')}\n'
+          'Status: ${_assignmentsForTeacher(teacher).isEmpty ? 'Not Assigned' : teacher['status'] ?? 'ACTIVE'}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _editTeacher(Map<String, dynamic> teacher) async {
@@ -981,65 +1124,76 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     }
   }
 
-  Future<void> _assignTeacher() async {
+  Future<void> _assignTeacher([Map<String, dynamic>? selectedTeacher]) async {
     final teachers = _rows('teachers'),
         classes = _rows('classes'),
         subjects = _rows('subjects');
-    if (teachers.isEmpty || classes.isEmpty || subjects.isEmpty) {
-      _notice('Create a teacher, class and subject before assigning.');
-      return;
+    if (teachers.isEmpty) return _notice('Create a teacher first.');
+    if (classes.isEmpty) {
+      return _notice('No classes have been created yet. Create a class first.');
     }
-    String teacher = _id(teachers.first),
+    if (subjects.isEmpty) {
+      return _notice(
+        'No subjects have been created yet. Create a subject first.',
+      );
+    }
+    String teacher = _id(selectedTeacher ?? teachers.first),
         classLevel = _id(classes.first),
         subject = _id(subjects.first);
-    final ok = await _form('Assign teacher', [
-      DropdownButtonFormField<String>(
-        value: teacher,
-        decoration: const InputDecoration(labelText: 'Teacher'),
-        items: teachers
-            .map(
-              (row) => DropdownMenuItem(
-                value: _id(row),
-                child: Text('${row['fullName'] ?? row['staffId']}'),
-              ),
-            )
-            .toList(),
-        onChanged: (value) => teacher = value!,
-      ),
-      DropdownButtonFormField<String>(
-        value: classLevel,
-        decoration: const InputDecoration(labelText: 'Class'),
-        items: classes
-            .map(
-              (row) => DropdownMenuItem(
-                value: _id(row),
-                child: Text('${row['name']} ${row['arm'] ?? ''}'),
-              ),
-            )
-            .toList(),
-        onChanged: (value) => classLevel = value!,
-      ),
-      DropdownButtonFormField<String>(
-        value: subject,
-        decoration: const InputDecoration(labelText: 'Subject'),
-        items: subjects
-            .map(
-              (row) => DropdownMenuItem(
-                value: _id(row),
-                child: Text('${row['name']}'),
-              ),
-            )
-            .toList(),
-        onChanged: (value) => subject = value!,
-      ),
-    ]);
+    final ok = await _form(
+        'Assign Class & Subject',
+        [
+          DropdownButtonFormField<String>(
+            value: teacher,
+            decoration: const InputDecoration(labelText: 'Teacher'),
+            items: teachers
+                .map(
+                  (row) => DropdownMenuItem(
+                    value: _id(row),
+                    child: Text('${row['fullName'] ?? row['staffId']}'),
+                  ),
+                )
+                .toList(),
+            onChanged:
+                selectedTeacher == null ? (value) => teacher = value! : null,
+          ),
+          DropdownButtonFormField<String>(
+            value: classLevel,
+            decoration: const InputDecoration(labelText: 'Class'),
+            items: classes
+                .map(
+                  (row) => DropdownMenuItem(
+                    value: _id(row),
+                    child: Text('${row['name']} ${row['arm'] ?? ''}'),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => classLevel = value!,
+          ),
+          DropdownButtonFormField<String>(
+            value: subject,
+            decoration: const InputDecoration(labelText: 'Subject'),
+            items: subjects
+                .map(
+                  (row) => DropdownMenuItem(
+                    value: _id(row),
+                    child: Text('${row['name']}'),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => subject = value!,
+          ),
+        ],
+        submitLabel: 'Assign');
     if (ok != true) return;
     try {
-      await widget.api.updateTeacherAssignments(teacher, {
-        'classIds': [classLevel],
-        'subjectIds': [subject],
+      await widget.api.assignTeacher({
+        'teacher': teacher,
+        'classLevel': classLevel,
+        'subject': subject,
       });
-      _load();
+      _notice('Class and subject assigned successfully.');
+      await _load();
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -1494,7 +1648,12 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     }
   }
 
-  Future<bool?> _form(String title, List<Widget> fields) => showDialog<bool>(
+  Future<bool?> _form(
+    String title,
+    List<Widget> fields, {
+    String submitLabel = 'Save',
+  }) =>
+      showDialog<bool>(
         context: context,
         builder: (d) => AlertDialog(
           title: Text(title),
@@ -1511,7 +1670,7 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(d, true),
-              child: const Text('Save'),
+              child: Text(submitLabel),
             ),
           ],
         ),

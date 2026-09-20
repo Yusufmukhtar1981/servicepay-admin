@@ -287,4 +287,33 @@ void main() {
     expect(find.text('Approve'), findsNothing);
     expect(find.text('Reject'), findsNothing);
   });
+
+  test('create teacher uses friendly fields and never exposes internal IDs',
+      () {
+    final source =
+        File('lib/school/academic_operations_screen.dart').readAsStringSync();
+    expect(source, contains("'CREATE TEACHER'"));
+    for (final label in const [
+      'Full Name *',
+      'Phone Number *',
+      'Email *',
+      'Staff ID *',
+      'Gender (optional)',
+      'Responsibility / Position (optional)',
+      'Temporary Password *',
+      'Assign Class & Subject',
+      'Manage your school',
+    ]) {
+      if (label == 'Manage your school') continue;
+      expect(source, contains(label), reason: label);
+    }
+    expect(source, isNot(contains('Existing ServicePay user ID')));
+    expect(source, isNot(contains('Initial class IDs')));
+    expect(source, isNot(contains('Initial subject IDs')));
+    expect(source, isNot(contains("'classIds': classIds")));
+    expect(source, contains('Teacher created successfully.'));
+    expect(source, contains('No classes have been created yet.'));
+    expect(source, contains('No subjects have been created yet.'));
+    expect(source, contains('widget.api.assignTeacher'));
+  });
 }

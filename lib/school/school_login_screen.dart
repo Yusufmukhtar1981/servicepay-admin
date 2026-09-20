@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'school_portal_screen.dart';
 import 'school_registration_screen.dart';
+import 'change_password_screen.dart';
 
 class SchoolLoginScreen extends StatefulWidget {
   const SchoolLoginScreen({super.key});
@@ -44,8 +45,7 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
       await prefs.setString('school_auth_token', decoded['token'].toString());
       final school = decoded['school'] as Map?;
       final user = decoded['user'] as Map?;
-      final role =
-          decoded['role'] ??
+      final role = decoded['role'] ??
           decoded['schoolRole'] ??
           school?['role'] ??
           user?['role'];
@@ -59,9 +59,15 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
         'school_name',
         school?['name']?.toString() ?? 'School',
       );
+      final mustChange = decoded['mustChangePassword'] == true ||
+          user?['mustChangePassword'] == true;
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const SchoolPortalScreen()),
+          MaterialPageRoute(
+            builder: (_) => mustChange
+                ? const ChangePasswordScreen()
+                : const SchoolPortalScreen(),
+          ),
         );
       }
     } catch (e) {

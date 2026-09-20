@@ -52,7 +52,9 @@ void main() {
     );
   });
 
-  test('all backend admin aliases can manage school requests', () {
+  test(
+      'school request review and manual mutations use separate backend role gates',
+      () {
     for (final role in const [
       'HEAD_OFFICE',
       'HEAD_OFFICE_ADMIN',
@@ -60,8 +62,12 @@ void main() {
       'SUPER_ADMIN',
       'SERVICEPAY_SUPER_ADMIN',
     ]) {
-      expect(eduPayAdminRoleCanManage(role), isTrue, reason: role);
+      expect(eduPayAdminRoleCanReviewSchoolRequests(role), isTrue,
+          reason: role);
     }
+    expect(eduPayAdminRoleCanManage('HEAD_OFFICE'), isTrue);
+    expect(eduPayAdminRoleCanManage('HEAD_OFFICE_ADMIN'), isFalse);
+    expect(eduPayAdminRoleCanManage('ADMIN'), isFalse);
     expect(eduPayAdminRoleCanManage('STAFF'), isFalse);
     expect(eduPayAdminRoleCanManage('CUSTOMER'), isFalse);
   });
@@ -85,6 +91,21 @@ void main() {
     expect(readiness, contains('catch (_)'));
     expect(readiness, isNot(contains('adminRole =')));
     expect(readiness, isNot(contains('permissions =')));
+  });
+
+  test('teacher activity reachability and scoped loader are wired', () {
+    final source =
+        File('lib/school/academic_operations_screen.dart').readAsStringSync();
+    expect(source, contains("section == 'Activities'"));
+    expect(source, contains('_createActivity'));
+    expect(
+        source, contains('Future<Map<String, dynamic>> _combinedActivities()'));
+    expect(source, contains('widget.api.academicStudents()'));
+    expect(source, contains('widget.api.activities()'));
+    expect(source, contains("'audience': audience"));
+    expect(source, contains("'CLASS'"));
+    expect(source, contains("'STUDENT'"));
+    expect(source, contains("['DRAFT', 'RETURNED']"));
   });
 
   test('school request rows cannot use full-school mutation endpoint', () {

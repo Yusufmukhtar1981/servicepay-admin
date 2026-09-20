@@ -31,20 +31,20 @@ class EduPayApi {
     final uri = Uri.parse('$baseUrl$path');
     final response = switch (method) {
       'POST' => await client.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(body ?? {}),
-      ),
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        ),
       'PATCH' => await client.patch(
-        uri,
-        headers: headers,
-        body: jsonEncode(body ?? {}),
-      ),
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        ),
       'PUT' => await client.put(
-        uri,
-        headers: headers,
-        body: jsonEncode(body ?? {}),
-      ),
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        ),
       'DELETE' => await client.delete(uri, headers: headers),
       _ => await client.get(uri, headers: headers),
     };
@@ -71,10 +71,10 @@ class EduPayApi {
   Future<Map<String, dynamic>> readiness() =>
       request('GET', '/admin/edupay/readiness');
   Future<Map<String, dynamic>> academicOverview([String? schoolId]) => request(
-    'GET',
-    '/admin/edupay/academic-overview'
-        '${schoolId == null ? '' : '?schoolId=${Uri.encodeQueryComponent(schoolId)}'}',
-  );
+        'GET',
+        '/admin/edupay/academic-overview'
+            '${schoolId == null ? '' : '?schoolId=${Uri.encodeQueryComponent(schoolId)}'}',
+      );
   Future<Map<String, dynamic>> saveSettings(Map<String, dynamic> settings) =>
       request('PATCH', '/admin/edupay/settings', body: settings);
   Future<Map<String, dynamic>> processSettlement(String id) =>
@@ -84,48 +84,69 @@ class EduPayApi {
   Future<Map<String, dynamic>> saveSettlementAccount(
     String schoolId,
     Map<String, dynamic> body,
-  ) => request(
-    'PUT',
-    '/admin/edupay/schools/$schoolId/settlement-account',
-    body: body,
-  );
+  ) =>
+      request(
+        'PUT',
+        '/admin/edupay/schools/$schoolId/settlement-account',
+        body: body,
+      );
   Future<Map<String, dynamic>> verifySettlementAccount(
     String schoolId, {
     String? accountId,
     int? version,
-  }) => request(
-    'POST',
-    '/admin/edupay/schools/$schoolId/settlement-account/verify',
-    body: {'accountId': accountId, 'version': version},
-  );
+  }) =>
+      request(
+        'POST',
+        '/admin/edupay/schools/$schoolId/settlement-account/verify',
+        body: {'accountId': accountId, 'version': version},
+      );
   Future<Map<String, dynamic>> assignDuty(
     String userId,
     List<String> permissions,
-  ) => request(
-    'PUT',
-    '/admin/edupay/duties/$userId',
-    body: {'permissions': permissions},
-  );
+  ) =>
+      request(
+        'PUT',
+        '/admin/edupay/duties/$userId',
+        body: {'permissions': permissions},
+      );
   Future<Map<String, dynamic>> configureDuties(
     Map<String, String> assignments,
-  ) => request(
-    'PUT',
-    '/admin/edupay/duties',
-    body: {'assignments': assignments},
-  );
+  ) =>
+      request(
+        'PUT',
+        '/admin/edupay/duties',
+        body: {'assignments': assignments},
+      );
   Future<Map<String, dynamic>> revokeDuty(String userId) =>
       request('DELETE', '/admin/edupay/duties/$userId');
   Future<Map<String, dynamic>> schoolAction(
     String schoolId,
     String action, {
     String? note,
-  }) => request(
-    'PATCH',
-    '/admin/edupay/schools/$schoolId',
-    body: {'action': action, if (note != null) 'note': note},
-  );
+  }) =>
+      request(
+        'PATCH',
+        '/admin/edupay/schools/$schoolId',
+        body: {'action': action, if (note != null) 'note': note},
+      );
   Future<Map<String, dynamic>> schoolDetail(String schoolId) =>
       request('GET', '/admin/edupay/schools/$schoolId');
+  Future<Map<String, dynamic>> createSchool(Map<String, dynamic> body) =>
+      request('POST', '/admin/edupay/schools', body: body);
+  Future<Map<String, dynamic>> updateSchool(
+    String schoolId,
+    Map<String, dynamic> body,
+  ) =>
+      request('PATCH', '/admin/edupay/schools/$schoolId', body: body);
+  Future<Map<String, dynamic>> resetSchoolPassword(
+    String schoolId,
+    String temporaryPassword,
+  ) =>
+      request(
+        'POST',
+        '/admin/edupay/schools/$schoolId/reset-password',
+        body: {'temporaryPassword': temporaryPassword},
+      );
   Future<Map<String, dynamic>> schoolRequests() =>
       request('GET', '/admin/edupay/school-requests');
   Future<Map<String, dynamic>> schoolRequestDetail(String requestId) =>
@@ -135,16 +156,18 @@ class EduPayApi {
     String action, {
     String? rejectionReason,
     bool? representativeAuthorityConfirmed,
-  }) => request(
-    'PATCH',
-    '/admin/edupay/school-requests/$requestId',
-    body: {
-      'action': action,
-      if (rejectionReason != null) 'rejectionReason': rejectionReason,
-      if (representativeAuthorityConfirmed != null)
-        'representativeAuthorityConfirmed': representativeAuthorityConfirmed,
-    },
-  );
+  }) =>
+      request(
+        'PATCH',
+        '/admin/edupay/school-requests/$requestId',
+        body: {
+          'action': action,
+          if (rejectionReason != null) 'rejectionReason': rejectionReason,
+          if (representativeAuthorityConfirmed != null)
+            'representativeAuthorityConfirmed':
+                representativeAuthorityConfirmed,
+        },
+      );
   Future<Map<String, dynamic>> privateSchoolDocuments(String schoolId) =>
       request('GET', '/admin/edupay/schools/$schoolId/private-assets');
   Future<http.Response> privateAssetBytes(

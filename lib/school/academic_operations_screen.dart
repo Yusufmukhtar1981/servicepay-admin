@@ -63,25 +63,26 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
       data = switch (section) {
         'Dashboard' => await widget.api.academicDashboard(),
         'Sessions & terms' ||
-        'Classes & subjects' => await widget.api.academicOverview(),
+        'Classes & subjects' =>
+          await widget.api.academicOverview(),
         'Students' => await _combined(
-          widget.api.academicOverview(),
-          widget.api.academicStudents(),
-        ),
+            widget.api.academicOverview(),
+            widget.api.academicStudents(),
+          ),
         'Teachers' => await _combined(
-          widget.api.academicOverview(),
-          widget.api.academicTeachers(),
-        ),
+            widget.api.academicOverview(),
+            widget.api.academicTeachers(),
+          ),
         'Attendance' => await widget.api.academicOverview(),
         'Assessments' => await _combined(
-          widget.api.academicOverview(),
-          widget.api.assessments(),
-        ),
+            widget.api.academicOverview(),
+            widget.api.assessments(),
+          ),
         'Timetable' => await _combined(
-          widget.api.academicOverview(),
-          widget.api.timetable(),
-        ),
-        'Activities' => await widget.api.activities(),
+            widget.api.academicOverview(),
+            widget.api.timetable(),
+          ),
+        'Activities' => await _combinedActivities(),
         _ => data,
       };
     } catch (e) {
@@ -94,8 +95,21 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     Future<Map<String, dynamic>> first,
     Future<Map<String, dynamic>> second,
   ) async {
-    final values = await Future.wait([first, second]);
+    final values = await Future.wait<Map<String, dynamic>>([first, second]);
     return <String, dynamic>{...values[0], ...values[1]};
+  }
+
+  Future<Map<String, dynamic>> _combinedActivities() async {
+    final values = await Future.wait<Map<String, dynamic>>([
+      widget.api.academicOverview(),
+      widget.api.academicStudents(),
+      widget.api.activities(),
+    ]);
+    return <String, dynamic>{
+      ...values[0],
+      ...values[1],
+      ...values[2],
+    };
   }
 
   List<Map<String, dynamic>> _rows(String key) =>
@@ -146,18 +160,18 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   }
 
   Widget _error() => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(error!),
-          const SizedBox(height: 10),
-          OutlinedButton(onPressed: _load, child: const Text('Try again')),
-        ],
-      ),
-    ),
-  );
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(error!),
+              const SizedBox(height: 10),
+              OutlinedButton(onPressed: _load, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
   Widget _content(bool compact) {
     if (section == 'Dashboard') return _dashboard();
     if (section == 'Attendance') return _attendance();
@@ -171,15 +185,17 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
       _ => 'activities',
     };
     final rows = _rows(key);
-    final action = !widget.manager
-        ? null
-        : switch (section) {
+    final action = widget.manager
+        ? switch (section) {
             'Classes & subjects' => _createSubject,
             'Teachers' => _teacherActions,
             'Timetable' => _createTimetable,
             'Activities' => _createActivity,
             _ => null,
-          };
+          }
+        : section == 'Activities'
+            ? _createActivity
+            : null;
     return _table(rows, compact, title: section, action: action);
   }
 
@@ -223,43 +239,43 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   }
 
   Widget _students() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Wrap(
-        spacing: 8,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FilledButton.icon(
-            onPressed: widget.manager ? _createStudent : null,
-            icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('Add student'),
+          Wrap(
+            spacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: widget.manager ? _createStudent : null,
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Add student'),
+              ),
+              OutlinedButton.icon(
+                onPressed: widget.manager ? _bulkImport : null,
+                icon: const Icon(Icons.upload_file),
+                label: const Text('Validate bulk import'),
+              ),
+            ],
           ),
-          OutlinedButton.icon(
-            onPressed: widget.manager ? _bulkImport : null,
-            icon: const Icon(Icons.upload_file),
-            label: const Text('Validate bulk import'),
+          const SizedBox(height: 12),
+          ..._rows('students').map(
+            (student) => Card(
+              child: ListTile(
+                title: Text('${student['fullName'] ?? 'Student'}'),
+                subtitle: Text(
+                  '${student['studentId'] ?? ''} · ${student['status'] ?? 'ACTIVE'}',
+                ),
+                trailing: widget.manager
+                    ? IconButton(
+                        tooltip: 'Edit student',
+                        onPressed: () => _editStudent(student),
+                        icon: const Icon(Icons.edit_outlined),
+                      )
+                    : null,
+              ),
+            ),
           ),
         ],
-      ),
-      const SizedBox(height: 12),
-      ..._rows('students').map(
-        (student) => Card(
-          child: ListTile(
-            title: Text('${student['fullName'] ?? 'Student'}'),
-            subtitle: Text(
-              '${student['studentId'] ?? ''} · ${student['status'] ?? 'ACTIVE'}',
-            ),
-            trailing: widget.manager
-                ? IconButton(
-                    tooltip: 'Edit student',
-                    onPressed: () => _editStudent(student),
-                    icon: const Icon(Icons.edit_outlined),
-                  )
-                : null,
-          ),
-        ),
-      ),
-    ],
-  );
+      );
   Widget _table(
     List<Map<String, dynamic>> rows,
     bool compact, {
@@ -302,13 +318,37 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
-              columns: keys.map((k) => DataColumn(label: Text(k))).toList(),
+              columns: [
+                ...keys.map((k) => DataColumn(label: Text(k))),
+                if (section == 'Teachers' && widget.manager)
+                  const DataColumn(label: Text('Actions')),
+              ],
               rows: rows
                   .map(
                     (r) => DataRow(
-                      cells: keys
-                          .map((k) => DataCell(Text('${r[k] ?? ''}')))
-                          .toList(),
+                      cells: [
+                        ...keys.map((k) => DataCell(Text('${r[k] ?? ''}'))),
+                        if (section == 'Teachers' && widget.manager)
+                          DataCell(Wrap(
+                            children: [
+                              IconButton(
+                                tooltip: 'Edit teacher',
+                                onPressed: () => _editTeacher(r),
+                                icon: const Icon(Icons.edit_outlined),
+                              ),
+                              IconButton(
+                                tooltip: 'Reset temporary password',
+                                onPressed: () => _resetTeacherPassword(r),
+                                icon: const Icon(Icons.lock_reset_outlined),
+                              ),
+                              IconButton(
+                                tooltip: 'Change teacher status',
+                                onPressed: () => _toggleTeacherStatus(r),
+                                icon: const Icon(Icons.sync_alt_outlined),
+                              ),
+                            ],
+                          )),
+                      ],
                     ),
                   )
                   .toList(),
@@ -497,8 +537,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
               trailing: Wrap(
                 spacing: 6,
                 children: [
-                  if (!['APPROVED', 'PUBLISHED'].contains('${row['status']}') &&
-                      widget.manager)
+                  if (['DRAFT', 'RETURNED']
+                      .contains('${row['status']}'.toUpperCase()))
                     TextButton(
                       onPressed: () => _scoreAssessment(row),
                       child: const Text('Scores'),
@@ -531,9 +571,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     final studentId = TextEditingController(),
         name = TextEditingController(),
         parent = TextEditingController();
-    String? classId = _rows('classes').isNotEmpty
-        ? _id(_rows('classes').first)
-        : null;
+    String? classId =
+        _rows('classes').isNotEmpty ? _id(_rows('classes').first) : null;
     final ok = await _form('Add student', [
       TextField(
         controller: studentId,
@@ -595,10 +634,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         .toList();
     final rows = <Map<String, dynamic>>[];
     for (var index = 0; index < lines.length; index++) {
-      final values = lines[index]
-          .split(',')
-          .map((value) => value.trim())
-          .toList();
+      final values =
+          lines[index].split(',').map((value) => value.trim()).toList();
       if (index == 0 && values.first.toLowerCase().contains('student'))
         continue;
       if (values.length < 2) continue;
@@ -666,9 +703,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
       ),
       if (classes.isNotEmpty)
         DropdownButtonFormField<String>(
-          value: classes.any((row) => _id(row) == classLevel)
-              ? classLevel
-              : null,
+          value:
+              classes.any((row) => _id(row) == classLevel) ? classLevel : null,
           decoration: const InputDecoration(labelText: 'Class'),
           items: classes
               .map(
@@ -759,32 +795,187 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   Future<void> _createTeacher() async {
     final user = TextEditingController(),
         staff = TextEditingController(),
-        name = TextEditingController();
+        name = TextEditingController(),
+        email = TextEditingController(),
+        phone = TextEditingController(),
+        responsibility = TextEditingController(),
+        password = TextEditingController(),
+        classIds = TextEditingController(),
+        subjectIds = TextEditingController();
+    String gender = '';
     final ok = await _form('Create teacher', [
       TextField(
         controller: user,
         decoration: const InputDecoration(
-          labelText: 'Existing ServicePay user ID',
+          labelText: 'Existing ServicePay user ID (optional)',
         ),
       ),
+      TextField(
+          controller: name,
+          decoration: const InputDecoration(labelText: 'Full name')),
+      TextField(
+          controller: email,
+          decoration: const InputDecoration(labelText: 'Email')),
+      TextField(
+          controller: phone,
+          decoration: const InputDecoration(labelText: 'Phone')),
       TextField(
         controller: staff,
         decoration: const InputDecoration(labelText: 'Staff ID'),
       ),
-      TextField(
-        controller: name,
-        decoration: const InputDecoration(labelText: 'Full name'),
+      DropdownButtonFormField<String>(
+        decoration: const InputDecoration(labelText: 'Gender (optional)'),
+        items: const ['FEMALE', 'MALE', 'OTHER']
+            .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+            .toList(),
+        onChanged: (v) => gender = v ?? '',
       ),
+      TextField(
+          controller: responsibility,
+          decoration: const InputDecoration(labelText: 'Responsibility')),
+      TextField(
+          controller: password,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Temporary password')),
+      TextField(
+          controller: classIds,
+          decoration: const InputDecoration(
+              labelText: 'Initial class IDs (comma separated)')),
+      TextField(
+          controller: subjectIds,
+          decoration: const InputDecoration(
+              labelText: 'Initial subject IDs (comma separated)')),
     ]);
-    if (ok != true || user.text.trim().isEmpty || staff.text.trim().isEmpty)
+    if (ok != true ||
+        staff.text.trim().isEmpty ||
+        (user.text.trim().isEmpty &&
+            (name.text.trim().isEmpty || email.text.trim().isEmpty))) {
+      _notice(
+          'Enter staff ID and either an existing user ID or full account details.');
       return;
+    }
     try {
       await widget.api.createTeacher({
-        'userId': user.text.trim(),
+        if (user.text.trim().isNotEmpty) 'userId': user.text.trim(),
         'staffId': staff.text.trim(),
         if (name.text.trim().isNotEmpty) 'fullName': name.text.trim(),
+        if (email.text.trim().isNotEmpty) 'email': email.text.trim(),
+        if (phone.text.trim().isNotEmpty) 'phone': phone.text.trim(),
+        if (gender.isNotEmpty) 'gender': gender,
+        if (responsibility.text.trim().isNotEmpty)
+          'responsibility': responsibility.text.trim(),
+        if (password.text.isNotEmpty) 'temporaryPassword': password.text,
+        'classIds': classIds.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        'subjectIds': subjectIds.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
       });
       _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _editTeacher(Map<String, dynamic> teacher) async {
+    final id = _id(teacher);
+    if (id == 'null') return;
+    final name = TextEditingController(text: '${teacher['fullName'] ?? ''}');
+    final email = TextEditingController(text: '${teacher['email'] ?? ''}');
+    final phone = TextEditingController(text: '${teacher['phone'] ?? ''}');
+    final staff = TextEditingController(text: '${teacher['staffId'] ?? ''}');
+    final responsibility =
+        TextEditingController(text: '${teacher['responsibility'] ?? ''}');
+    final ok = await _form('Edit teacher', [
+      TextField(
+          controller: name,
+          decoration: const InputDecoration(labelText: 'Full name')),
+      TextField(
+          controller: email,
+          decoration: const InputDecoration(labelText: 'Email')),
+      TextField(
+          controller: phone,
+          decoration: const InputDecoration(labelText: 'Phone')),
+      TextField(
+          controller: staff,
+          decoration: const InputDecoration(labelText: 'Staff ID')),
+      TextField(
+          controller: responsibility,
+          decoration: const InputDecoration(labelText: 'Responsibility')),
+    ]);
+    if (ok != true) return;
+    try {
+      await widget.api.updateTeacher(id, {
+        'fullName': name.text.trim(),
+        'email': email.text.trim(),
+        'phone': phone.text.trim(),
+        'staffId': staff.text.trim(),
+        'responsibility': responsibility.text.trim(),
+      });
+      _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _toggleTeacherStatus(Map<String, dynamic> teacher) async {
+    final id = _id(teacher);
+    final next = '${teacher['status'] ?? 'ACTIVE'}'.toUpperCase() == 'ACTIVE'
+        ? 'INACTIVE'
+        : 'ACTIVE';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('$next teacher'),
+        content: Text('Change this teacher status to $next?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.api.updateTeacherStatus(id, next);
+      _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _resetTeacherPassword(Map<String, dynamic> teacher) async {
+    final password = TextEditingController();
+    final confirmation = TextEditingController();
+    final ok = await _form('Reset temporary password', [
+      TextField(
+          controller: password,
+          obscureText: true,
+          decoration:
+              const InputDecoration(labelText: 'New temporary password')),
+      TextField(
+          controller: confirmation,
+          obscureText: true,
+          decoration:
+              const InputDecoration(labelText: 'Confirm temporary password')),
+    ]);
+    if (ok != true ||
+        password.text.length < 8 ||
+        password.text != confirmation.text) {
+      _notice('Passwords must match and contain at least 8 characters.');
+      return;
+    }
+    try {
+      await widget.api.resetTeacherPassword(_id(teacher), password.text);
+      _notice('Temporary password reset. It is not displayed.');
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -844,10 +1035,9 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     ]);
     if (ok != true) return;
     try {
-      await widget.api.assignTeacher({
-        'teacher': teacher,
-        'classLevel': classLevel,
-        'subject': subject,
+      await widget.api.updateTeacherAssignments(teacher, {
+        'classIds': [classLevel],
+        'subjectIds': [subject],
       });
       _load();
     } catch (e) {
@@ -966,14 +1156,13 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
           .toList();
-      final components =
-          (assessment['components'] as List? ??
-                  const [
-                    {'name': 'Total', 'max': 100},
-                  ])
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList();
+      final components = (assessment['components'] as List? ??
+              const [
+                {'name': 'Total', 'max': 100},
+              ])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
       if (students.isEmpty)
         return _notice('No active students are assigned to this class.');
       final controllers = <String, TextEditingController>{};
@@ -1012,8 +1201,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
                                     (component) => SizedBox(
                                       width: 120,
                                       child: TextField(
-                                        controller:
-                                            controllers['${_id(student)}:${component['name']}'],
+                                        controller: controllers[
+                                            '${_id(student)}:${component['name']}'],
                                         keyboardType: TextInputType.number,
                                         decoration: InputDecoration(
                                           labelText:
@@ -1056,12 +1245,38 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
               'values': {
                 for (final component in components)
                   '${component['name']}': double.tryParse(
-                    controllers['${_id(student)}:${component['name']}']!.text,
+                    controllers['${_id(student)}:${component['name']}']!
+                        .text
+                        .trim(),
                   ),
               },
             },
           )
           .toList();
+      final invalidScores = scores
+          .expand((row) => (row['values'] as Map).entries)
+          .map((entry) => <String, dynamic>{
+                'label': entry.key,
+                'value': entry.value,
+              })
+          .where((entry) {
+        final raw = entry['value'];
+        if (raw is! num) return true;
+        final component = components.firstWhere(
+          (c) => '${c['name']}' == '${entry['label']}',
+          orElse: () => <String, dynamic>{},
+        );
+        final max = num.tryParse(
+          '${component['max'] ?? component['maxScore'] ?? ''}',
+        );
+        return raw < 0 || (max != null && raw > max);
+      }).toList();
+      if (invalidScores.isNotEmpty) {
+        _notice(
+          'Every score must be numeric and within its component maximum.',
+        );
+        return;
+      }
       await widget.api.saveScores(_id(assessment), {
         'submit': action == 'SUBMIT',
         'scores': scores,
@@ -1093,7 +1308,51 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
 
   Future<void> _createActivity() async {
     final title = TextEditingController(), body = TextEditingController();
-    final ok = await _form('Publish school update', [
+    final classes = _rows('classes');
+    final students = _rows('students');
+    String audience = widget.manager ? 'SCHOOL' : 'CLASS';
+    String? classLevel = classes.isEmpty ? null : _id(classes.first);
+    String? student = students.isEmpty ? null : _id(students.first);
+    if (!widget.manager && classes.isEmpty) {
+      _notice('No assigned classes are available for an update.');
+      return;
+    }
+    final activityFields = <Widget>[
+      if (!widget.manager)
+        DropdownButtonFormField<String>(
+          value: audience,
+          decoration: const InputDecoration(labelText: 'Audience'),
+          items: const [
+            DropdownMenuItem(value: 'CLASS', child: Text('Class')),
+            DropdownMenuItem(value: 'STUDENT', child: Text('Student')),
+          ],
+          onChanged: (value) => audience = value ?? audience,
+        ),
+      if (!widget.manager)
+        DropdownButtonFormField<String>(
+          value: classLevel,
+          decoration: const InputDecoration(labelText: 'Assigned class'),
+          items: classes
+              .map((row) => DropdownMenuItem(
+                    value: _id(row),
+                    child:
+                        Text('${row['name'] ?? 'Class'} ${row['arm'] ?? ''}'),
+                  ))
+              .toList(),
+          onChanged: (value) => classLevel = value,
+        ),
+      if (!widget.manager && students.isNotEmpty)
+        DropdownButtonFormField<String>(
+          value: student,
+          decoration: const InputDecoration(labelText: 'Assigned student'),
+          items: students
+              .map((row) => DropdownMenuItem(
+                    value: _id(row),
+                    child: Text('${row['fullName'] ?? 'Student'}'),
+                  ))
+              .toList(),
+          onChanged: (value) => student = value,
+        ),
       TextField(
         controller: title,
         decoration: const InputDecoration(labelText: 'Title'),
@@ -1104,15 +1363,23 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         maxLines: 8,
         decoration: const InputDecoration(labelText: 'Message'),
       ),
-    ]);
+    ];
+    final ok = await _form('Publish school update', activityFields);
     if (ok != true || title.text.trim().isEmpty || body.text.trim().isEmpty)
       return;
+    if (!widget.manager &&
+        (classLevel == null || (audience == 'STUDENT' && student == null))) {
+      _notice('Select an assigned class and student for this update.');
+      return;
+    }
     try {
       await widget.api.createActivity({
         'type': 'ANNOUNCEMENT',
         'title': title.text.trim(),
         'body': body.text.trim(),
-        'audience': 'SCHOOL',
+        'audience': audience,
+        if (!widget.manager) 'classLevel': classLevel,
+        if (!widget.manager && audience == 'STUDENT') 'student': student,
         'status': 'PUBLISHED',
       });
       _load();
@@ -1228,20 +1495,25 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   }
 
   Future<bool?> _form(String title, List<Widget> fields) => showDialog<bool>(
-    context: context,
-    builder: (d) => AlertDialog(
-      title: Text(title),
-      content: Column(mainAxisSize: MainAxisSize.min, children: fields),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(d),
-          child: const Text('Cancel'),
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text(title),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: fields),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(d),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(d, true),
-          child: const Text('Save'),
-        ),
-      ],
-    ),
-  );
+      );
 }

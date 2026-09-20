@@ -19,6 +19,10 @@ bool _isSchoolRequestRow(Map<String, dynamic> row) =>
 
 bool eduPayAdminRoleCanManage(String role) => const <String>{
       'HEAD_OFFICE',
+    }.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
+
+bool eduPayAdminRoleCanReviewSchoolRequests(String role) => const <String>{
+      'HEAD_OFFICE',
       'HEAD_OFFICE_ADMIN',
       'ADMIN',
       'SUPER_ADMIN',
@@ -206,7 +210,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   List<String> get sections => [...financeSections, ...academicSections];
   bool get isHeadOffice => eduPayAdminRoleCanManage(adminRole);
   bool get canManageEduPay =>
-      isHeadOffice || permissions.contains('edupay.manage');
+      isHeadOffice && permissions.contains('edupay.manage');
+  bool get canReviewSchoolRequests =>
+      eduPayAdminRoleCanReviewSchoolRequests(adminRole) &&
+      permissions.contains('edupay.manage');
   @override
   void initState() {
     super.initState();
@@ -1220,7 +1227,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                                           _isSchoolRequestRow(r))
                                         SchoolRequestActionControls(
                                           row: r,
-                                          canManage: canManageEduPay,
+                                          canManage: canReviewSchoolRequests,
                                           onView: () => _schoolDetails(r),
                                           onApprove: () => _schoolRequestAction(
                                             r,
@@ -1232,14 +1239,30 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                                           ),
                                         ),
                                       if (section == 'Schools' &&
-                                          !_isSchoolRequestRow(r))
+                                          !_isSchoolRequestRow(r)) ...[
                                         TextButton(
                                           onPressed: () =>
                                               _openAcademicProfile(r),
                                           child: const Text(
-                                            'Open Academic Profile',
-                                          ),
+                                              'Open Academic Profile'),
                                         ),
+                                        if (canManageEduPay)
+                                          IconButton(
+                                            tooltip: 'Edit school metadata',
+                                            onPressed: () => _editSchool(r),
+                                            icon:
+                                                const Icon(Icons.edit_outlined),
+                                          ),
+                                        if (canManageEduPay)
+                                          IconButton(
+                                            tooltip:
+                                                'Reset administrator password',
+                                            onPressed: () =>
+                                                _resetSchoolPassword(r),
+                                            icon: const Icon(
+                                                Icons.lock_reset_outlined),
+                                          ),
+                                      ],
                                       if (section == 'Schools & onboarding' &&
                                           !_isSchoolRequestRow(r)) ...[
                                         IconButton(
@@ -1263,6 +1286,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               );
             },
           );
+    if (section == 'Schools') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (canManageEduPay)
+            FilledButton.icon(
+              onPressed: _createSchool,
+              icon: const Icon(Icons.add_business_outlined),
+              label: const Text('Create school'),
+            ),
+          const SizedBox(height: 12),
+          table,
+        ],
+      );
+    }
     if (section != 'Schools & onboarding') return table;
     return Column(
       children: [
@@ -1327,7 +1365,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                 request
                     ? SchoolRequestActionControls(
                         row: row,
-                        canManage: canManageEduPay,
+                        canManage: canReviewSchoolRequests,
                         onView: () => _schoolDetails(row),
                         onApprove: () => _schoolRequestAction(row, 'APPROVE'),
                         onReject: () => _schoolRequestAction(row, 'REJECT'),
@@ -1569,7 +1607,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         actions: [
           SchoolRequestDetailsActions(
             pending: _reviewStatus(details) == 'PENDING_REVIEW',
-            canManage: canManageEduPay,
+            canManage: canReviewSchoolRequests,
             onReject: () => Navigator.pop(dialogContext, 'REJECT'),
             onApprove: () => Navigator.pop(dialogContext, 'APPROVE'),
             onClose: () => Navigator.pop(dialogContext),
@@ -1639,6 +1677,184 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     }
   }
 
+  Future<void> _createSchool() async {
+    if (!canManageEduPay) return;
+    final fields = <String>[
+      'schoolName',
+      'schoolType',
+      'proprietorName',
+      'email',
+      'phone',
+      'address',
+      'state',
+      'lga',
+      'temporaryPassword',
+    ];
+    final controllers = {for (final f in fields) f: TextEditingController()};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Create school'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 560),
+          child: SingleChildScrollView(
+            child: Column(
+              children: fields
+                  .map((f) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextField(
+                          controller: controllers[f],
+                          obscureText: f == 'temporaryPassword',
+                          keyboardType:
+                              f == 'email' ? TextInputType.emailAddress : null,
+                          decoration: InputDecoration(labelText: f),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Create')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final body = <String, dynamic>{
+      for (final f in fields)
+        if (controllers[f]!.text.trim().isNotEmpty)
+          f: controllers[f]!.text.trim(),
+    };
+    if ((body['schoolName'] ?? '').toString().isEmpty ||
+        (body['email'] ?? '').toString().isEmpty ||
+        (body['temporaryPassword'] ?? '').toString().length < 8) {
+      _showError(
+          'School name, email and a temporary password of at least 8 characters are required.');
+      return;
+    }
+    try {
+      await _api.createSchool(body);
+      _showSuccess('School created. The password is not displayed.');
+      _load();
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _editSchool(Map<String, dynamic> row) async {
+    final id = _reviewRowId(row);
+    if (id == null || !canManageEduPay) return;
+    final fields = [
+      'schoolName',
+      'schoolType',
+      'proprietorName',
+      'email',
+      'phone',
+      'address',
+      'state',
+      'lga'
+    ];
+    final controllers = {
+      for (final f in fields)
+        f: TextEditingController(
+            text: '${row[f] ?? row[_schoolAlias(f)] ?? ''}'),
+    };
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Edit school metadata'),
+        content: SingleChildScrollView(
+            child: Column(
+          children: fields
+              .map((f) => TextField(
+                  controller: controllers[f],
+                  decoration: InputDecoration(labelText: f)))
+              .toList(),
+        )),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _api.updateSchool(id, {
+        for (final f in fields) f: controllers[f]!.text.trim(),
+        // Backend persistence currently uses `name`; keep schoolName in the
+        // contract and provide the compatibility alias until it is mapped.
+        'name': controllers['schoolName']!.text.trim(),
+      });
+      _showSuccess('School metadata updated.');
+      _load();
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  String _schoolAlias(String field) => switch (field) {
+        'schoolName' => 'name',
+        'phone' => 'contactPhone',
+        _ => field,
+      };
+
+  Future<void> _resetSchoolPassword(Map<String, dynamic> row) async {
+    final id = _reviewRowId(row);
+    if (id == null || !canManageEduPay) return;
+    final password = TextEditingController(), confirm = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Reset administrator password'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+              controller: password,
+              obscureText: true,
+              decoration: const InputDecoration(
+                  labelText: 'Strong temporary password')),
+          TextField(
+              controller: confirm,
+              obscureText: true,
+              decoration: const InputDecoration(
+                  labelText: 'Confirm temporary password')),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Reset password')),
+        ],
+      ),
+    );
+    if (ok != true ||
+        password.text.length < 8 ||
+        password.text != confirm.text) {
+      _showError('Passwords must match and contain at least 8 characters.');
+      return;
+    }
+    try {
+      await _api.resetSchoolPassword(id, password.text);
+      _showSuccess('Administrator password reset. It is not displayed.');
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  void _showSuccess(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
   Future<void> _schoolAction(Map<String, dynamic> row, String action) async {
     final id = row['id']?.toString() ?? row['_id']?.toString();
     if (id == null || id.isEmpty) return;

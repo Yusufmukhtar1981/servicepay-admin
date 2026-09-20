@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,6 +40,7 @@ class _SchoolSessionGateState extends State<SchoolSessionGate> {
       error = null;
     });
     final prefs = await SharedPreferences.getInstance();
+    if (await _consumeHandoff(prefs)) return;
     final token = prefs.getString('school_auth_token')?.trim() ?? '';
     final schoolId = prefs.getString('school_id')?.trim() ?? '';
     final role = prefs.getString('school_role')?.trim().toUpperCase() ?? '';
@@ -82,6 +85,82 @@ class _SchoolSessionGateState extends State<SchoolSessionGate> {
           error = exception.toString().replaceFirst('Exception: ', '');
         });
       }
+    }
+  }
+
+  Future<bool> _consumeHandoff(SharedPreferences prefs) async {
+    try {
+      final decoded = await api.consumeHandoff();
+      final token = decoded['token']?.toString().trim() ?? '';
+      final school = decoded['school'] as Map?;
+      final membership = decoded['schoolMembership'] as Map?;
+      final user = decoded['user'] as Map?;
+      final schoolId = (decoded['schoolId'] ??
+              membership?['schoolId'] ??
+              school?['_id'] ??
+              school?['id'])
+          ?.toString()
+          .trim();
+      final role = (decoded['role'] ?? membership?['role'])
+          ?.toString()
+          .trim()
+          .toUpperCase();
+      if (token.isEmpty ||
+          schoolId == null ||
+          schoolId.isEmpty ||
+          role == null ||
+          role.isEmpty) {
+        throw const EduPaySchoolApiException(
+          'School Portal handoff returned an incomplete session.',
+          statusCode: 502,
+        );
+      }
+      await prefs.setString('school_auth_token', token);
+      await prefs.setString('school_id', schoolId);
+      await prefs.setString('school_role', role);
+      await prefs.setString(
+        'school_name',
+        school?['name']?.toString() ?? 'School',
+      );
+      await prefs.setString(
+        'school_membership_status',
+        membership?['status']?.toString().trim().toUpperCase() ?? 'ACTIVE',
+      );
+      await prefs.setString(
+        'school_status',
+        membership?['schoolStatus']?.toString().trim().toUpperCase() ??
+            school?['status']?.toString().trim().toUpperCase() ??
+            'APPROVED',
+      );
+      if (user != null) {
+        await prefs.setString(
+          'school_authenticated_user',
+          jsonEncode(Map<String, dynamic>.from(user)),
+        );
+      }
+      final mustChange = decoded['mustChangePassword'] == true ||
+          user?['mustChangePassword'] == true;
+      await prefs.setBool('school_must_change_password', mustChange);
+      if (mounted) {
+        setState(() {
+          authenticated = true;
+          mustChangePassword = mustChange;
+          loading = false;
+        });
+      }
+      return true;
+    } on EduPaySchoolApiException catch (exception) {
+      if (mounted && exception.statusCode != 401) {
+        setState(() => error = exception.message);
+      }
+      return false;
+    } catch (exception) {
+      if (mounted) {
+        setState(
+          () => error = exception.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+      return false;
     }
   }
 

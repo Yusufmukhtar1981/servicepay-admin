@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'edupay_school_api.dart';
 import 'student_activity_center_screen.dart';
 import 'academic_operations_screen.dart';
@@ -184,6 +185,26 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     if (mounted) Navigator.of(context).pushReplacementNamed('/');
   }
 
+  Future<void> _backToCustomer() async {
+    final p = await SharedPreferences.getInstance();
+    for (final key in const [
+      'school_auth_token',
+      'school_role',
+      'school_name',
+      'school_id',
+      'school_membership_status',
+      'school_status',
+      'school_authenticated_user',
+      'school_must_change_password',
+    ]) {
+      await p.remove(key);
+    }
+    await launchUrl(
+      Uri.parse('https://servicepay.ng/'),
+      webOnlyWindowName: '_self',
+    );
+  }
+
   Widget _profileCard() {
     final profile = data?['school'] is Map
         ? Map<String, dynamic>.from(data!['school'] as Map)
@@ -247,6 +268,12 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       appBar: AppBar(
         title: const Text('EduPay School Portal'),
         actions: [
+          TextButton.icon(
+            key: const Key('school-back-to-customer'),
+            onPressed: _backToCustomer,
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('ServicePay'),
+          ),
           IconButton(
             onPressed: _logout,
             tooltip: 'Log out',

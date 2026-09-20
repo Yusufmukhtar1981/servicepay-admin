@@ -146,7 +146,15 @@ void main() {
     var requestCount = 0;
     final client = MockClient((request) async {
       requestCount += 1;
-      return http.Response('{}', 500);
+      expect(request.url.path, '/api/edupay/school/handoff/consume');
+      return http.Response(
+        jsonEncode({
+          'success': false,
+          'code': 'SCHOOL_HANDOFF_REQUIRED',
+          'message': 'School Portal handoff required.',
+        }),
+        401,
+      );
     });
 
     await tester.pumpWidget(MaterialApp(
@@ -155,6 +163,70 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SchoolLoginScreen), findsOneWidget);
-    expect(requestCount, 0);
+    expect(requestCount, 1);
+  });
+
+  testWidgets('consumes a one-time customer handoff without a second login',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((request) async => http.Response(
+          jsonEncode({
+            'success': true,
+            'token': 'school-token',
+            'schoolId': 'school-1',
+            'role': 'OWNER',
+            'school': {'_id': 'school-1', 'name': 'Greenfield Academy', 'status': 'APPROVED'},
+            'schoolMembership': {
+              'schoolId': 'school-1', 'role': 'OWNER', 'status': 'ACTIVE', 'schoolStatus': 'APPROVED',
+            },
+          }),
+          200,
+        ));
+    await tester.pumpWidget(MaterialApp(
+      home: SchoolSessionGate(
+        api: EduPaySchoolApi(client: client),
+        portalBuilder: (_) => const Text('Handoff school dashboard'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Handoff school dashboard'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('school_auth_token'), 'school-token');
+    expect(prefs.getString('school_id'), 'school-1');
+  });
+
+  testWidgets('a fresh handoff replaces an existing school session',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'school_auth_token': 'school-a-token',
+      'school_id': 'school-a',
+      'school_role': 'OWNER',
+      'school_membership_status': 'ACTIVE',
+      'school_status': 'APPROVED',
+    });
+    final client = MockClient((request) async => http.Response(
+          jsonEncode({
+            'success': true,
+            'token': 'school-b-token',
+            'schoolId': 'school-b',
+            'role': 'SCHOOL_ADMIN',
+            'school': {'_id': 'school-b', 'name': 'School B', 'status': 'APPROVED'},
+            'schoolMembership': {
+              'schoolId': 'school-b', 'role': 'SCHOOL_ADMIN', 'status': 'ACTIVE', 'schoolStatus': 'APPROVED',
+            },
+          }),
+          200,
+        ));
+    await tester.pumpWidget(MaterialApp(
+      home: SchoolSessionGate(
+        api: EduPaySchoolApi(client: client),
+        portalBuilder: (_) => const Text('School B dashboard'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('School B dashboard'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('school_auth_token'), 'school-b-token');
+    expect(prefs.getString('school_id'), 'school-b');
   });
 }

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'school_handoff_client.dart';
 
 class EduPaySchoolApiException implements Exception {
   const EduPaySchoolApiException(this.message, {required this.statusCode});
@@ -18,7 +19,7 @@ class EduPaySchoolApi {
   EduPaySchoolApi({
     http.Client? client,
     this.baseUrl = 'https://api.servicepay.ng/api',
-  }) : client = client ?? http.Client();
+  }) : client = client ?? createSchoolHandoffClient();
   final http.Client client;
   final String baseUrl;
   Future<String> _token() async =>
@@ -26,6 +27,34 @@ class EduPaySchoolApi {
       '';
   Future<String> _schoolId() async =>
       (await SharedPreferences.getInstance()).getString('school_id') ?? '';
+
+  Future<Map<String, dynamic>> consumeHandoff() async {
+    final response = await client.post(
+      Uri.parse('$baseUrl/edupay/school/handoff/consume'),
+      headers: const {'Accept': 'application/json'},
+    );
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      throw const EduPaySchoolApiException(
+        'The school service returned an invalid response.',
+        statusCode: 502,
+      );
+    }
+    final result = decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : <String, dynamic>{};
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        result['success'] != true) {
+      throw EduPaySchoolApiException(
+        result['message']?.toString() ?? 'School Portal handoff failed.',
+        statusCode: response.statusCode,
+      );
+    }
+    return result;
+  }
   Future<Map<String, dynamic>> request(
     String method,
     String path, [

@@ -4,14 +4,64 @@ import 'edupay_school_api.dart';
 import 'student_activity_center_screen.dart';
 import 'academic_operations_screen.dart';
 
+List<String> schoolPortalNavigationTabsForRole(String role) {
+  final normalized = role.trim().toUpperCase();
+  if (const {'OWNER', 'ADMIN', 'SCHOOL_ADMIN'}.contains(normalized)) {
+    return const [
+      'Dashboard',
+      'Students',
+      'Teachers',
+      'Classes',
+      'Subjects',
+      'Attendance',
+      'Results / Report Cards',
+      'Timetable',
+      'Activities / Updates',
+      'Parents',
+      'Academic Sessions',
+      'Fees / EduPay',
+      'Notifications',
+      'Settings',
+      'Logout',
+    ];
+  }
+  if (normalized == 'FINANCE') {
+    return const [
+      'Dashboard',
+      'Students',
+      'Expected School Fees',
+      'Upcoming Settlements',
+      'Completed Settlements',
+      'Reconciliation',
+      'Reports',
+      'School Profile',
+      'Settings',
+      'Logout',
+    ];
+  }
+  return const [
+    'Dashboard',
+    'My Classes',
+    'My Students',
+    'Attendance',
+    'Results / Assessments',
+    'Activities',
+    'Announcements',
+    'Logout',
+  ];
+}
+
 class SchoolPortalScreen extends StatefulWidget {
-  const SchoolPortalScreen({super.key});
+  const SchoolPortalScreen({super.key, this.api});
+
+  final EduPaySchoolApi? api;
+
   @override
   State<SchoolPortalScreen> createState() => _SchoolPortalScreenState();
 }
 
 class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
-  final api = EduPaySchoolApi();
+  late final api = widget.api ?? EduPaySchoolApi();
   Map<String, dynamic>? data;
   String tab = 'Dashboard';
   bool loading = true;
@@ -45,39 +95,19 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   ];
   bool get managerRole =>
       const {'OWNER', 'ADMIN', 'SCHOOL_ADMIN'}.contains(schoolRole);
-  List<String> get navigationTabs => managerRole
-      ? const [
-          'Dashboard',
-          'Students',
-          'Teachers',
-          'Classes',
-          'Subjects',
-          'Attendance',
-          'Results / Report Cards',
-          'Timetable',
-          'Activities / Updates',
-          'Parents',
-          'Academic Sessions',
-          'Fees / EduPay',
-          'Notifications',
-          'Settings',
-          'Logout',
-        ]
-      : const [
-          'Dashboard',
-          'My Classes',
-          'My Students',
-          'Attendance',
-          'Results / Assessments',
-          'Activities',
-          'Announcements',
-          'Logout',
-        ];
+  bool get financeRole => schoolRole == 'FINANCE';
+  bool get teacherRole => schoolRole == 'TEACHER';
+  List<String> get navigationTabs =>
+      schoolPortalNavigationTabsForRole(schoolRole);
   @override
   void initState() {
     super.initState();
-    _loadRole();
-    _load();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _loadRole();
+    if (mounted) await _load();
   }
 
   Future<void> _loadRole() async {
@@ -99,6 +129,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     });
     try {
       final path = switch (tab) {
+        'Dashboard' => managerRole || financeRole
+            ? '/edupay/school/dashboard'
+            : '/edupay/school/academic/dashboard',
         'Overview' => '/edupay/school/dashboard',
         'Academic workspace' => '/edupay/school/academic/dashboard',
         'Academic Sessions' => '/edupay/school/sessions',
@@ -107,6 +140,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Students' => '/edupay/school/students',
         'EduPay Students' => '/edupay/school/students',
         'Fee Structures' => '/edupay/school/fees',
+        'Fees / EduPay' => '/edupay/school/fees',
         'Expected School Fees' => '/edupay/school/fees',
         'Upcoming Settlements' => '/edupay/school/settlements',
         'Completed Settlements' => '/edupay/school/settlements',
@@ -120,7 +154,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Profile' => '/edupay/school/profile',
         'Settings' => '/edupay/school/profile',
         'Logout' => '/edupay/school/dashboard',
-        _ => '/edupay/school/dashboard',
+        _ => managerRole || financeRole
+            ? '/edupay/school/dashboard'
+            : '/edupay/school/academic/dashboard',
       };
       data = await api.request('GET', path);
       if (tab == 'Academic Sessions') sessions = _list(data!, 'sessions');
@@ -140,6 +176,11 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     await p.remove('school_auth_token');
     await p.remove('school_role');
     await p.remove('school_name');
+    await p.remove('school_id');
+    await p.remove('school_membership_status');
+    await p.remove('school_status');
+    await p.remove('school_authenticated_user');
+    await p.remove('school_must_change_password');
     if (mounted) Navigator.of(context).pushReplacementNamed('/');
   }
 
@@ -180,257 +221,259 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       );
     }
     return Scaffold(
-        drawer: MediaQuery.sizeOf(context).width < 700
-            ? Drawer(
-                child: ListView(
-                  children: navigationTabs
-                      .map(
-                        (t) => ListTile(
-                          title: Text(t),
-                          selected: tab == t,
-                          onTap: () {
-                            Navigator.pop(context);
-                            if (t == 'Logout') {
-                              _logout();
-                              return;
-                            }
-                            setState(() => tab = t);
-                            _load();
-                          },
-                        ),
-                      )
-                      .toList(),
-                ),
-              )
-            : null,
-        appBar: AppBar(
-          title: const Text('EduPay School Portal'),
-          actions: [
-            IconButton(
-              onPressed: _logout,
-              tooltip: 'Log out',
-              icon: const Icon(Icons.logout),
-            ),
-          ],
-        ),
-        body: Row(
-          children: [
-            Visibility(
-              visible: MediaQuery.sizeOf(context).width >= 700,
-              child: SingleChildScrollView(
-                child: NavigationRail(
-                  selectedIndex: navigationTabs.indexOf(tab),
-                  labelType: MediaQuery.sizeOf(context).width < 700
-                      ? NavigationRailLabelType.none
-                      : NavigationRailLabelType.all,
-                  onDestinationSelected: (i) {
-                    if (navigationTabs[i] == 'Logout') {
-                      _logout();
-                      return;
-                    }
-                    setState(() => tab = navigationTabs[i]);
-                    _load();
-                  },
-                  destinations: navigationTabs
-                      .map(
-                        (t) => NavigationRailDestination(
-                          icon: Icon(_icon(t)),
-                          selectedIcon: Icon(_icon(t)),
-                          label: Text(t),
-                        ),
-                      )
-                      .toList(),
-                ),
+      drawer: MediaQuery.sizeOf(context).width < 700
+          ? Drawer(
+              child: ListView(
+                children: navigationTabs
+                    .map(
+                      (t) => ListTile(
+                        title: Text(t),
+                        selected: tab == t,
+                        onTap: () {
+                          Navigator.pop(context);
+                          if (t == 'Logout') {
+                            _logout();
+                            return;
+                          }
+                          setState(() => tab = t);
+                          _load();
+                        },
+                      ),
+                    )
+                    .toList(),
+              ),
+            )
+          : null,
+      appBar: AppBar(
+        title: const Text('EduPay School Portal'),
+        actions: [
+          IconButton(
+            onPressed: _logout,
+            tooltip: 'Log out',
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: Row(
+        children: [
+          Visibility(
+            visible: MediaQuery.sizeOf(context).width >= 700,
+            child: SingleChildScrollView(
+              child: NavigationRail(
+                selectedIndex: navigationTabs.indexOf(tab),
+                labelType: MediaQuery.sizeOf(context).width < 700
+                    ? NavigationRailLabelType.none
+                    : NavigationRailLabelType.all,
+                onDestinationSelected: (i) {
+                  if (navigationTabs[i] == 'Logout') {
+                    _logout();
+                    return;
+                  }
+                  setState(() => tab = navigationTabs[i]);
+                  _load();
+                },
+                destinations: navigationTabs
+                    .map(
+                      (t) => NavigationRailDestination(
+                        icon: Icon(_icon(t)),
+                        selectedIcon: Icon(_icon(t)),
+                        label: Text(t),
+                      ),
+                    )
+                    .toList(),
               ),
             ),
-            const VerticalDivider(width: 1),
-            Expanded(
-              child: loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : error != null
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(error!, textAlign: TextAlign.center),
-                              const SizedBox(height: 12),
-                              FilledButton(
-                                onPressed: _load,
-                                child: const Text('Try again'),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView(
-                          padding: const EdgeInsets.all(24),
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              tab,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            Text(error!, textAlign: TextAlign.center),
+                            const SizedBox(height: 12),
+                            FilledButton(
+                              onPressed: _load,
+                              child: const Text('Try again'),
                             ),
-                            const SizedBox(height: 20),
-                            tab == 'Profile'
-                                ? _profileCard()
-                                : (!managerRole ||
-                                        const {
-                                          'Teachers',
-                                          'Classes',
-                                          'Subjects',
-                                          'Attendance',
-                                          'Results / Report Cards',
-                                          'Timetable',
-                                          'Activities / Updates',
-                                          'Academic Sessions',
-                                        }.contains(tab))
-                                    ? AcademicOperationsScreen(
-                                        api: api,
-                                        manager: managerRole,
-                                        initialSection: switch (tab) {
-                                          'My Classes' => 'Classes & subjects',
-                                          'My Students' => 'Students',
-                                          'Teachers' => 'Teachers',
-                                          'Classes' => 'Classes & subjects',
-                                          'Subjects' => 'Classes & subjects',
-                                          'Attendance' => 'Attendance',
-                                          'Results / Report Cards' =>
-                                            'Assessments',
-                                          'Results / Assessments' =>
-                                            'Assessments',
-                                          'Timetable' => 'Timetable',
-                                          'Activities / Updates' => 'Activities',
-                                          'Activities' => 'Activities',
-                                          'Academic Sessions' =>
-                                            'Sessions & terms',
-                                          'Announcements' => 'Activities',
-                                          'Assignments' => 'Activities',
-                                          _ => 'Dashboard',
-                                        },
-                                        allowedSections: managerRole
-                                            ? null
-                                            : const [
-                                                'Dashboard',
-                                                'Classes & subjects',
-                                                'Students',
-                                                'Attendance',
-                                                'Assessments',
-                                                'Timetable',
-                                                'Activities',
-                                              ],
-                                      )
-                                    : tab == 'Parents'
-                                        ? StudentActivityCenterScreen(
-                                            api: api,
-                                            initialSection: 'Parents/Guardians',
-                                            onOpenStudents: () {
-                                              setState(() => tab = 'Students');
-                                              _load();
-                                            },
-                                          )
-                                        : tab == 'Notifications'
-                                            ? StudentActivityCenterScreen(
-                                                api: api,
-                                                initialSection: 'Announcements',
-                                              )
-                                        : tab == 'Academic workspace'
-                                            ? AcademicOperationsScreen(api: api)
-                                            : tab == 'Dashboard'
-                                                ? _dashboard()
-                                                : tab == 'Academic setup'
-                                                    ? _academicSetup()
-                                                    : const {
-                                                        'Academic Sessions',
-                                                        'Terms',
-                                                        'Classes',
-                                                        'Fee Structures',
-                                                      }.contains(tab)
-                                                        ? Column(
-                                                            children: [
-                                                              Align(
-                                                                alignment: Alignment
-                                                                    .centerLeft,
-                                                                child:
-                                                                    FilledButton
-                                                                        .icon(
-                                                                  onPressed: tab ==
-                                                                          'Fee Structures'
-                                                                      ? _createFee
-                                                                      : () =>
-                                                                          _academicDialog(
-                                                                            tab == 'Academic Sessions'
-                                                                                ? 'session'
-                                                                                : tab == 'Terms'
-                                                                                    ? 'term'
-                                                                                    : 'class',
-                                                                          ),
-                                                                  icon: const Icon(
-                                                                      Icons
-                                                                          .add),
-                                                                  label: Text(
-                                                                      'Create $tab'),
-                                                                ),
-                                                              ),
-                                                              const SizedBox(
-                                                                  height: 12),
-                                                              _records(),
-                                                            ],
-                                                          )
-                                                        : tab == 'Draft fees'
-                                                            ? Column(
-                                                                crossAxisAlignment:
-                                                                    CrossAxisAlignment
-                                                                        .start,
-                                                                children: [
-                                                                  FilledButton
-                                                                      .icon(
-                                                                    onPressed:
-                                                                        _createFee,
+                          ],
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.all(24),
+                        children: [
+                          Text(
+                            tab,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 20),
+                          tab == 'Profile'
+                              ? _profileCard()
+                              : (teacherRole ||
+                                      const {
+                                        'Teachers',
+                                        'Classes',
+                                        'Subjects',
+                                        'Attendance',
+                                        'Results / Report Cards',
+                                        'Timetable',
+                                        'Activities / Updates',
+                                        'Academic Sessions',
+                                      }.contains(tab))
+                                  ? AcademicOperationsScreen(
+                                      api: api,
+                                      manager: managerRole,
+                                      initialSection: switch (tab) {
+                                        'My Classes' => 'Classes & subjects',
+                                        'My Students' => 'Students',
+                                        'Teachers' => 'Teachers',
+                                        'Classes' => 'Classes & subjects',
+                                        'Subjects' => 'Classes & subjects',
+                                        'Attendance' => 'Attendance',
+                                        'Results / Report Cards' =>
+                                          'Assessments',
+                                        'Results / Assessments' =>
+                                          'Assessments',
+                                        'Timetable' => 'Timetable',
+                                        'Activities / Updates' => 'Activities',
+                                        'Activities' => 'Activities',
+                                        'Academic Sessions' =>
+                                          'Sessions & terms',
+                                        'Announcements' => 'Activities',
+                                        'Assignments' => 'Activities',
+                                        _ => 'Dashboard',
+                                      },
+                                      allowedSections: managerRole
+                                          ? null
+                                          : const [
+                                              'Dashboard',
+                                              'Classes & subjects',
+                                              'Students',
+                                              'Attendance',
+                                              'Assessments',
+                                              'Timetable',
+                                              'Activities',
+                                            ],
+                                    )
+                                  : tab == 'Parents'
+                                      ? StudentActivityCenterScreen(
+                                          api: api,
+                                          initialSection: 'Parents/Guardians',
+                                          onOpenStudents: () {
+                                            setState(() => tab = 'Students');
+                                            _load();
+                                          },
+                                        )
+                                      : tab == 'Notifications'
+                                          ? StudentActivityCenterScreen(
+                                              api: api,
+                                              initialSection: 'Announcements',
+                                            )
+                                          : tab == 'Academic workspace'
+                                              ? AcademicOperationsScreen(
+                                                  api: api)
+                                              : tab == 'Dashboard'
+                                                  ? _dashboard()
+                                                  : tab == 'Academic setup'
+                                                      ? _academicSetup()
+                                                      : const {
+                                                          'Academic Sessions',
+                                                          'Terms',
+                                                          'Classes',
+                                                          'Fee Structures',
+                                                        }.contains(tab)
+                                                          ? Column(
+                                                              children: [
+                                                                Align(
+                                                                  alignment:
+                                                                      Alignment
+                                                                          .centerLeft,
+                                                                  child:
+                                                                      FilledButton
+                                                                          .icon(
+                                                                    onPressed: tab ==
+                                                                            'Fee Structures'
+                                                                        ? _createFee
+                                                                        : () =>
+                                                                            _academicDialog(
+                                                                              tab == 'Academic Sessions'
+                                                                                  ? 'session'
+                                                                                  : tab == 'Terms'
+                                                                                      ? 'term'
+                                                                                      : 'class',
+                                                                            ),
                                                                     icon: const Icon(
                                                                         Icons
                                                                             .add),
-                                                                    label: const Text(
-                                                                        'Create draft fee'),
+                                                                    label: Text(
+                                                                        'Create $tab'),
                                                                   ),
-                                                                  const SizedBox(
-                                                                      height:
-                                                                          18),
-                                                                  const Card(
-                                                                    child:
-                                                                        Padding(
-                                                                      padding:
-                                                                          EdgeInsets.all(
-                                                                              24),
+                                                                ),
+                                                                const SizedBox(
+                                                                    height: 12),
+                                                                _records(),
+                                                              ],
+                                                            )
+                                                          : tab == 'Draft fees'
+                                                              ? Column(
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
+                                                                  children: [
+                                                                    FilledButton
+                                                                        .icon(
+                                                                      onPressed:
+                                                                          _createFee,
+                                                                      icon: const Icon(
+                                                                          Icons
+                                                                              .add),
+                                                                      label: const Text(
+                                                                          'Create draft fee'),
+                                                                    ),
+                                                                    const SizedBox(
+                                                                        height:
+                                                                            18),
+                                                                    const Card(
                                                                       child:
-                                                                          Text(
-                                                                        'Draft fees are submitted to Head Office for approval.',
+                                                                          Padding(
+                                                                        padding:
+                                                                            EdgeInsets.all(24),
+                                                                        child:
+                                                                            Text(
+                                                                          'Draft fees are submitted to Head Office for approval.',
+                                                                        ),
                                                                       ),
                                                                     ),
-                                                                  ),
-                                                                ],
-                                                              )
-                                                            : tab == 'Settings'
-                                                                ? const Card(
-                                                                    child:
-                                                                        Padding(
-                                                                      padding:
-                                                                          EdgeInsets.all(
-                                                                              24),
+                                                                  ],
+                                                                )
+                                                              : tab ==
+                                                                      'Settings'
+                                                                  ? const Card(
                                                                       child:
-                                                                          Text(
-                                                                        'School settings are managed by Head Office.',
+                                                                          Padding(
+                                                                        padding:
+                                                                            EdgeInsets.all(24),
+                                                                        child:
+                                                                            Text(
+                                                                          'School settings are managed by Head Office.',
+                                                                        ),
                                                                       ),
-                                                                    ),
-                                                                  )
-                                                                : _records(),
-                          ],
-                        ),
-            ),
-          ],
-        ),
-      );
+                                                                    )
+                                                                  : _records(),
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
   }
+
   IconData _icon(String t) => switch (t) {
         'Overview' => Icons.dashboard_outlined,
         'Academic workspace' => Icons.menu_book_outlined,

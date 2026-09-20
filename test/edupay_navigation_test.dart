@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/admin/admin_permissions.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
+import 'package:servicepay_app/school/school_portal_screen.dart';
 
 void main() {
   test('legacy Head Office sees EduPay without projected permissions', () {
@@ -29,5 +30,23 @@ void main() {
       AdminAccess(role: 'STAFF', permissions: <String>{}),
     );
     expect(labels, isNot(contains('EduPay')));
+  });
+
+  test('finance school navigation stays within finance-authorized sections',
+      () {
+    final labels = schoolPortalNavigationTabsForRole('FINANCE');
+    expect(
+        labels,
+        containsAll(<String>[
+          'Dashboard',
+          'Expected School Fees',
+          'Upcoming Settlements',
+          'Completed Settlements',
+          'Reconciliation',
+          'Reports',
+        ]));
+    expect(labels, isNot(contains('Teachers')));
+    expect(labels, isNot(contains('My Classes')));
+    expect(labels, isNot(contains('Attendance')));
   });
 }

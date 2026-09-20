@@ -4,6 +4,16 @@ import 'package:http_parser/http_parser.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class EduPaySchoolApiException implements Exception {
+  const EduPaySchoolApiException(this.message, {required this.statusCode});
+
+  final String message;
+  final int statusCode;
+
+  @override
+  String toString() => message;
+}
+
 class EduPaySchoolApi {
   EduPaySchoolApi({
     http.Client? client,
@@ -14,14 +24,18 @@ class EduPaySchoolApi {
   Future<String> _token() async =>
       (await SharedPreferences.getInstance()).getString('school_auth_token') ??
       '';
+  Future<String> _schoolId() async =>
+      (await SharedPreferences.getInstance()).getString('school_id') ?? '';
   Future<Map<String, dynamic>> request(
     String method,
     String path, [
     Map<String, dynamic>? body,
   ]) async {
+    final schoolId = await _schoolId();
     final headers = <String, String>{
       'Accept': 'application/json',
       'Authorization': 'Bearer ${await _token()}',
+      if (schoolId.isNotEmpty) 'X-EduPay-School-Id': schoolId,
       if (body != null) 'Content-Type': 'application/json',
     };
     final uri = Uri.parse('$baseUrl$path');
@@ -56,7 +70,10 @@ class EduPaySchoolApi {
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
         (success != null && success != true)) {
-      throw Exception(result['message'] ?? 'Unable to load school data.');
+      throw EduPaySchoolApiException(
+        result['message']?.toString() ?? 'Unable to load school data.',
+        statusCode: response.statusCode,
+      );
     }
     return result;
   }

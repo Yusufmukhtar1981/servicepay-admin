@@ -53,6 +53,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('school_auth_token', replacementToken);
+      await prefs.setBool('school_must_change_password', false);
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const SchoolPortalScreen()),

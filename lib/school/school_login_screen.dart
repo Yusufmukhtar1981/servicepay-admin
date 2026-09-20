@@ -7,7 +7,17 @@ import 'school_registration_screen.dart';
 import 'change_password_screen.dart';
 
 class SchoolLoginScreen extends StatefulWidget {
-  const SchoolLoginScreen({super.key});
+  const SchoolLoginScreen({
+    super.key,
+    this.initialError,
+    this.client,
+    this.authenticatedBuilder,
+  });
+
+  final String? initialError;
+  final http.Client? client;
+  final Widget Function(bool mustChangePassword)? authenticatedBuilder;
+
   @override
   State<SchoolLoginScreen> createState() => _SchoolLoginScreenState();
 }
@@ -16,7 +26,9 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
   final email = TextEditingController();
   final password = TextEditingController();
   bool loading = false;
-  String? error;
+  late String? error = widget.initialError;
+  List<Map<String, dynamic>> schoolOptions = [];
+  String? selectedSchoolId;
 
   Future<void> _login() async {
     setState(() {
@@ -24,18 +36,45 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
       error = null;
     });
     try {
-      final response = await http.post(
-        Uri.parse('https://api.servicepay.ng/api/edupay/school/auth/login'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'email': email.text.trim(),
-          'password': password.text,
-        }),
-      );
+      final uri =
+          Uri.parse('https://api.servicepay.ng/api/edupay/school/auth/login');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      final body = jsonEncode({
+        'email': email.text.trim(),
+        'password': password.text,
+        if (selectedSchoolId != null) 'schoolId': selectedSchoolId,
+      });
+      final response = widget.client == null
+          ? await http.post(uri, headers: headers, body: body)
+          : await widget.client!.post(
+              uri,
+              headers: headers,
+              body: body,
+            );
       final decoded = jsonDecode(response.body) as Map;
+      if (response.statusCode == 409 &&
+          decoded['code'] == 'EDUPAY_SCHOOL_CONTEXT_REQUIRED' &&
+          decoded['schools'] is List) {
+        final options = (decoded['schools'] as List)
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+        if (mounted) {
+          setState(() {
+            schoolOptions = options;
+            selectedSchoolId = options.length == 1
+                ? options.first['schoolId']?.toString()
+                : null;
+            error = decoded['message']?.toString() ??
+                'Select the school you want to open.';
+            loading = false;
+          });
+        }
+        return;
+      }
       if (response.statusCode < 200 ||
           response.statusCode >= 300 ||
           decoded['success'] != true) {
@@ -44,8 +83,10 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('school_auth_token', decoded['token'].toString());
       final school = decoded['school'] as Map?;
+      final membership = decoded['schoolMembership'] as Map?;
       final user = decoded['user'] as Map?;
       final role = decoded['role'] ??
+          membership?['role'] ??
           decoded['schoolRole'] ??
           school?['role'] ??
           user?['role'];
@@ -59,14 +100,40 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
         'school_name',
         school?['name']?.toString() ?? 'School',
       );
+      final schoolId = decoded['schoolId'] ??
+          membership?['schoolId'] ??
+          school?['_id'] ??
+          school?['id'];
+      if (schoolId != null && schoolId.toString().trim().isNotEmpty) {
+        await prefs.setString('school_id', schoolId.toString().trim());
+      }
+      await prefs.setString(
+        'school_membership_status',
+        membership?['status']?.toString().trim().toUpperCase() ?? 'ACTIVE',
+      );
+      await prefs.setString(
+        'school_status',
+        membership?['schoolStatus']?.toString().trim().toUpperCase() ??
+            school?['status']?.toString().trim().toUpperCase() ??
+            'APPROVED',
+      );
+      if (user != null) {
+        await prefs.setString(
+          'school_authenticated_user',
+          jsonEncode(Map<String, dynamic>.from(user)),
+        );
+      }
       final mustChange = decoded['mustChangePassword'] == true ||
           user?['mustChangePassword'] == true;
+      await prefs.setBool('school_must_change_password', mustChange);
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => mustChange
-                ? const ChangePasswordScreen()
-                : const SchoolPortalScreen(),
+            builder: (_) =>
+                widget.authenticatedBuilder?.call(mustChange) ??
+                (mustChange
+                    ? const ChangePasswordScreen()
+                    : const SchoolPortalScreen()),
           ),
         );
       }
@@ -128,6 +195,34 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
                         prefixIcon: Icon(Icons.lock_outline),
                       ),
                     ),
+                    if (schoolOptions.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        value: selectedSchoolId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'School',
+                          prefixIcon: Icon(Icons.account_balance_outlined),
+                        ),
+                        items: schoolOptions
+                            .map(
+                              (school) => DropdownMenuItem<String>(
+                                value: school['schoolId']?.toString(),
+                                child: Text(
+                                  '${school['schoolName'] ?? 'School'} · ${school['role'] ?? ''}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: loading
+                            ? null
+                            : (value) => setState(() {
+                                  selectedSchoolId = value;
+                                  error = null;
+                                }),
+                      ),
+                    ],
                     if (error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 16),
@@ -140,7 +235,11 @@ class _SchoolLoginScreenState extends State<SchoolLoginScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: loading ? null : _login,
+                        onPressed: loading ||
+                                (schoolOptions.isNotEmpty &&
+                                    selectedSchoolId == null)
+                            ? null
+                            : _login,
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: loading

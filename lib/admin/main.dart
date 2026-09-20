@@ -9,7 +9,7 @@ import 'login_screen.dart';
 import 'svp_management_screen.dart';
 import 'admin_theme.dart';
 import 'edupay_control_center_screen.dart';
-import '../school/school_login_screen.dart';
+import '../school/school_session_gate.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -29,10 +29,10 @@ class ServicepayAdminApp extends StatelessWidget {
       home: kIsWeb &&
               (Uri.base.path.startsWith('/school') ||
                   Uri.base.queryParameters['entry'] == 'school')
-          ? const SchoolLoginScreen()
+          ? const SchoolSessionGate()
           : const AdminLoginScreen(),
       routes: <String, WidgetBuilder>{
-        '/school': (_) => const SchoolLoginScreen(),
+        '/school': (_) => const SchoolSessionGate(),
         '/edupay': (_) => const _EduPayRouteGate(),
         '/svp': (_) => const _SvpRouteGate(),
         '/phone-financing': (_) => const _PhoneFinancingRouteGate(),

@@ -356,6 +356,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                   ? AcademicOperationsScreen(
                                       api: api,
                                       manager: managerRole,
+                                      teacher: teacherRole,
                                       initialSection: switch (tab) {
                                         'My Classes' => 'Classes & subjects',
                                         'My Students' => 'Students',

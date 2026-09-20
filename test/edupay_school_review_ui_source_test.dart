@@ -316,4 +316,35 @@ void main() {
     expect(source, contains('No subjects have been created yet.'));
     expect(source, contains('widget.api.assignTeacher'));
   });
+
+  test('teacher student management is enabled and uses assigned class fields',
+      () {
+    final source =
+        File('lib/school/academic_operations_screen.dart').readAsStringSync();
+    final portal =
+        File('lib/school/school_portal_screen.dart').readAsStringSync();
+
+    expect(source, contains('widget.manager || widget.teacher'));
+    expect(source, contains('onPressed: _canManageStudents ? _createStudent'));
+    expect(source, contains('onPressed: _canManageStudents ? _bulkImport'));
+    expect(portal, contains('teacher: teacherRole'));
+    for (final label in const [
+      'Student Full Name *',
+      'Admission Number *',
+      'Gender',
+      'Date of Birth',
+      'Class *',
+      'Parent/Guardian Name',
+      'Parent/Guardian Phone Number',
+      'Parent/Guardian Email (optional)',
+      'Student added successfully.',
+      'No class has been assigned to your teacher account yet.',
+    ]) {
+      expect(source, contains(label), reason: label);
+    }
+    expect(source, isNot(contains('Linked parent user ID')));
+    expect(source, contains("'classLevel': classId"));
+    expect(source, contains('Admission:'));
+    expect(source, contains('Parent/Guardian:'));
+  });
 }

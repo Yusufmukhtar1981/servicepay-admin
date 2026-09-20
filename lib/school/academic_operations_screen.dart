@@ -10,11 +10,13 @@ class AcademicOperationsScreen extends StatefulWidget {
     this.initialSection,
     this.allowedSections,
     this.manager = true,
+    this.teacher = false,
   });
   final EduPaySchoolApi api;
   final String? initialSection;
   final List<String>? allowedSections;
   final bool manager;
+  final bool teacher;
   @override
   State<AcademicOperationsScreen> createState() =>
       _AcademicOperationsScreenState();
@@ -379,6 +381,21 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     );
   }
 
+  bool get _canManageStudents => widget.manager || widget.teacher;
+
+  String _studentClassName(Map<String, dynamic> student) {
+    final value = student['classLevel'];
+    if (value is Map) {
+      return '${value['name'] ?? 'Class'} ${value['arm'] ?? ''}'.trim();
+    }
+    for (final row in _rows('classes')) {
+      if (_id(row) == '$value') {
+        return '${row['name'] ?? 'Class'} ${row['arm'] ?? ''}'.trim();
+      }
+    }
+    return 'Not assigned';
+  }
+
   Widget _students() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -386,12 +403,12 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
             spacing: 8,
             children: [
               FilledButton.icon(
-                onPressed: widget.manager ? _createStudent : null,
+                onPressed: _canManageStudents ? _createStudent : null,
                 icon: const Icon(Icons.person_add_alt_1),
                 label: const Text('Add student'),
               ),
               OutlinedButton.icon(
-                onPressed: widget.manager ? _bulkImport : null,
+                onPressed: _canManageStudents ? _bulkImport : null,
                 icon: const Icon(Icons.upload_file),
                 label: const Text('Validate bulk import'),
               ),
@@ -403,9 +420,13 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
               child: ListTile(
                 title: Text('${student['fullName'] ?? 'Student'}'),
                 subtitle: Text(
-                  '${student['studentId'] ?? ''} · ${student['status'] ?? 'ACTIVE'}',
+                  'Admission: ${student['studentId'] ?? ''}\n'
+                  'Class: ${_studentClassName(student)}\n'
+                  'Gender: ${student['gender'] ?? 'Not specified'}\n'
+                  'Parent/Guardian: ${student['parentName'] ?? 'Not provided'}',
                 ),
-                trailing: widget.manager
+                isThreeLine: true,
+                trailing: _canManageStudents
                     ? IconButton(
                         tooltip: 'Edit student',
                         onPressed: () => _editStudent(student),
@@ -711,55 +732,138 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   Future<void> _createStudent() async {
     final studentId = TextEditingController(),
         name = TextEditingController(),
-        parent = TextEditingController();
-    String? classId =
-        _rows('classes').isNotEmpty ? _id(_rows('classes').first) : null;
-    final ok = await _form('Add student', [
-      TextField(
-        controller: studentId,
-        decoration: const InputDecoration(labelText: 'Admission number'),
-      ),
-      TextField(
-        controller: name,
-        decoration: const InputDecoration(labelText: 'Full name'),
-      ),
-      if (_rows('classes').isNotEmpty)
-        DropdownButtonFormField<String>(
-          value: classId,
-          decoration: const InputDecoration(labelText: 'Class'),
-          items: _rows('classes')
-              .map(
-                (row) => DropdownMenuItem(
-                  value: _id(row),
-                  child: Text('${row['name']} ${row['arm'] ?? ''}'),
-                ),
-              )
-              .toList(),
-          onChanged: (value) => classId = value,
-        ),
-      TextField(
-        controller: parent,
-        decoration: const InputDecoration(
-          labelText: 'Linked parent user ID (optional)',
-        ),
-      ),
-    ]);
-    if (ok != true || studentId.text.trim().isEmpty || name.text.trim().isEmpty)
-      return;
+        dateOfBirth = TextEditingController(),
+        parentName = TextEditingController(),
+        parentPhone = TextEditingController(),
+        parentEmail = TextEditingController();
+    final classes = _rows('classes');
+    if (classes.isEmpty) {
+      return _notice(
+        'No class has been assigned to your teacher account yet. Please contact the School Administrator.',
+      );
+    }
+    String? classId = _id(classes.first);
+    String? gender;
+    final ok = await _form(
+        'ADD STUDENT',
+        [
+          TextField(
+            controller: name,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Student Full Name *'),
+          ),
+          TextField(
+            controller: studentId,
+            decoration: const InputDecoration(labelText: 'Admission Number *'),
+          ),
+          DropdownButtonFormField<String>(
+            decoration: const InputDecoration(labelText: 'Gender'),
+            items: const ['FEMALE', 'MALE', 'OTHER']
+                .map((value) =>
+                    DropdownMenuItem(value: value, child: Text(value)))
+                .toList(),
+            onChanged: (value) => gender = value,
+          ),
+          TextField(
+            controller: dateOfBirth,
+            keyboardType: TextInputType.datetime,
+            decoration: const InputDecoration(
+              labelText: 'Date of Birth',
+              hintText: 'YYYY-MM-DD',
+            ),
+          ),
+          DropdownButtonFormField<String>(
+            value: classId,
+            decoration: const InputDecoration(labelText: 'Class *'),
+            items: classes
+                .map(
+                  (row) => DropdownMenuItem(
+                    value: _id(row),
+                    child: Text('${row['name']} ${row['arm'] ?? ''}'.trim()),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => classId = value,
+          ),
+          TextField(
+            controller: parentName,
+            decoration: const InputDecoration(
+              labelText: 'Parent/Guardian Name',
+            ),
+          ),
+          TextField(
+            controller: parentPhone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Parent/Guardian Phone Number',
+            ),
+          ),
+          TextField(
+            controller: parentEmail,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Parent/Guardian Email (optional)',
+            ),
+          ),
+        ],
+        submitLabel: 'Add Student');
+    if (ok != true) return;
+    if (name.text.trim().isEmpty) {
+      return _notice('Student full name is required.');
+    }
+    if (studentId.text.trim().isEmpty) {
+      return _notice('Admission number is required.');
+    }
+    if (classId == null) return _notice('Select a class.');
     try {
       await widget.api.createAcademicStudent({
         'studentId': studentId.text.trim(),
         'fullName': name.text.trim(),
-        if (classId != null) 'classLevel': classId,
-        if (parent.text.trim().isNotEmpty) 'parent': parent.text.trim(),
+        'classLevel': classId,
+        if (gender != null) 'gender': gender,
+        if (dateOfBirth.text.trim().isNotEmpty)
+          'dateOfBirth': dateOfBirth.text.trim(),
+        if (parentName.text.trim().isNotEmpty)
+          'parentName': parentName.text.trim(),
+        if (parentPhone.text.trim().isNotEmpty)
+          'parentPhone': parentPhone.text.trim(),
+        if (parentEmail.text.trim().isNotEmpty)
+          'parentEmail': parentEmail.text.trim().toLowerCase(),
       });
-      _load();
+      _notice('Student added successfully.');
+      await _load();
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
   Future<void> _bulkImport() async {
+    final classes = _rows('classes');
+    if (classes.isEmpty) {
+      return _notice(
+        'No class has been assigned to your teacher account yet. Please contact the School Administrator.',
+      );
+    }
+    String classId = _id(classes.first);
+    final chooseClass = await _form(
+        'Select import class',
+        [
+          DropdownButtonFormField<String>(
+            value: classId,
+            decoration: const InputDecoration(labelText: 'Class'),
+            items: classes
+                .map(
+                  (row) => DropdownMenuItem(
+                    value: _id(row),
+                    child: Text('${row['name']} ${row['arm'] ?? ''}'.trim()),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => classId = value!,
+          ),
+        ],
+        submitLabel: 'Choose CSV');
+    if (chooseClass != true) return;
     final selected = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['csv'],
@@ -783,6 +887,7 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
       rows.add({
         'studentId': values[0],
         'fullName': values[1],
+        'classLevel': classId,
         if (values.length > 2) 'parentName': values[2],
         if (values.length > 3) 'parentPhone': values[3],
         if (values.length > 4) 'parentEmail': values[4],
@@ -827,11 +932,12 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
 
   Future<void> _editStudent(Map<String, dynamic> student) async {
     final name = TextEditingController(text: '${student['fullName'] ?? ''}');
-    final parent = TextEditingController(
-      text: _referenceId(student['parent']) == 'null'
-          ? ''
-          : _referenceId(student['parent']),
-    );
+    final parentName =
+            TextEditingController(text: '${student['parentName'] ?? ''}'),
+        parentPhone =
+            TextEditingController(text: '${student['parentPhone'] ?? ''}'),
+        parentEmail =
+            TextEditingController(text: '${student['parentEmail'] ?? ''}');
     final classes = _rows('classes');
     String? classLevel = student['classLevel'] == null
         ? null
@@ -866,8 +972,19 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         onChanged: (value) => status = value!,
       ),
       TextField(
-        controller: parent,
-        decoration: const InputDecoration(labelText: 'Linked parent user ID'),
+        controller: parentName,
+        decoration: const InputDecoration(labelText: 'Parent/Guardian Name'),
+      ),
+      TextField(
+        controller: parentPhone,
+        decoration:
+            const InputDecoration(labelText: 'Parent/Guardian Phone Number'),
+      ),
+      TextField(
+        controller: parentEmail,
+        decoration: const InputDecoration(
+          labelText: 'Parent/Guardian Email (optional)',
+        ),
       ),
     ]);
     if (ok != true || name.text.trim().isEmpty) return;
@@ -876,7 +993,9 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         'fullName': name.text.trim(),
         'classLevel': classLevel,
         'status': status,
-        'parent': parent.text.trim().isEmpty ? null : parent.text.trim(),
+        'parentName': parentName.text.trim(),
+        'parentPhone': parentPhone.text.trim(),
+        'parentEmail': parentEmail.text.trim().toLowerCase(),
       });
       _load();
     } catch (e) {

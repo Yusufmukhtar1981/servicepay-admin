@@ -552,6 +552,38 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   Widget _classesSubjects(bool compact) {
     final classes = _rows('classes');
     final subjects = _rows('subjects');
+    if (!widget.manager) {
+      if (classes.isEmpty && subjects.isEmpty) {
+        return const Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Text(
+              'No classes or subjects have been assigned to your teacher account yet. '
+              'Please contact the School Administrator.',
+            ),
+          ),
+        );
+      }
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Your assigned academic work',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              ...classes.map((row) => Chip(
+                  avatar: const Icon(Icons.class_outlined, size: 17),
+                  label: Text(_displayClass(row)))),
+              ...subjects.map((row) => Chip(
+                  avatar: const Icon(Icons.menu_book_outlined, size: 17),
+                  label: Text('${row['name'] ?? 'Subject'}'))),
+            ]),
+          ]),
+        ),
+      );
+    }
     final levels = [
       'All levels',
       ..._classCatalog.keys,
@@ -663,10 +695,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   }
 
   Future<void> _addCatalogClasses() async {
-    final sessions = _rows('sessions');
-    if (sessions.isEmpty)
-      return _notice('Create an academic session before adding classes.');
-    final session = _id(sessions.first);
+    final session = await _ensureAcademicSession();
+    if (session == null) return;
     final rows = _catalogRows(_classCatalog, '')
         .where((row) => selectedCatalogClasses.contains('${row['key']}'))
         .toList();
@@ -691,7 +721,9 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
             .toList(),
       );
       selectedCatalogClasses.clear();
-      _notice('${unique.length} classes added.');
+      _notice(unique.length == 1
+          ? 'Class added successfully.'
+          : '${unique.length} classes added successfully.');
       await _load();
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
@@ -721,7 +753,9 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
               })
           .toList());
       selectedCatalogSubjects.clear();
-      _notice('${unique.length} subjects added.');
+      _notice(unique.length == 1
+          ? 'Subject added successfully.'
+          : '${unique.length} subjects added successfully.');
       await _load();
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
@@ -756,12 +790,11 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         ],
         submitLabel: 'Create class');
     if (ok != true || name.text.trim().isEmpty) return;
-    final sessions = _rows('sessions');
-    if (sessions.isEmpty)
-      return _notice('Create an academic session before adding classes.');
+    final session = await _ensureAcademicSession();
+    if (session == null) return;
     try {
       await widget.api.createAcademicClassesBatch(
-        session: _id(sessions.first),
+        session: session,
         classes: [
           {
             'name': name.text.trim(),
@@ -770,10 +803,102 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
           }
         ],
       );
-      _notice('Class created.');
+      _notice('Class added successfully.');
       await _load();
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  String _currentSchoolYear() {
+    final now = DateTime.now();
+    final start = now.month >= 8 ? now.year : now.year - 1;
+    return '$start/${start + 1}';
+  }
+
+  Future<String?> _ensureAcademicSession() async {
+    final active = _rows('sessions')
+        .where(
+            (row) => '${row['status'] ?? 'ACTIVE'}'.toUpperCase() == 'ACTIVE')
+        .toList();
+    if (active.isNotEmpty) {
+      final sessionId = _id(active.first);
+      final activeTerms = _rows('terms').where((row) =>
+          '${row['status'] ?? 'ACTIVE'}'.toUpperCase() == 'ACTIVE' &&
+          '${row['session'] is Map ? _id(Map<String, dynamic>.from(row['session'])) : row['session']}' ==
+              sessionId);
+      if (activeTerms.isNotEmpty) return sessionId;
+      try {
+        await widget.api.createAcademicPortalTerm({
+          'name': 'First Term',
+          'session': sessionId,
+          'status': 'ACTIVE',
+        });
+        _notice('First Term created successfully.');
+        await _load();
+        return sessionId;
+      } catch (e) {
+        _notice(e.toString().replaceFirst('Exception: ', ''));
+        await _load();
+        return null;
+      }
+    }
+    final year = TextEditingController(text: _currentSchoolYear());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Set up Academic Session'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+              'Set up an academic session before adding your first class.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: year,
+            decoration: const InputDecoration(labelText: 'School year'),
+          ),
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child:
+                Text('First Term will be created and activated automatically.'),
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Set up session')),
+        ],
+      ),
+    );
+    if (ok != true || year.text.trim().isEmpty) return null;
+    try {
+      final response = await widget.api.createAcademicPortalSession({
+        'name': year.text.trim(),
+        'status': 'ACTIVE',
+      });
+      final session = response['session'] is Map
+          ? Map<String, dynamic>.from(response['session'] as Map)
+          : response;
+      final sessionId = '${session['_id'] ?? session['id'] ?? ''}';
+      if (sessionId.isEmpty) {
+        _notice('Academic session was created but could not be selected.');
+        return null;
+      }
+      await _load();
+      await widget.api.createAcademicPortalTerm({
+        'name': 'First Term',
+        'session': sessionId,
+        'status': 'ACTIVE',
+      });
+      _notice('Academic session and First Term created successfully.');
+      await _load();
+      return sessionId;
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+      return null;
     }
   }
 

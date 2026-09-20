@@ -175,6 +175,14 @@ class EduPaySchoolApi {
       request('POST', '/edupay/school/sessions', body);
   Future<Map<String, dynamic>> createTerm(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/terms', body);
+  Future<Map<String, dynamic>> createAcademicPortalSession(
+    Map<String, dynamic> body,
+  ) =>
+      request('POST', '/edupay/school/academic/sessions', body);
+  Future<Map<String, dynamic>> createAcademicPortalTerm(
+    Map<String, dynamic> body,
+  ) =>
+      request('POST', '/edupay/school/academic/terms', body);
   Future<Map<String, dynamic>> createClass(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/classes', body);
   Future<Map<String, dynamic>> sessions() =>

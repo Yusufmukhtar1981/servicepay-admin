@@ -47,5 +47,22 @@ void main() {
     expect(screen, contains('Widget _friendlyAcademicTable'));
     expect(screen, contains("'Teacher'"));
     expect(screen, isNot(contains("columns: rows.first.keys")));
+    expect(screen, contains('Set up Academic Session'));
+    expect(screen, contains("'name': 'First Term'"));
+    expect(screen, contains("'status': 'ACTIVE'"));
+    expect(screen, contains('createAcademicPortalSession'));
+    expect(screen, contains('createAcademicPortalTerm'));
+    expect(screen, contains('activeTerms'));
+    expect(screen, contains('Class added successfully.'));
+    expect(screen, contains('Subject added successfully.'));
+    expect(screen, contains('await _load();'));
+    expect(screen, contains('_currentSchoolYear'));
+    expect(screen,
+        contains('Academic session and First Term created successfully.'));
+    expect(
+        screen,
+        contains(
+            'No classes or subjects have been assigned to your teacher account yet.'));
+    expect(screen, contains('if (!widget.manager)'));
   });
 }

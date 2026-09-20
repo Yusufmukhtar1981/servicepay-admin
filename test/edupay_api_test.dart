@@ -11,7 +11,58 @@ import 'package:servicepay_app/school/edupay_school_api.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{
         'auth_token': 'token',
+        'school_auth_token': 'school-token',
+        'school_id': 'school-1',
       }));
+
+  test('first-time setup uses academic session and term routes', () async {
+    final requests = <http.Request>[];
+    final api = EduPaySchoolApi(
+      baseUrl: 'https://example.test/api',
+      client: MockClient((request) async {
+        requests.add(request);
+        if (request.url.path.endsWith('/academic/sessions')) {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'session': <String, dynamic>{'_id': 'session-1'},
+            }),
+            201,
+          );
+        }
+        return http.Response(
+          jsonEncode(<String, dynamic>{'success': true}),
+          201,
+        );
+      }),
+    );
+
+    await api.createAcademicPortalSession(<String, dynamic>{
+      'name': '2026/2027',
+      'status': 'ACTIVE',
+    });
+    await api.createAcademicPortalTerm(<String, dynamic>{
+      'name': 'First Term',
+      'session': 'session-1',
+      'status': 'ACTIVE',
+    });
+
+    expect(
+        requests.map((request) => '${request.method} ${request.url.path}'),
+        <String>[
+          'POST /api/edupay/school/academic/sessions',
+          'POST /api/edupay/school/academic/terms',
+        ]);
+    expect(jsonDecode(requests[0].body), <String, dynamic>{
+      'name': '2026/2027',
+      'status': 'ACTIVE',
+    });
+    expect(jsonDecode(requests[1].body), <String, dynamic>{
+      'name': 'First Term',
+      'session': 'session-1',
+      'status': 'ACTIVE',
+    });
+  });
 
   test('uses final readiness and explicit payout lifecycle routes', () async {
     final requests = <http.Request>[];
@@ -131,8 +182,8 @@ void main() {
       representativeAuthorityConfirmed: true,
     );
     expect(request.method, 'PATCH');
-    expect(request.url.path,
-        '/api/admin/edupay/school-requests/request-approve');
+    expect(
+        request.url.path, '/api/admin/edupay/school-requests/request-approve');
     expect(jsonDecode(request.body), {
       'action': 'APPROVE',
       'representativeAuthorityConfirmed': true,

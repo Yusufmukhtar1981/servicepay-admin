@@ -55,6 +55,7 @@ class EduPaySchoolApi {
     }
     return result;
   }
+
   Future<Map<String, dynamic>> request(
     String method,
     String path, [
@@ -219,6 +220,24 @@ class EduPaySchoolApi {
       request('GET', '/edupay/school/academic');
   Future<Map<String, dynamic>> createSubject(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/academic/subjects', body);
+  Future<Map<String, dynamic>> createAcademicClassesBatch({
+    required String session,
+    required List<Map<String, dynamic>> classes,
+  }) =>
+      request('POST', '/edupay/school/academic/classes/batch', {
+        'session': session,
+        'classes': classes,
+      });
+  Future<Map<String, dynamic>> createAcademicSubjectsBatch(
+          List<Map<String, dynamic>> subjects) =>
+      request('POST', '/edupay/school/academic/subjects/batch', {
+        'subjects': subjects,
+      });
+  Future<Map<String, dynamic>> updateClassSubjects(
+          String classId, List<String> subjectIds) =>
+      request('PUT', '/edupay/school/academic/classes/$classId/subjects', {
+        'subjectIds': subjectIds,
+      });
   Future<Map<String, dynamic>> academicStudents() =>
       request('GET', '/edupay/school/academic/students');
   Future<Map<String, dynamic>> createAcademicStudent(

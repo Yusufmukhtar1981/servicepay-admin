@@ -41,6 +41,137 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
   List<Map<String, dynamic>> roster = [];
   final attendance = <String, String>{};
   String? attendanceClassId;
+  String catalogLevel = 'All levels';
+  String classQuery = '';
+  String subjectQuery = '';
+  final selectedCatalogClasses = <String>{};
+  final selectedCatalogSubjects = <String>{};
+  static const _classCatalog = <String, List<String>>{
+    'Early Years': [
+      'Creche',
+      'Playgroup',
+      'Pre-Nursery',
+      'Nursery 1',
+      'Nursery 2',
+      'Nursery 3',
+      'Kindergarten 1',
+      'Kindergarten 2',
+      'Reception',
+    ],
+    'Primary': [
+      'Primary 1',
+      'Primary 2',
+      'Primary 3',
+      'Primary 4',
+      'Primary 5',
+      'Primary 6'
+    ],
+    'Junior Secondary': ['JSS 1', 'JSS 2', 'JSS 3'],
+    'Senior Secondary': ['SSS 1', 'SSS 2', 'SSS 3'],
+  };
+  static const _subjectCatalog = <String, List<String>>{
+    'Early Years': [
+      'English Language',
+      'Mathematics',
+      'Literacy',
+      'Numeracy',
+      'Phonics',
+      'Handwriting',
+      'Rhymes',
+      'Reading',
+      'Basic Science',
+      'Social Habits',
+      'Health Habits',
+      'Creative Arts',
+      'Physical Education',
+      'Computer Studies',
+      'Religious Studies',
+    ],
+    'Primary': [
+      'English Language',
+      'Mathematics',
+      'Basic Science',
+      'Basic Technology',
+      'Basic Science and Technology',
+      'Social Studies',
+      'Civic Education',
+      'National Values',
+      'Computer Studies / ICT',
+      'Agricultural Science',
+      'Home Economics',
+      'Physical and Health Education',
+      'Cultural and Creative Arts',
+      'Christian Religious Studies',
+      'Islamic Religious Studies',
+      'Hausa',
+      'Yoruba',
+      'Igbo',
+      'French',
+      'Arabic',
+      'History',
+      'Security Education',
+    ],
+    'Junior Secondary': [
+      'English Studies',
+      'Mathematics',
+      'Basic Science',
+      'Basic Technology',
+      'Social Studies',
+      'Civic Education',
+      'Business Studies',
+      'Agricultural Science',
+      'Home Economics',
+      'Computer Studies / ICT',
+      'Physical and Health Education',
+      'Cultural and Creative Arts',
+      'Christian Religious Studies',
+      'Islamic Religious Studies',
+      'Hausa',
+      'Yoruba',
+      'Igbo',
+      'French',
+      'Arabic',
+      'History',
+    ],
+    'Senior Secondary': [
+      'English Language',
+      'General Mathematics',
+      'Further Mathematics',
+      'Biology',
+      'Chemistry',
+      'Physics',
+      'Agricultural Science',
+      'Geography',
+      'Economics',
+      'Government',
+      'Civic Education',
+      'Commerce',
+      'Financial Accounting',
+      'Literature in English',
+      'Computer Studies',
+      'Data Processing',
+      'Information and Communication Technology',
+      'Christian Religious Studies',
+      'Islamic Studies',
+      'Hausa',
+      'Yoruba',
+      'Igbo',
+      'French',
+      'Arabic',
+      'History',
+      'Visual Art',
+      'Music',
+      'Technical Drawing',
+      'Food and Nutrition',
+      'Home Management',
+      'Marketing',
+      'Office Practice',
+      'Insurance',
+      'Tourism',
+      'Fisheries',
+      'Animal Husbandry',
+    ],
+  };
 
   @override
   void initState() {
@@ -180,6 +311,7 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     if (section == 'Students') return _students();
     if (section == 'Teachers') return _teachers(compact);
     if (section == 'Assessments') return _assessments();
+    if (section == 'Classes & subjects') return _classesSubjects(compact);
     final key = switch (section) {
       'Sessions & terms' => 'sessions',
       'Classes & subjects' => 'classes',
@@ -197,7 +329,543 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         : section == 'Activities'
             ? _createActivity
             : null;
-    return _table(rows, compact, title: section, action: action);
+    return _friendlyAcademicTable(rows, compact,
+        title: section, action: action);
+  }
+
+  Widget _friendlyAcademicTable(List<Map<String, dynamic>> rows, bool compact,
+      {required String title, VoidCallback? action}) {
+    final columns = switch (title) {
+      'Sessions & terms' => const ['Name', 'Status', 'Starts', 'Ends'],
+      'Timetable' => const [
+          'Day',
+          'Period',
+          'Class',
+          'Subject',
+          'Teacher',
+          'Starts',
+          'Ends'
+        ],
+      'Activities' => const ['Title', 'Audience', 'Status', 'Published'],
+      _ => const ['Name', 'Status'],
+    };
+    String value(Map<String, dynamic> row, String column) {
+      dynamic raw = switch (column) {
+        'Name' => row['name'],
+        'Status' => row['status'],
+        'Starts' => row['startsAt'] ?? row['startDate'],
+        'Ends' => row['endsAt'] ?? row['endDate'],
+        'Day' => row['day'],
+        'Period' => row['period'],
+        'Class' => row['classLevel'],
+        'Subject' => row['subject'],
+        'Teacher' => row['teacher'],
+        'Title' => row['title'],
+        'Audience' => row['audience'],
+        'Published' => row['publishedAt'],
+        _ => null,
+      };
+      if (raw is Map) {
+        raw = raw['name'] ?? raw['fullName'] ?? raw['title'];
+      }
+      return raw?.toString() ?? '—';
+    }
+
+    if (rows.isEmpty) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (action != null)
+          FilledButton.icon(
+              onPressed: action,
+              icon: const Icon(Icons.add),
+              label: Text('Add $title')),
+        const SizedBox(height: 12),
+        const Card(
+            child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('No records are available yet.'))),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (action != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: FilledButton.icon(
+              onPressed: action,
+              icon: const Icon(Icons.add),
+              label: Text('Add $title')),
+        ),
+      Card(
+          child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns:
+              columns.map((column) => DataColumn(label: Text(column))).toList(),
+          rows: rows
+              .map((row) => DataRow(
+                    cells: columns
+                        .map((column) => DataCell(Text(value(row, column))))
+                        .toList(),
+                  ))
+              .toList(),
+        ),
+      )),
+    ]);
+  }
+
+  String _displayClass(Map<String, dynamic> row) =>
+      '${row['name'] ?? 'Class'}${('${row['arm'] ?? ''}').trim().isEmpty ? '' : ' • ${row['arm']}'}';
+
+  List<Map<String, dynamic>> _catalogRows(
+      Map<String, List<String>> catalog, String level,
+      {String query = ''}) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final rows = catalog.entries
+        .where((entry) =>
+            catalogLevel == 'All levels' || entry.key == catalogLevel)
+        .expand((entry) => entry.value.map((name) => {
+              'name': name,
+              'level': entry.key,
+              'key': '${entry.key}:$name',
+            }))
+        .where((row) =>
+            normalizedQuery.isEmpty ||
+            '${row['name']} ${row['level']}'
+                .toLowerCase()
+                .contains(normalizedQuery))
+        .toList();
+    final isClassCatalog = identical(catalog, _classCatalog);
+    final existing = _rows(isClassCatalog ? 'classes' : 'subjects')
+        .map((row) => {
+              'name': '${row['name'] ?? ''}',
+              'level': 'Already added',
+              'key':
+                  'existing:${isClassCatalog ? _classCanonical(row) : _canonical(row['name'])}',
+              'existing': true,
+            })
+        .where((row) => '${row['name']} ${row['level']}'
+            .toLowerCase()
+            .contains(normalizedQuery))
+        .toList();
+    return [...rows, ...existing];
+  }
+
+  String _canonical(dynamic value) =>
+      '$value'.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  String _classCanonical(Map<String, dynamic> row) =>
+      '${_canonical(row['name'])}|${_canonical(row['arm'] ?? '')}';
+
+  Widget _catalogSection({
+    required String title,
+    required Map<String, List<String>> catalog,
+    required Set<String> selected,
+    required String actionLabel,
+    required VoidCallback action,
+    required String query,
+    required VoidCallback addNew,
+  }) {
+    final rows = _catalogRows(catalog, '', query: query);
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      grouped.putIfAbsent('${row['level']}', () => []).add(row);
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+                child: Text(title,
+                    style: const TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w800))),
+            TextButton(
+              onPressed: rows.isEmpty
+                  ? null
+                  : () => setState(() {
+                        final keys = rows.map((r) => '${r['key']}');
+                        if (keys.every(selected.contains)) {
+                          selected.removeAll(keys);
+                        } else {
+                          selected.addAll(keys);
+                        }
+                      }),
+              child: const Text('Select all'),
+            ),
+          ]),
+          const Divider(height: 12),
+          if (rows.isEmpty) const Text('No catalogue items match your search.'),
+          if (rows.isEmpty && query.trim().isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: addNew,
+                icon: const Icon(Icons.add),
+                label: Text(
+                    '${title.startsWith('Class') ? 'Add New Class' : 'Add New Subject'} “${query.trim()}”'),
+              ),
+            ),
+          ...grouped.entries.map((group) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: Text(group.key,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                  ...group.value.map((row) => CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        value: selected.contains('${row['key']}'),
+                        title: Row(children: [
+                          Expanded(child: Text('${row['name']}')),
+                          if (row['existing'] == true)
+                            const Text('Already added',
+                                style: TextStyle(fontSize: 12)),
+                        ]),
+                        onChanged: row['existing'] == true
+                            ? null
+                            : (value) => setState(() {
+                                  if (value == true) {
+                                    selected.add('${row['key']}');
+                                  } else {
+                                    selected.remove('${row['key']}');
+                                  }
+                                }),
+                      )),
+                ],
+              )),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: selected.isEmpty ? null : action,
+              icon: const Icon(Icons.add),
+              label: Text('$actionLabel (${selected.length})'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _classesSubjects(bool compact) {
+    final classes = _rows('classes');
+    final subjects = _rows('subjects');
+    final levels = [
+      'All levels',
+      ..._classCatalog.keys,
+      ..._subjectCatalog.keys
+    ].toSet().toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        SizedBox(
+          width: compact ? double.infinity : 300,
+          child: TextField(
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              labelText: 'Search classes',
+              hintText: 'Try “JSS 1” or “Primary”',
+            ),
+            onChanged: (value) => setState(() => classQuery = value),
+          ),
+        ),
+        SizedBox(
+          width: compact ? double.infinity : 300,
+          child: TextField(
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              labelText: 'Search subjects',
+              hintText: 'Try “Mathematics” or “Biology”',
+            ),
+            onChanged: (value) => setState(() => subjectQuery = value),
+          ),
+        ),
+        SizedBox(
+          width: compact ? double.infinity : 190,
+          child: DropdownButtonFormField<String>(
+            value: catalogLevel,
+            decoration: const InputDecoration(labelText: 'School level'),
+            items: levels
+                .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                .toList(),
+            onChanged: (v) => setState(() => catalogLevel = v ?? 'All levels'),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 16),
+      if (classes.isNotEmpty || subjects.isNotEmpty)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Already in your school',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                ...classes.map((c) => Chip(
+                    avatar: const Icon(Icons.class_outlined, size: 17),
+                    label: Text(_displayClass(c)))),
+                ...subjects.map((s) => Chip(
+                    avatar: const Icon(Icons.menu_book_outlined, size: 17),
+                    label: Text('${s['name'] ?? 'Subject'}'))),
+              ]),
+            ]),
+          ),
+        ),
+      const SizedBox(height: 12),
+      if (compact)
+        Column(children: [
+          _catalogSection(
+              title: 'Class catalogue',
+              catalog: _classCatalog,
+              selected: selectedCatalogClasses,
+              actionLabel: 'Add classes',
+              action: _addCatalogClasses,
+              query: classQuery,
+              addNew: () => _createCustomClass(initialName: classQuery)),
+          const SizedBox(height: 12),
+          _catalogSection(
+              title: 'Subject catalogue',
+              catalog: _subjectCatalog,
+              selected: selectedCatalogSubjects,
+              actionLabel: 'Add subjects',
+              action: _addCatalogSubjects,
+              query: subjectQuery,
+              addNew: () => _createSubject(initialName: subjectQuery)),
+        ])
+      else
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+              child: _catalogSection(
+                  title: 'Class catalogue',
+                  catalog: _classCatalog,
+                  selected: selectedCatalogClasses,
+                  actionLabel: 'Add classes',
+                  action: _addCatalogClasses,
+                  query: classQuery,
+                  addNew: () => _createCustomClass(initialName: classQuery))),
+          const SizedBox(width: 12),
+          Expanded(
+              child: _catalogSection(
+                  title: 'Subject catalogue',
+                  catalog: _subjectCatalog,
+                  selected: selectedCatalogSubjects,
+                  actionLabel: 'Add subjects',
+                  action: _addCatalogSubjects,
+                  query: subjectQuery,
+                  addNew: () => _createSubject(initialName: subjectQuery))),
+        ]),
+      const SizedBox(height: 12),
+      _mappingCard(classes, subjects),
+    ]);
+  }
+
+  Future<void> _addCatalogClasses() async {
+    final sessions = _rows('sessions');
+    if (sessions.isEmpty)
+      return _notice('Create an academic session before adding classes.');
+    final session = _id(sessions.first);
+    final rows = _catalogRows(_classCatalog, '')
+        .where((row) => selectedCatalogClasses.contains('${row['key']}'))
+        .toList();
+    final existing = _rows('classes').map(_classCanonical).toSet();
+    final unique = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final key = '${_canonical(row['name'])}|';
+      if (!existing.contains(key)) unique[key] = row;
+    }
+    if (unique.isEmpty) {
+      selectedCatalogClasses.clear();
+      return _notice('All selected classes are already added to your school.');
+    }
+    try {
+      await widget.api.createAcademicClassesBatch(
+        session: session,
+        classes: unique.values
+            .map((row) => {
+                  'name': row['name'],
+                  'educationLevel': row['level'],
+                })
+            .toList(),
+      );
+      selectedCatalogClasses.clear();
+      _notice('${unique.length} classes added.');
+      await _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _addCatalogSubjects() async {
+    final rows = _catalogRows(_subjectCatalog, '')
+        .where((row) => selectedCatalogSubjects.contains('${row['key']}'))
+        .toList();
+    final existing =
+        _rows('subjects').map((row) => _canonical(row['name'])).toSet();
+    final unique = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final key = _canonical(row['name']);
+      if (!existing.contains(key)) unique[key] = row;
+    }
+    if (unique.isEmpty) {
+      selectedCatalogSubjects.clear();
+      return _notice('All selected subjects are already added to your school.');
+    }
+    try {
+      await widget.api.createAcademicSubjectsBatch(unique.values
+          .map((row) => {
+                'name': row['name'],
+                'educationLevel': row['level'],
+              })
+          .toList());
+      selectedCatalogSubjects.clear();
+      _notice('${unique.length} subjects added.');
+      await _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _createCustomClass({String? initialName}) async {
+    final name = TextEditingController(text: initialName?.trim());
+    final arm = TextEditingController();
+    String level = 'Primary';
+    final ok = await _form(
+        'Create custom class',
+        [
+          TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'Class name *')),
+          TextField(
+              controller: arm,
+              decoration: const InputDecoration(
+                  labelText: 'Class arm (optional)', hintText: 'A, B or Gold')),
+          DropdownButtonFormField<String>(
+            value: level,
+            decoration: const InputDecoration(labelText: 'Education level'),
+            items: const [
+              'Early years',
+              'Primary',
+              'Junior Secondary',
+              'Senior Secondary'
+            ].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+            onChanged: (v) => level = v ?? level,
+          ),
+        ],
+        submitLabel: 'Create class');
+    if (ok != true || name.text.trim().isEmpty) return;
+    final sessions = _rows('sessions');
+    if (sessions.isEmpty)
+      return _notice('Create an academic session before adding classes.');
+    try {
+      await widget.api.createAcademicClassesBatch(
+        session: _id(sessions.first),
+        classes: [
+          {
+            'name': name.text.trim(),
+            if (arm.text.trim().isNotEmpty) 'arm': arm.text.trim(),
+            'educationLevel': level,
+          }
+        ],
+      );
+      _notice('Class created.');
+      await _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Widget _mappingCard(
+      List<Map<String, dynamic>> classes, List<Map<String, dynamic>> subjects) {
+    if (classes.isEmpty || subjects.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Class-to-subject mapping',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          const Text('Choose the subjects learners should see for each class.'),
+          const SizedBox(height: 10),
+          ...classes.map((classRow) {
+            final classId = _id(classRow);
+            final mapped = (_rows('classSubjects')).where((mapping) {
+              final level = mapping['classLevel'];
+              return level is Map
+                  ? _id(Map<String, dynamic>.from(level)) == classId
+                  : '$level' == classId;
+            }).map((mapping) {
+              final subject = mapping['subject'];
+              return subject is Map
+                  ? _id(Map<String, dynamic>.from(subject))
+                  : '$subject';
+            }).toSet();
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(_displayClass(classRow)),
+              subtitle: Text(mapped.isEmpty
+                  ? 'No subjects mapped yet'
+                  : '${mapped.length} subjects mapped'),
+              trailing: TextButton(
+                onPressed: () => _editClassMapping(classRow, subjects, mapped),
+                child: const Text('Edit subjects'),
+              ),
+            );
+          }),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _editClassMapping(Map<String, dynamic> classRow,
+      List<Map<String, dynamic>> subjects, Set<String> initial) async {
+    final selected = {...initial};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) =>
+          StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title: Text('Subjects for ${_displayClass(classRow)}'),
+          content: SizedBox(
+            width: 430,
+            child: SingleChildScrollView(
+              child: Column(
+                  children: subjects.map((subject) {
+                final id = _id(subject);
+                return CheckboxListTile(
+                  value: selected.contains(id),
+                  title: Text('${subject['name'] ?? 'Subject'}'),
+                  onChanged: (value) => setDialogState(() {
+                    if (value == true)
+                      selected.add(id);
+                    else
+                      selected.remove(id);
+                  }),
+                );
+              }).toList()),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Save mapping')),
+          ],
+        );
+      }),
+    );
+    if (ok != true) return;
+    try {
+      await widget.api.updateClassSubjects(_id(classRow), selected.toList());
+      _notice('Subject mapping saved.');
+      await _load();
+    } catch (e) {
+      _notice(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   List<Map<String, dynamic>> _assignmentsForTeacher(
@@ -272,14 +940,29 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
                     if (action == 'VIEW') _viewTeacher(teacher);
                     if (action == 'ASSIGN') _assignTeacher(teacher);
                     if (action == 'EDIT') _editTeacher(teacher);
+                    if (action == 'RESET') _resetTeacherPassword(teacher);
+                    if (action == 'STATUS') _toggleTeacherStatus(teacher);
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'VIEW', child: Text('View')),
-                    PopupMenuItem(
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'VIEW', child: Text('View')),
+                    const PopupMenuItem(
                       value: 'ASSIGN',
                       child: Text('Assign Class & Subject'),
                     ),
-                    PopupMenuItem(value: 'EDIT', child: Text('Edit')),
+                    const PopupMenuItem(value: 'EDIT', child: Text('Edit')),
+                    const PopupMenuItem(
+                      value: 'RESET',
+                      child: Text('Reset temporary password'),
+                    ),
+                    PopupMenuItem(
+                      value: 'STATUS',
+                      child: Text(
+                        '${teacher['status'] ?? 'ACTIVE'}'.toUpperCase() ==
+                                'ACTIVE'
+                            ? 'Deactivate teacher'
+                            : 'Reactivate teacher',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -331,6 +1014,19 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
                     TextButton(
                       onPressed: () => _editTeacher(teacher),
                       child: const Text('Edit'),
+                    ),
+                    TextButton(
+                      onPressed: () => _resetTeacherPassword(teacher),
+                      child: const Text('Reset password'),
+                    ),
+                    TextButton(
+                      onPressed: () => _toggleTeacherStatus(teacher),
+                      child: Text(
+                        '${teacher['status'] ?? 'ACTIVE'}'.toUpperCase() ==
+                                'ACTIVE'
+                            ? 'Deactivate'
+                            : 'Reactivate',
+                      ),
                     ),
                   ])),
                 ]);
@@ -438,89 +1134,6 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
           ),
         ],
       );
-  Widget _table(
-    List<Map<String, dynamic>> rows,
-    bool compact, {
-    required String title,
-    VoidCallback? action,
-  }) {
-    if (rows.isEmpty)
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (action != null)
-            FilledButton.icon(
-              onPressed: action,
-              icon: const Icon(Icons.add),
-              label: Text(title == 'Teachers' ? 'Add Teacher' : 'Add $title'),
-            ),
-          const SizedBox(height: 12),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No records are available yet.'),
-            ),
-          ),
-        ],
-      );
-    final keys = rows.first.keys.take(compact ? 3 : 5).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (action != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: FilledButton.icon(
-              onPressed: action,
-              icon: const Icon(Icons.add),
-              label: Text(title == 'Teachers' ? 'Add Teacher' : 'Add $title'),
-            ),
-          ),
-        Card(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: [
-                ...keys.map((k) => DataColumn(label: Text(k))),
-                if (section == 'Teachers' && widget.manager)
-                  const DataColumn(label: Text('Actions')),
-              ],
-              rows: rows
-                  .map(
-                    (r) => DataRow(
-                      cells: [
-                        ...keys.map((k) => DataCell(Text('${r[k] ?? ''}'))),
-                        if (section == 'Teachers' && widget.manager)
-                          DataCell(Wrap(
-                            children: [
-                              IconButton(
-                                tooltip: 'Edit teacher',
-                                onPressed: () => _editTeacher(r),
-                                icon: const Icon(Icons.edit_outlined),
-                              ),
-                              IconButton(
-                                tooltip: 'Reset temporary password',
-                                onPressed: () => _resetTeacherPassword(r),
-                                icon: const Icon(Icons.lock_reset_outlined),
-                              ),
-                              IconButton(
-                                tooltip: 'Change teacher status',
-                                onPressed: () => _toggleTeacherStatus(r),
-                                icon: const Icon(Icons.sync_alt_outlined),
-                              ),
-                            ],
-                          )),
-                      ],
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _attendance() {
     final classes = _rows('classes');
     if (classes.isEmpty) {
@@ -1003,8 +1616,10 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     }
   }
 
-  Future<void> _createSubject() async {
-    final name = TextEditingController(), code = TextEditingController();
+  Future<void> _createSubject({String? initialName}) async {
+    final name = TextEditingController(text: initialName?.trim()),
+        code = TextEditingController();
+    String educationLevel = 'Primary';
     final ok = await _form('Create subject', [
       TextField(
         controller: name,
@@ -1014,12 +1629,26 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         controller: code,
         decoration: const InputDecoration(labelText: 'Code (optional)'),
       ),
+      DropdownButtonFormField<String>(
+        value: educationLevel,
+        decoration: const InputDecoration(labelText: 'Education level'),
+        items: const [
+          'Early years',
+          'Primary',
+          'Junior Secondary',
+          'Senior Secondary'
+        ]
+            .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+            .toList(),
+        onChanged: (value) => educationLevel = value ?? educationLevel,
+      ),
     ]);
     if (ok != true || name.text.trim().isEmpty) return;
     try {
       await widget.api.createSubject({
         'name': name.text.trim(),
         if (code.text.trim().isNotEmpty) 'code': code.text.trim(),
+        'educationLevel': educationLevel,
       });
       _load();
     } catch (e) {
@@ -1258,52 +1887,82 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     }
     String teacher = _id(selectedTeacher ?? teachers.first),
         classLevel = _id(classes.first),
-        subject = _id(subjects.first);
-    final ok = await _form(
-        'Assign Class & Subject',
-        [
-          DropdownButtonFormField<String>(
-            value: teacher,
-            decoration: const InputDecoration(labelText: 'Teacher'),
-            items: teachers
-                .map(
-                  (row) => DropdownMenuItem(
-                    value: _id(row),
-                    child: Text('${row['fullName'] ?? row['staffId']}'),
-                  ),
-                )
-                .toList(),
-            onChanged:
-                selectedTeacher == null ? (value) => teacher = value! : null,
-          ),
-          DropdownButtonFormField<String>(
-            value: classLevel,
-            decoration: const InputDecoration(labelText: 'Class'),
-            items: classes
-                .map(
-                  (row) => DropdownMenuItem(
-                    value: _id(row),
-                    child: Text('${row['name']} ${row['arm'] ?? ''}'),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) => classLevel = value!,
-          ),
-          DropdownButtonFormField<String>(
-            value: subject,
-            decoration: const InputDecoration(labelText: 'Subject'),
-            items: subjects
-                .map(
-                  (row) => DropdownMenuItem(
-                    value: _id(row),
-                    child: Text('${row['name']}'),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) => subject = value!,
-          ),
-        ],
-        submitLabel: 'Assign');
+        subject = '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final mapped = _mappedSubjectIds(classLevel);
+          final available = mapped.isEmpty
+              ? subjects
+              : subjects.where((row) => mapped.contains(_id(row))).toList();
+          if (available.isNotEmpty &&
+              !available.any((row) => _id(row) == subject)) {
+            subject = _id(available.first);
+          }
+          return AlertDialog(
+            title: const Text('Assign Class & Subject'),
+            content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                DropdownButtonFormField<String>(
+                  value: teacher,
+                  decoration: const InputDecoration(labelText: 'Teacher'),
+                  items: teachers
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: _id(row),
+                          child: Text('${row['fullName'] ?? row['staffId']}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: selectedTeacher == null
+                      ? (value) => setDialogState(() => teacher = value!)
+                      : null,
+                ),
+                DropdownButtonFormField<String>(
+                  value: classLevel,
+                  decoration: const InputDecoration(labelText: 'Class'),
+                  items: classes
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: _id(row),
+                          child: Text('${row['name']} ${row['arm'] ?? ''}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setDialogState(() => classLevel = value!),
+                ),
+                DropdownButtonFormField<String>(
+                  value: subject,
+                  decoration: const InputDecoration(labelText: 'Subject'),
+                  items: available
+                      .map(
+                        (row) => DropdownMenuItem(
+                          value: _id(row),
+                          child: Text('${row['name']}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setDialogState(() => subject = value!),
+                ),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: available.isEmpty
+                    ? null
+                    : () => Navigator.pop(dialogContext, true),
+                child: const Text('Assign'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
     if (ok != true) return;
     try {
       await widget.api.assignTeacher({
@@ -1318,6 +1977,20 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     }
   }
 
+  Set<String> _mappedSubjectIds(String classId) {
+    return _rows('classSubjects').where((mapping) {
+      final level = mapping['classLevel'];
+      final mappedClass =
+          level is Map ? _id(Map<String, dynamic>.from(level)) : '$level';
+      return mappedClass == classId;
+    }).map((mapping) {
+      final subject = mapping['subject'];
+      return subject is Map
+          ? _id(Map<String, dynamic>.from(subject))
+          : '$subject';
+    }).toSet();
+  }
+
   Future<void> _createAssessment() async {
     final sessions = _rows('sessions'),
         terms = _rows('terms'),
@@ -1330,12 +2003,34 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
       _notice('Create a session, term, class and subject first.');
       return;
     }
+    final mappedSubjectIds = _mappedSubjectIds(_id(classes.first));
+    final availableSubjects = mappedSubjectIds.isEmpty
+        ? subjects
+        : subjects
+            .where((subject) => mappedSubjectIds.contains(_id(subject)))
+            .toList();
+    if (availableSubjects.isEmpty) {
+      _notice('Map subjects to this class before creating an assessment.');
+      return;
+    }
     final title = TextEditingController();
     String session = _id(sessions.first),
         term = _id(terms.first),
         classLevel = _id(classes.first),
-        subject = _id(subjects.first);
-    final ok = await _form('Create assessment', [
+        subject = _id(availableSubjects.first);
+    final values = await _assessmentDialog(
+      title: title,
+      sessions: sessions,
+      terms: terms,
+      classes: classes,
+      subjects: subjects,
+      session: session,
+      term: term,
+      classLevel: classLevel,
+      subject: subject,
+    );
+    /*
+    final legacyOk = await _form('Create assessment', [
       TextField(
         controller: title,
         decoration: const InputDecoration(labelText: 'Assessment title'),
@@ -1383,6 +2078,8 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         value: subject,
         decoration: const InputDecoration(labelText: 'Subject'),
         items: subjects
+            .where((row) =>
+                mappedSubjectIds.isEmpty || mappedSubjectIds.contains(_id(row)))
             .map(
               (row) => DropdownMenuItem(
                 value: _id(row),
@@ -1396,7 +2093,12 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
         'Default scoring: CA 30 + Exam 70. Grading remains school-configurable through the API.',
       ),
     ]);
-    if (ok != true || title.text.trim().isEmpty) return;
+    */
+    if (values == null || title.text.trim().isEmpty) return;
+    session = values['session']!;
+    term = values['term']!;
+    classLevel = values['classLevel']!;
+    subject = values['subject']!;
     try {
       await widget.api.createAssessment({
         'title': title.text.trim(),
@@ -1413,6 +2115,101 @@ class _AcademicOperationsScreenState extends State<AcademicOperationsScreen> {
     } catch (e) {
       _notice(e.toString().replaceFirst('Exception: ', ''));
     }
+  }
+
+  Future<Map<String, String>?> _assessmentDialog({
+    required TextEditingController title,
+    required List<Map<String, dynamic>> sessions,
+    required List<Map<String, dynamic>> terms,
+    required List<Map<String, dynamic>> classes,
+    required List<Map<String, dynamic>> subjects,
+    required String session,
+    required String term,
+    required String classLevel,
+    required String subject,
+  }) {
+    return showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final mapped = _mappedSubjectIds(classLevel);
+          final available = mapped.isEmpty
+              ? subjects
+              : subjects.where((row) => mapped.contains(_id(row))).toList();
+          if (available.isNotEmpty &&
+              !available.any((row) => _id(row) == subject)) {
+            subject = _id(available.first);
+          }
+          return AlertDialog(
+            title: const Text('Create assessment'),
+            content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                    controller: title,
+                    decoration:
+                        const InputDecoration(labelText: 'Assessment title')),
+                DropdownButtonFormField<String>(
+                  value: session,
+                  decoration: const InputDecoration(labelText: 'Session'),
+                  items: sessions
+                      .map((row) => DropdownMenuItem(
+                          value: _id(row), child: Text('${row['name']}')))
+                      .toList(),
+                  onChanged: (value) => setDialogState(() => session = value!),
+                ),
+                DropdownButtonFormField<String>(
+                  value: term,
+                  decoration: const InputDecoration(labelText: 'Term'),
+                  items: terms
+                      .map((row) => DropdownMenuItem(
+                          value: _id(row), child: Text('${row['name']}')))
+                      .toList(),
+                  onChanged: (value) => setDialogState(() => term = value!),
+                ),
+                DropdownButtonFormField<String>(
+                  value: classLevel,
+                  decoration: const InputDecoration(labelText: 'Class'),
+                  items: classes
+                      .map((row) => DropdownMenuItem(
+                          value: _id(row), child: Text(_displayClass(row))))
+                      .toList(),
+                  onChanged: (value) =>
+                      setDialogState(() => classLevel = value!),
+                ),
+                DropdownButtonFormField<String>(
+                  value: available.isEmpty ? null : subject,
+                  decoration: const InputDecoration(labelText: 'Subject'),
+                  items: available
+                      .map((row) => DropdownMenuItem(
+                          value: _id(row), child: Text('${row['name']}')))
+                      .toList(),
+                  onChanged: available.isEmpty
+                      ? null
+                      : (value) => setDialogState(() => subject = value!),
+                ),
+                const Text('Default scoring: CA 30 + Exam 70.'),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: available.isEmpty
+                    ? null
+                    : () => Navigator.pop(dialogContext, {
+                          'session': session,
+                          'term': term,
+                          'classLevel': classLevel,
+                          'subject': subject,
+                        }),
+                child: const Text('Create assessment'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   String _referenceId(dynamic value) {

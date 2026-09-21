@@ -5,6 +5,79 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'school_handoff_client.dart';
 
+class AcademicStudentLinkCandidate {
+  const AcademicStudentLinkCandidate({
+    required this.candidateToken,
+    required this.studentId,
+    required this.fullName,
+    required this.className,
+  });
+
+  final String candidateToken;
+  final String studentId;
+  final String fullName;
+  final String className;
+
+  factory AcademicStudentLinkCandidate.fromJson(Map<String, dynamic> json) =>
+      AcademicStudentLinkCandidate(
+        candidateToken: '${json['candidateToken'] ?? ''}',
+        studentId: '${json['studentId'] ?? ''}',
+        fullName: '${json['fullName'] ?? 'Student'}',
+        className: '${json['className'] ?? 'Class not assigned'}',
+      );
+}
+
+class AcademicStudentLink {
+  const AcademicStudentLink({
+    required this.childToken,
+    required this.childName,
+    required this.className,
+    required this.parentDisplay,
+    required this.linkStatus,
+    required this.academicStudent,
+    required this.candidates,
+  });
+
+  final String childToken;
+  final String childName;
+  final String className;
+  final String parentDisplay;
+  final String linkStatus;
+  final Map<String, dynamic>? academicStudent;
+  final List<AcademicStudentLinkCandidate> candidates;
+
+  factory AcademicStudentLink.fromJson(Map<String, dynamic> json) =>
+      AcademicStudentLink(
+        childToken: '${json['childToken'] ?? ''}',
+        childName: '${json['childName'] ?? 'Child'}',
+        className: '${json['className'] ?? 'Class not provided'}',
+        parentDisplay:
+            '${json['parentDisplay'] ?? 'Parent/Guardian not provided'}',
+        linkStatus: '${json['linkStatus'] ?? 'UNRESOLVED'}',
+        academicStudent: json['academicStudent'] is Map
+            ? Map<String, dynamic>.from(json['academicStudent'] as Map)
+            : null,
+        candidates: (json['candidates'] as List? ?? [])
+            .whereType<Map>()
+            .map(
+              (row) => AcademicStudentLinkCandidate.fromJson(
+                Map<String, dynamic>.from(row),
+              ),
+            )
+            .toList(),
+      );
+}
+
+class AcademicStudentLinksResult {
+  const AcademicStudentLinksResult({
+    required this.links,
+    required this.summary,
+  });
+
+  final List<AcademicStudentLink> links;
+  final Map<String, dynamic> summary;
+}
+
 class EduPaySchoolApiException implements Exception {
   const EduPaySchoolApiException(this.message, {required this.statusCode});
 
@@ -71,20 +144,20 @@ class EduPaySchoolApi {
     final uri = Uri.parse('$baseUrl$path');
     final response = switch (method) {
       'POST' => await client.post(
-          uri,
-          headers: headers,
-          body: jsonEncode(body ?? {}),
-        ),
+        uri,
+        headers: headers,
+        body: jsonEncode(body ?? {}),
+      ),
       'PUT' => await client.put(
-          uri,
-          headers: headers,
-          body: jsonEncode(body ?? {}),
-        ),
+        uri,
+        headers: headers,
+        body: jsonEncode(body ?? {}),
+      ),
       'PATCH' => await client.patch(
-          uri,
-          headers: headers,
-          body: jsonEncode(body ?? {}),
-        ),
+        uri,
+        headers: headers,
+        body: jsonEncode(body ?? {}),
+      ),
       _ => await client.get(uri, headers: headers),
     };
     dynamic decoded;
@@ -163,26 +236,23 @@ class EduPaySchoolApi {
   }
 
   MediaType _mime(String? extension) => switch (extension?.toLowerCase()) {
-        'png' => MediaType('image', 'png'),
-        'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
-        'pdf' => MediaType('application', 'pdf'),
-        _ => MediaType('application', 'octet-stream'),
-      };
+    'png' => MediaType('image', 'png'),
+    'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
+    'pdf' => MediaType('application', 'pdf'),
+    _ => MediaType('application', 'octet-stream'),
+  };
 
   Future<Map<String, dynamic>> createAcademicSession(
     Map<String, dynamic> body,
-  ) =>
-      request('POST', '/edupay/school/sessions', body);
+  ) => request('POST', '/edupay/school/sessions', body);
   Future<Map<String, dynamic>> createTerm(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/terms', body);
   Future<Map<String, dynamic>> createAcademicPortalSession(
     Map<String, dynamic> body,
-  ) =>
-      request('POST', '/edupay/school/academic/sessions', body);
+  ) => request('POST', '/edupay/school/academic/sessions', body);
   Future<Map<String, dynamic>> createAcademicPortalTerm(
     Map<String, dynamic> body,
-  ) =>
-      request('POST', '/edupay/school/academic/terms', body);
+  ) => request('POST', '/edupay/school/academic/terms', body);
   Future<Map<String, dynamic>> createClass(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/classes', body);
   Future<Map<String, dynamic>> sessions() =>
@@ -196,17 +266,24 @@ class EduPaySchoolApi {
   /// Student Activity Center endpoints are all resolved by the backend from
   /// the authenticated school session.  No schoolId supplied by the client is
   /// trusted, which keeps this API safe for multi-school staff accounts.
-  Future<Map<String, dynamic>> activityCenter(String type) => request('GET',
-      '/edupay/activity-center/school/records?type=${Uri.encodeQueryComponent(type)}');
+  Future<Map<String, dynamic>> activityCenter(String type) => request(
+    'GET',
+    '/edupay/activity-center/school/records?type=${Uri.encodeQueryComponent(type)}',
+  );
 
   Future<Map<String, dynamic>> activityAction(
-          String type, Map<String, dynamic> body) =>
-      request('POST', '/edupay/activity-center/school/$type', body);
+    String type,
+    Map<String, dynamic> body,
+  ) => request('POST', '/edupay/activity-center/school/$type', body);
 
   Future<Map<String, dynamic>> updateActivity(
-          String recordId, Map<String, dynamic> body) =>
-      request(
-          'PATCH', '/edupay/activity-center/school/records/$recordId', body);
+    String recordId,
+    Map<String, dynamic> body,
+  ) => request(
+    'PATCH',
+    '/edupay/activity-center/school/records/$recordId',
+    body,
+  );
 
   Future<Map<String, dynamic>> publishResult(String id) =>
       request('POST', '/edupay/activity-center/school/records/$id/publish');
@@ -218,9 +295,10 @@ class EduPaySchoolApi {
       request('POST', '/edupay/activity-center/school/guardians/verify', body);
 
   Future<Map<String, dynamic>> createGuardianInvite(String childId) => request(
-      'POST',
-      '/edupay/activity-center/school/guardians/invites',
-      {'childId': childId});
+    'POST',
+    '/edupay/activity-center/school/guardians/invites',
+    {'childId': childId},
+  );
 
   Future<Map<String, dynamic>> academicDashboard() =>
       request('GET', '/edupay/school/academic/dashboard');
@@ -231,37 +309,78 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> createAcademicClassesBatch({
     required String session,
     required List<Map<String, dynamic>> classes,
-  }) =>
-      request('POST', '/edupay/school/academic/classes/batch', {
-        'session': session,
-        'classes': classes,
-      });
+  }) => request('POST', '/edupay/school/academic/classes/batch', {
+    'session': session,
+    'classes': classes,
+  });
   Future<Map<String, dynamic>> createAcademicSubjectsBatch(
-          List<Map<String, dynamic>> subjects) =>
-      request('POST', '/edupay/school/academic/subjects/batch', {
-        'subjects': subjects,
-      });
+    List<Map<String, dynamic>> subjects,
+  ) => request('POST', '/edupay/school/academic/subjects/batch', {
+    'subjects': subjects,
+  });
   Future<Map<String, dynamic>> updateClassSubjects(
-          String classId, List<String> subjectIds) =>
-      request('PUT', '/edupay/school/academic/classes/$classId/subjects', {
-        'subjectIds': subjectIds,
-      });
+    String classId,
+    List<String> subjectIds,
+  ) => request('PUT', '/edupay/school/academic/classes/$classId/subjects', {
+    'subjectIds': subjectIds,
+  });
   Future<Map<String, dynamic>> academicStudents() =>
       request('GET', '/edupay/school/academic/students');
+  Future<AcademicStudentLinksResult> academicStudentLinks() async {
+    final result = await request(
+      'GET',
+      '/edupay/school/academic/student-links',
+    );
+    return AcademicStudentLinksResult(
+      links: (result['links'] as List? ?? [])
+          .whereType<Map>()
+          .map(
+            (row) =>
+                AcademicStudentLink.fromJson(Map<String, dynamic>.from(row)),
+          )
+          .toList(),
+      summary: result['summary'] is Map
+          ? Map<String, dynamic>.from(result['summary'] as Map)
+          : const {},
+    );
+  }
+
+  Future<AcademicStudentLink> resolveAcademicStudentLink({
+    required String childToken,
+    required String candidateToken,
+  }) async {
+    final result = await request(
+      'PATCH',
+      '/edupay/school/academic/student-links/resolve',
+      {'childToken': childToken, 'candidateToken': candidateToken},
+    );
+    final link = result['link'];
+    if (link is! Map) {
+      throw const EduPaySchoolApiException(
+        'The school service returned an invalid link response.',
+        statusCode: 502,
+      );
+    }
+    return AcademicStudentLink.fromJson(Map<String, dynamic>.from(link));
+  }
+
   Future<Map<String, dynamic>> createAcademicStudent(
-          Map<String, dynamic> body) =>
-      request('POST', '/edupay/school/academic/students', body);
+    Map<String, dynamic> body,
+  ) => request('POST', '/edupay/school/academic/students', body);
   Future<Map<String, dynamic>> updateAcademicStudent(
-          String id, Map<String, dynamic> body) =>
-      request('PATCH', '/edupay/school/academic/students/$id', body);
+    String id,
+    Map<String, dynamic> body,
+  ) => request('PATCH', '/edupay/school/academic/students/$id', body);
   Future<Map<String, dynamic>> validateStudentImport(
-          List<Map<String, dynamic>> rows) =>
-      request('POST', '/edupay/school/academic/students/import/validate',
-          {'rows': rows});
+    List<Map<String, dynamic>> rows,
+  ) => request('POST', '/edupay/school/academic/students/import/validate', {
+    'rows': rows,
+  });
   Future<Map<String, dynamic>> commitStudentImport(
-          List<Map<String, dynamic>> rows) =>
-      request('POST', '/edupay/school/academic/students/import/commit',
-          {'rows': rows});
+    List<Map<String, dynamic>> rows,
+  ) => request('POST', '/edupay/school/academic/students/import/commit', {
+    'rows': rows,
+  });
   Future<Map<String, dynamic>> academicTeachers() =>
       request('GET', '/edupay/school/academic/teachers');
   Future<Map<String, dynamic>> createTeacher(Map<String, dynamic> body) =>
@@ -269,13 +388,11 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> updateTeacher(
     String id,
     Map<String, dynamic> body,
-  ) =>
-      request('PATCH', '/edupay/school/academic/teachers/$id', body);
+  ) => request('PATCH', '/edupay/school/academic/teachers/$id', body);
   Future<Map<String, dynamic>> updateTeacherAssignments(
     String id,
     Map<String, dynamic> body,
-  ) =>
-      request('PATCH', '/edupay/school/academic/teachers/$id', body);
+  ) => request('PATCH', '/edupay/school/academic/teachers/$id', body);
   Future<Map<String, dynamic>> updateTeacherStatus(String id, String status) =>
       request('PATCH', '/edupay/school/academic/teachers/$id/status', {
         'status': status,
@@ -283,31 +400,34 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> resetTeacherPassword(
     String id,
     String temporaryPassword,
-  ) =>
-      request(
-        'POST',
-        '/edupay/school/academic/teachers/$id/reset-password',
-        {'temporaryPassword': temporaryPassword},
-      );
+  ) => request('POST', '/edupay/school/academic/teachers/$id/reset-password', {
+    'temporaryPassword': temporaryPassword,
+  });
   Future<Map<String, dynamic>> assignTeacher(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/academic/teachers/assignments', body);
   Future<Map<String, dynamic>> attendanceRoster(String classId) => request(
-      'GET',
-      '/edupay/school/academic/attendance/roster?classId=${Uri.encodeQueryComponent(classId)}');
+    'GET',
+    '/edupay/school/academic/attendance/roster?classId=${Uri.encodeQueryComponent(classId)}',
+  );
   Future<Map<String, dynamic>> submitAcademicAttendance(
-          Map<String, dynamic> body) =>
-      request('POST', '/edupay/school/academic/attendance', body);
+    Map<String, dynamic> body,
+  ) => request('POST', '/edupay/school/academic/attendance', body);
   Future<Map<String, dynamic>> assessments() =>
       request('GET', '/edupay/school/academic/assessments');
   Future<Map<String, dynamic>> createAssessment(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/academic/assessments', body);
   Future<Map<String, dynamic>> saveScores(
-          String id, Map<String, dynamic> body) =>
-      request('PUT', '/edupay/school/academic/assessments/$id/scores', body);
-  Future<Map<String, dynamic>> reviewAssessment(String id, String action,
-          {String? note}) =>
-      request('POST', '/edupay/school/academic/assessments/$id/review',
-          {'action': action, if (note != null) 'note': note});
+    String id,
+    Map<String, dynamic> body,
+  ) => request('PUT', '/edupay/school/academic/assessments/$id/scores', body);
+  Future<Map<String, dynamic>> reviewAssessment(
+    String id,
+    String action, {
+    String? note,
+  }) => request('POST', '/edupay/school/academic/assessments/$id/review', {
+    'action': action,
+    if (note != null) 'note': note,
+  });
   Future<Map<String, dynamic>> timetable() =>
       request('GET', '/edupay/school/academic/timetable');
   Future<Map<String, dynamic>> createTimetable(Map<String, dynamic> body) =>

@@ -354,7 +354,6 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                             'Results / Report Cards',
                                             'Timetable',
                                             'Activities / Updates',
-                                            'Academic Sessions',
                                           }.contains(tab))
                                       ? AcademicOperationsScreen(
                                           api: api,
@@ -423,6 +422,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                                               'Terms',
                                                               'Classes',
                                                               'Fee Structures',
+                                                              'Fees / EduPay',
                                                             }.contains(tab)
                                                               ? Column(
                                                                   children: [
@@ -432,11 +432,12 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                                                                               .centerLeft,
                                                                       child: FilledButton
                                                                           .icon(
-                                                                        onPressed: tab ==
-                                                                                'Fee Structures'
+                                                                        onPressed: const {
+                                                                          'Fee Structures',
+                                                                          'Fees / EduPay',
+                                                                        }.contains(tab)
                                                                             ? _createFee
-                                                                            : () =>
-                                                                                _academicDialog(
+                                                                            : () => _academicDialog(
                                                                                   tab == 'Academic Sessions'
                                                                                       ? 'session'
                                                                                       : tab == 'Terms'
@@ -595,6 +596,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       'Students' => 'students',
       'EduPay Students' => 'students',
       'Fee Structures' => 'fees',
+      'Fees / EduPay' => 'fees',
       'Expected School Fees' => 'fees',
       'Upcoming Settlements' => 'settlements',
       'Completed Settlements' => 'settlements',
@@ -629,10 +631,10 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       );
     }
     if (value is! List || value.isEmpty) {
-      return const Card(
+      return Card(
         child: Padding(
           padding: EdgeInsets.all(40),
-          child: Text('No records are available yet.'),
+          child: Text(_emptyRecordsMessage()),
         ),
       );
     }
@@ -671,13 +673,14 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       _ => rows,
     };
     if (filtered.isEmpty) {
-      return const Card(
+      return Card(
         child: Padding(
           padding: EdgeInsets.all(40),
-          child: Text('No records are available yet.'),
+          child: Text(_emptyRecordsMessage()),
         ),
       );
     }
+    final calendarTable = tab == 'Academic Sessions' || tab == 'Terms';
     return Card(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -685,20 +688,191 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
           columns: filtered.first.keys
               .take(5)
               .map((k) => DataColumn(label: Text(k)))
-              .toList(),
+              .toList()
+            ..addAll(calendarTable
+                ? const [DataColumn(label: Text('Actions'))]
+                : const []),
           rows: filtered
               .map(
                 (r) => DataRow(
                   cells: r.values
                       .take(5)
-                      .map((v) => DataCell(Text('$v')))
-                      .toList(),
+                      .map((v) => DataCell(Text(
+                          '${v is String && v.toUpperCase() == 'DRAFT' ? 'UPCOMING' : v}')))
+                      .toList()
+                    ..addAll(calendarTable
+                        ? [
+                            DataCell(TextButton(
+                              onPressed: () => tab == 'Terms'
+                                  ? _editTerm(r)
+                                  : _editSession(r),
+                              child: const Text('Edit'),
+                            ))
+                          ]
+                        : const []),
                 ),
               )
               .toList(),
         ),
       ),
     );
+  }
+
+  String _emptyRecordsMessage() => switch (tab) {
+        'Academic Sessions' =>
+          'No academic sessions have been published yet. Create an upcoming session when ready.',
+        'Terms' =>
+          'No terms have been published for this school yet. Add First, Second or Third Term.',
+        'Fee Structures' ||
+        'Expected School Fees' =>
+          'This school has not published fees for another term yet.',
+        _ => 'No records are available yet.',
+      };
+
+  Future<void> _editSession(Map<String, dynamic> row) async {
+    final sessionId = (row['_id'] ?? row['id'])?.toString();
+    if (sessionId == null || sessionId.isEmpty) return;
+    final startsAt = TextEditingController(
+        text: '${row['startsAt'] ?? row['startDate'] ?? ''}'.split('T').first);
+    final endsAt = TextEditingController(
+        text: '${row['endsAt'] ?? row['endDate'] ?? ''}'.split('T').first);
+    var status = '${row['status'] ?? 'UPCOMING'}'.toUpperCase();
+    if (status == 'DRAFT') status = 'UPCOMING';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Edit academic session: ${row['name'] ?? ''}'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+              controller: startsAt,
+              decoration:
+                  const InputDecoration(labelText: 'Start date (YYYY-MM-DD)'),
+            ),
+            TextField(
+              controller: endsAt,
+              decoration:
+                  const InputDecoration(labelText: 'End date (YYYY-MM-DD)'),
+            ),
+            DropdownButton<String>(
+              isExpanded: true,
+              value: const {'UPCOMING', 'ACTIVE', 'CLOSED'}.contains(status)
+                  ? status
+                  : 'UPCOMING',
+              items: const [
+                DropdownMenuItem(value: 'UPCOMING', child: Text('UPCOMING')),
+                DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+              ],
+              onChanged: (value) =>
+                  setDialogState(() => status = value ?? 'UPCOMING'),
+            ),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.updateAcademicSession(sessionId, {
+        'status': status,
+        if (startsAt.text.trim().isNotEmpty) 'startsAt': startsAt.text.trim(),
+        if (endsAt.text.trim().isNotEmpty) 'endsAt': endsAt.text.trim(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Academic session updated.')));
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
+    }
+  }
+
+  Future<void> _editTerm(Map<String, dynamic> row) async {
+    final termId = (row['_id'] ?? row['id'])?.toString();
+    if (termId == null || termId.isEmpty) return;
+    final startsAt = TextEditingController(
+        text: '${row['startsAt'] ?? row['startDate'] ?? ''}'.split('T').first);
+    final endsAt = TextEditingController(
+        text: '${row['endsAt'] ?? row['endDate'] ?? ''}'.split('T').first);
+    var status = '${row['status'] ?? 'UPCOMING'}'.toUpperCase();
+    if (status == 'DRAFT') status = 'UPCOMING';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Edit term: ${row['name'] ?? ''}'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+                'Session: ${row['session'] is Map ? (row['session'] as Map)['name'] ?? 'Selected session' : row['session'] ?? 'Selected session'}'),
+            TextField(
+              controller: startsAt,
+              decoration:
+                  const InputDecoration(labelText: 'Start date (YYYY-MM-DD)'),
+            ),
+            TextField(
+              controller: endsAt,
+              decoration:
+                  const InputDecoration(labelText: 'End date (YYYY-MM-DD)'),
+            ),
+            DropdownButton<String>(
+              isExpanded: true,
+              value: const {'UPCOMING', 'ACTIVE', 'CLOSED'}.contains(status)
+                  ? status
+                  : 'UPCOMING',
+              items: const [
+                DropdownMenuItem(value: 'UPCOMING', child: Text('UPCOMING')),
+                DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+              ],
+              onChanged: (value) =>
+                  setDialogState(() => status = value ?? 'UPCOMING'),
+            ),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.updateAcademicTerm(termId, {
+        'status': status,
+        if (startsAt.text.trim().isNotEmpty) 'startsAt': startsAt.text.trim(),
+        if (endsAt.text.trim().isNotEmpty) 'endsAt': endsAt.text.trim(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Academic term updated.')));
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
+    }
   }
 
   Widget _savingsView() {
@@ -877,9 +1051,14 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       final response = await api.sessions();
       sessions = _list(response, 'sessions');
     }
+    if (!mounted) return;
     final name = TextEditingController();
     final parent = TextEditingController();
+    final startsAt = TextEditingController();
+    final endsAt = TextEditingController();
     String? selectedSession;
+    String status = 'UPCOMING';
+    const termNames = ['First Term', 'Second Term', 'Third Term'];
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => StatefulBuilder(
@@ -888,10 +1067,54 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: name,
-                decoration: InputDecoration(labelText: '$type name'),
-              ),
+              if (type == 'term')
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: termNames.contains(name.text) ? name.text : null,
+                  hint: const Text('Select term'),
+                  items: termNames
+                      .map((value) =>
+                          DropdownMenuItem(value: value, child: Text(value)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setDialogState(() => name.text = value ?? ''),
+                )
+              else
+                TextField(
+                  controller: name,
+                  decoration: InputDecoration(labelText: '$type name'),
+                ),
+              if (type == 'session' || type == 'term') ...[
+                TextField(
+                  controller: startsAt,
+                  decoration: const InputDecoration(
+                      labelText: 'Start date (YYYY-MM-DD)'),
+                ),
+                TextField(
+                  controller: endsAt,
+                  decoration:
+                      const InputDecoration(labelText: 'End date (YYYY-MM-DD)'),
+                ),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: status,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'UPCOMING', child: Text('UPCOMING')),
+                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                    DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => status = value ?? 'UPCOMING'),
+                ),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'ACTIVE is the current session/term. UPCOMING is available for advance planning.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
               if (type == 'term')
                 DropdownButton<String>(
                   isExpanded: true,
@@ -928,6 +1151,9 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     try {
       final body = {
         'name': name.text.trim(),
+        if (type == 'session' || type == 'term') 'status': status,
+        if (startsAt.text.trim().isNotEmpty) 'startsAt': startsAt.text.trim(),
+        if (endsAt.text.trim().isNotEmpty) 'endsAt': endsAt.text.trim(),
         if (type == 'term' && parent.text.trim().isNotEmpty)
           'session': parent.text.trim(),
       };
@@ -938,13 +1164,14 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Academic $type created.')));
-        _load();
+        await _load();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
         );
+      }
     }
   }
 
@@ -961,6 +1188,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       final response = await api.classes();
       classes = _list(response, 'classes');
     }
+    if (!mounted) return;
     final amount = TextEditingController();
     String? sessionId, termId, classId;
     String id(Map<String, dynamic> row) => (row['_id'] ?? row['id']).toString();
@@ -1054,8 +1282,12 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       return;
     }
     try {
-      await api.request('POST', '/edupay/school/fees', {
-        'amount': double.tryParse(amount.text.trim()) ?? 0,
+      final parsedAmount = double.tryParse(amount.text.trim());
+      if (parsedAmount == null || parsedAmount <= 0) {
+        throw Exception('Enter an official fee amount greater than zero.');
+      }
+      await api.createFee({
+        'amount': parsedAmount,
         'classLevel': classId,
         'session': sessionId,
         'term': termId,
@@ -1064,6 +1296,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Draft fee submitted for approval.')),
         );
+        await _load();
       }
     } catch (e) {
       if (mounted) {

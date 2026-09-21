@@ -144,20 +144,20 @@ class EduPaySchoolApi {
     final uri = Uri.parse('$baseUrl$path');
     final response = switch (method) {
       'POST' => await client.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(body ?? {}),
-      ),
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        ),
       'PUT' => await client.put(
-        uri,
-        headers: headers,
-        body: jsonEncode(body ?? {}),
-      ),
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        ),
       'PATCH' => await client.patch(
-        uri,
-        headers: headers,
-        body: jsonEncode(body ?? {}),
-      ),
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        ),
       _ => await client.get(uri, headers: headers),
     };
     dynamic decoded;
@@ -204,7 +204,7 @@ class EduPaySchoolApi {
       );
     }
     for (final file in supportingDocuments) {
-      if (file.bytes != null)
+      if (file.bytes != null) {
         request.files.add(
           http.MultipartFile.fromBytes(
             'supportingDocuments',
@@ -213,6 +213,7 @@ class EduPaySchoolApi {
             contentType: _mime(file.extension),
           ),
         );
+      }
     }
     final response = await client.send(request);
     final body = await response.stream.bytesToString();
@@ -236,23 +237,36 @@ class EduPaySchoolApi {
   }
 
   MediaType _mime(String? extension) => switch (extension?.toLowerCase()) {
-    'png' => MediaType('image', 'png'),
-    'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
-    'pdf' => MediaType('application', 'pdf'),
-    _ => MediaType('application', 'octet-stream'),
-  };
+        'png' => MediaType('image', 'png'),
+        'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
+        'pdf' => MediaType('application', 'pdf'),
+        _ => MediaType('application', 'octet-stream'),
+      };
 
   Future<Map<String, dynamic>> createAcademicSession(
     Map<String, dynamic> body,
-  ) => request('POST', '/edupay/school/sessions', body);
+  ) =>
+      request('POST', '/edupay/school/sessions', body);
+  Future<Map<String, dynamic>> updateAcademicSession(
+    String sessionId,
+    Map<String, dynamic> body,
+  ) =>
+      request('PATCH', '/edupay/school/academic/sessions/$sessionId', body);
   Future<Map<String, dynamic>> createTerm(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/terms', body);
+  Future<Map<String, dynamic>> updateAcademicTerm(
+    String termId,
+    Map<String, dynamic> body,
+  ) =>
+      request('PATCH', '/edupay/school/academic/terms/$termId', body);
   Future<Map<String, dynamic>> createAcademicPortalSession(
     Map<String, dynamic> body,
-  ) => request('POST', '/edupay/school/academic/sessions', body);
+  ) =>
+      request('POST', '/edupay/school/academic/sessions', body);
   Future<Map<String, dynamic>> createAcademicPortalTerm(
     Map<String, dynamic> body,
-  ) => request('POST', '/edupay/school/academic/terms', body);
+  ) =>
+      request('POST', '/edupay/school/academic/terms', body);
   Future<Map<String, dynamic>> createClass(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/classes', body);
   Future<Map<String, dynamic>> sessions() =>
@@ -262,6 +276,8 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> classes() =>
       request('GET', '/edupay/school/classes');
   Future<Map<String, dynamic>> fees() => request('GET', '/edupay/school/fees');
+  Future<Map<String, dynamic>> createFee(Map<String, dynamic> body) =>
+      request('POST', '/edupay/school/fees', body);
 
   /// Read-only, school-scoped savings projection. The backend derives the
   /// school from the authenticated membership; no client school id is sent.
@@ -272,23 +288,25 @@ class EduPaySchoolApi {
   /// the authenticated school session.  No schoolId supplied by the client is
   /// trusted, which keeps this API safe for multi-school staff accounts.
   Future<Map<String, dynamic>> activityCenter(String type) => request(
-    'GET',
-    '/edupay/activity-center/school/records?type=${Uri.encodeQueryComponent(type)}',
-  );
+        'GET',
+        '/edupay/activity-center/school/records?type=${Uri.encodeQueryComponent(type)}',
+      );
 
   Future<Map<String, dynamic>> activityAction(
     String type,
     Map<String, dynamic> body,
-  ) => request('POST', '/edupay/activity-center/school/$type', body);
+  ) =>
+      request('POST', '/edupay/activity-center/school/$type', body);
 
   Future<Map<String, dynamic>> updateActivity(
     String recordId,
     Map<String, dynamic> body,
-  ) => request(
-    'PATCH',
-    '/edupay/activity-center/school/records/$recordId',
-    body,
-  );
+  ) =>
+      request(
+        'PATCH',
+        '/edupay/activity-center/school/records/$recordId',
+        body,
+      );
 
   Future<Map<String, dynamic>> publishResult(String id) =>
       request('POST', '/edupay/activity-center/school/records/$id/publish');
@@ -300,10 +318,10 @@ class EduPaySchoolApi {
       request('POST', '/edupay/activity-center/school/guardians/verify', body);
 
   Future<Map<String, dynamic>> createGuardianInvite(String childId) => request(
-    'POST',
-    '/edupay/activity-center/school/guardians/invites',
-    {'childId': childId},
-  );
+        'POST',
+        '/edupay/activity-center/school/guardians/invites',
+        {'childId': childId},
+      );
 
   Future<Map<String, dynamic>> academicDashboard() =>
       request('GET', '/edupay/school/academic/dashboard');
@@ -314,21 +332,24 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> createAcademicClassesBatch({
     required String session,
     required List<Map<String, dynamic>> classes,
-  }) => request('POST', '/edupay/school/academic/classes/batch', {
-    'session': session,
-    'classes': classes,
-  });
+  }) =>
+      request('POST', '/edupay/school/academic/classes/batch', {
+        'session': session,
+        'classes': classes,
+      });
   Future<Map<String, dynamic>> createAcademicSubjectsBatch(
     List<Map<String, dynamic>> subjects,
-  ) => request('POST', '/edupay/school/academic/subjects/batch', {
-    'subjects': subjects,
-  });
+  ) =>
+      request('POST', '/edupay/school/academic/subjects/batch', {
+        'subjects': subjects,
+      });
   Future<Map<String, dynamic>> updateClassSubjects(
     String classId,
     List<String> subjectIds,
-  ) => request('PUT', '/edupay/school/academic/classes/$classId/subjects', {
-    'subjectIds': subjectIds,
-  });
+  ) =>
+      request('PUT', '/edupay/school/academic/classes/$classId/subjects', {
+        'subjectIds': subjectIds,
+      });
   Future<Map<String, dynamic>> academicStudents() =>
       request('GET', '/edupay/school/academic/students');
   Future<AcademicStudentLinksResult> academicStudentLinks() async {
@@ -371,21 +392,25 @@ class EduPaySchoolApi {
 
   Future<Map<String, dynamic>> createAcademicStudent(
     Map<String, dynamic> body,
-  ) => request('POST', '/edupay/school/academic/students', body);
+  ) =>
+      request('POST', '/edupay/school/academic/students', body);
   Future<Map<String, dynamic>> updateAcademicStudent(
     String id,
     Map<String, dynamic> body,
-  ) => request('PATCH', '/edupay/school/academic/students/$id', body);
+  ) =>
+      request('PATCH', '/edupay/school/academic/students/$id', body);
   Future<Map<String, dynamic>> validateStudentImport(
     List<Map<String, dynamic>> rows,
-  ) => request('POST', '/edupay/school/academic/students/import/validate', {
-    'rows': rows,
-  });
+  ) =>
+      request('POST', '/edupay/school/academic/students/import/validate', {
+        'rows': rows,
+      });
   Future<Map<String, dynamic>> commitStudentImport(
     List<Map<String, dynamic>> rows,
-  ) => request('POST', '/edupay/school/academic/students/import/commit', {
-    'rows': rows,
-  });
+  ) =>
+      request('POST', '/edupay/school/academic/students/import/commit', {
+        'rows': rows,
+      });
   Future<Map<String, dynamic>> academicTeachers() =>
       request('GET', '/edupay/school/academic/teachers');
   Future<Map<String, dynamic>> createTeacher(Map<String, dynamic> body) =>
@@ -393,11 +418,13 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> updateTeacher(
     String id,
     Map<String, dynamic> body,
-  ) => request('PATCH', '/edupay/school/academic/teachers/$id', body);
+  ) =>
+      request('PATCH', '/edupay/school/academic/teachers/$id', body);
   Future<Map<String, dynamic>> updateTeacherAssignments(
     String id,
     Map<String, dynamic> body,
-  ) => request('PATCH', '/edupay/school/academic/teachers/$id', body);
+  ) =>
+      request('PATCH', '/edupay/school/academic/teachers/$id', body);
   Future<Map<String, dynamic>> updateTeacherStatus(String id, String status) =>
       request('PATCH', '/edupay/school/academic/teachers/$id/status', {
         'status': status,
@@ -405,18 +432,20 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> resetTeacherPassword(
     String id,
     String temporaryPassword,
-  ) => request('POST', '/edupay/school/academic/teachers/$id/reset-password', {
-    'temporaryPassword': temporaryPassword,
-  });
+  ) =>
+      request('POST', '/edupay/school/academic/teachers/$id/reset-password', {
+        'temporaryPassword': temporaryPassword,
+      });
   Future<Map<String, dynamic>> assignTeacher(Map<String, dynamic> body) =>
       request('POST', '/edupay/school/academic/teachers/assignments', body);
   Future<Map<String, dynamic>> attendanceRoster(String classId) => request(
-    'GET',
-    '/edupay/school/academic/attendance/roster?classId=${Uri.encodeQueryComponent(classId)}',
-  );
+        'GET',
+        '/edupay/school/academic/attendance/roster?classId=${Uri.encodeQueryComponent(classId)}',
+      );
   Future<Map<String, dynamic>> submitAcademicAttendance(
     Map<String, dynamic> body,
-  ) => request('POST', '/edupay/school/academic/attendance', body);
+  ) =>
+      request('POST', '/edupay/school/academic/attendance', body);
   Future<Map<String, dynamic>> assessments() =>
       request('GET', '/edupay/school/academic/assessments');
   Future<Map<String, dynamic>> createAssessment(Map<String, dynamic> body) =>
@@ -424,15 +453,17 @@ class EduPaySchoolApi {
   Future<Map<String, dynamic>> saveScores(
     String id,
     Map<String, dynamic> body,
-  ) => request('PUT', '/edupay/school/academic/assessments/$id/scores', body);
+  ) =>
+      request('PUT', '/edupay/school/academic/assessments/$id/scores', body);
   Future<Map<String, dynamic>> reviewAssessment(
     String id,
     String action, {
     String? note,
-  }) => request('POST', '/edupay/school/academic/assessments/$id/review', {
-    'action': action,
-    if (note != null) 'note': note,
-  });
+  }) =>
+      request('POST', '/edupay/school/academic/assessments/$id/review', {
+        'action': action,
+        if (note != null) 'note': note,
+      });
   Future<Map<String, dynamic>> timetable() =>
       request('GET', '/edupay/school/academic/timetable');
   Future<Map<String, dynamic>> createTimetable(Map<String, dynamic> body) =>

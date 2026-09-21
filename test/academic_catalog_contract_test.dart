@@ -6,6 +6,8 @@ void main() {
   test('academic catalog UI and API contracts stay discoverable', () {
     final screen =
         File('lib/school/academic_operations_screen.dart').readAsStringSync();
+    final portal =
+        File('lib/school/school_portal_screen.dart').readAsStringSync();
     final api = File('lib/school/edupay_school_api.dart').readAsStringSync();
 
     for (final label in const [
@@ -64,5 +66,28 @@ void main() {
         contains(
             'No classes or subjects have been assigned to your teacher account yet.'));
     expect(screen, contains('if (!widget.manager)'));
+    expect(portal, contains('Second Term'));
+    expect(portal, contains('Third Term'));
+    expect(portal, contains('Start date (YYYY-MM-DD)'));
+    expect(portal, contains('End date (YYYY-MM-DD)'));
+    expect(portal, contains('UPCOMING'));
+    expect(portal, contains('CLOSED'));
+    expect(portal, contains('ACTIVE is the current session/term'));
+    expect(portal, contains('Enter an official fee amount greater than zero.'));
+    expect(portal, contains('_editSession'));
+    expect(portal, contains('_editTerm'));
+    expect(portal, contains("'Fees / EduPay' => 'fees'"));
+    expect(portal, isNot(contains("value: 'DRAFT'")));
+  });
+
+  test('calendar and fee APIs expose scoped management operations', () {
+    final api = File('lib/school/edupay_school_api.dart').readAsStringSync();
+    expect(api, contains('updateAcademicSession'));
+    expect(api, contains('updateAcademicTerm'));
+    expect(
+        api, contains("request('PATCH', '/edupay/school/academic/sessions/"));
+    expect(api, contains("request('PATCH', '/edupay/school/academic/terms/"));
+    expect(api, contains('createFee'));
+    expect(api, contains("request('POST', '/edupay/school/fees'"));
   });
 }

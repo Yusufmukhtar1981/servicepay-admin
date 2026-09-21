@@ -401,15 +401,32 @@ void main() {
     await api.classes();
     await api.fees();
     await api.createTerm({'name': 'Term 1', 'session': 'session-1'});
+    await api.updateAcademicSession('session-1', {'status': 'CLOSED'});
+    await api.updateAcademicTerm('term-1', {'status': 'ACTIVE'});
+    await api.createFee({
+      'amount': 100000,
+      'session': 'session-1',
+      'term': 'term-1',
+      'classLevel': 'class-1',
+    });
     expect(requests.map((r) => '${r.method} ${r.url.path}'), [
       'GET /api/edupay/school/terms',
       'GET /api/edupay/school/classes',
       'GET /api/edupay/school/fees',
       'POST /api/edupay/school/terms',
+      'PATCH /api/edupay/school/academic/sessions/session-1',
+      'PATCH /api/edupay/school/academic/terms/term-1',
+      'POST /api/edupay/school/fees',
     ]);
-    expect(jsonDecode(requests.last.body), {
+    expect(jsonDecode(requests[3].body), {
       'name': 'Term 1',
       'session': 'session-1',
+    });
+    expect(jsonDecode(requests.last.body), {
+      'amount': 100000,
+      'session': 'session-1',
+      'term': 'term-1',
+      'classLevel': 'class-1',
     });
   });
 

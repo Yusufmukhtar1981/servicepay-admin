@@ -191,6 +191,16 @@ class EduPayApi {
   );
   Future<Map<String, dynamic>> schoolRequests() =>
       request('GET', '/admin/edupay/school-requests');
+  Future<Map<String, dynamic>> approveFee(String feeId) => request(
+    'PATCH',
+    '/admin/edupay/fees/$feeId',
+    body: {'action': 'APPROVE'},
+  );
+  Future<Map<String, dynamic>> rejectFee(String feeId, String note) => request(
+    'PATCH',
+    '/admin/edupay/fees/$feeId',
+    body: {'action': 'REJECT', 'note': note},
+  );
   Future<Map<String, dynamic>> schoolRequestDetail(String requestId) =>
       request('GET', '/admin/edupay/school-requests/$requestId');
   Future<Map<String, dynamic>> schoolRequestAction(

@@ -4,7 +4,7 @@ import 'edupay_api.dart';
 import 'private_asset_download.dart';
 
 String? _reviewRowId(Map<String, dynamic> row) {
-  final value = row['id'] ?? row['_id'];
+  final value = row['id'] ?? row['_id'] ?? row['feeId'];
   return value?.toString().trim().isNotEmpty == true ? value.toString() : null;
 }
 
@@ -18,28 +18,28 @@ bool _isSchoolRequestRow(Map<String, dynamic> row) =>
     _reviewType(row) == 'SCHOOL_REQUEST';
 
 bool eduPayAdminRoleCanManage(String role) => const <String>{
-      'HEAD_OFFICE',
-    }.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
+  'HEAD_OFFICE',
+}.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
 
 bool eduPayAdminRoleCanReviewSchoolRequests(String role) => const <String>{
-      'HEAD_OFFICE',
-      'HEAD_OFFICE_ADMIN',
-      'ADMIN',
-      'SUPER_ADMIN',
-      'SERVICEPAY_SUPER_ADMIN',
-    }.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
+  'HEAD_OFFICE',
+  'HEAD_OFFICE_ADMIN',
+  'ADMIN',
+  'SUPER_ADMIN',
+  'SERVICEPAY_SUPER_ADMIN',
+}.contains(role.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_'));
 
 class _NavHeading extends StatelessWidget {
   const _NavHeading(this.label);
   final String label;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 12, 6),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 18, 12, 6),
+    child: Text(
+      label,
+      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+    ),
+  );
 }
 
 class SchoolRequestActionControls extends StatelessWidget {
@@ -105,21 +105,22 @@ class SchoolRequestDetailsActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-        spacing: 8,
-        children: [
-          if (pending && canManage) ...[
-            TextButton(onPressed: onReject, child: const Text('Reject')),
-            FilledButton(onPressed: onApprove, child: const Text('Approve')),
-          ],
-          TextButton(onPressed: onClose, child: const Text('Close')),
-        ],
-      );
+    spacing: 8,
+    children: [
+      if (pending && canManage) ...[
+        TextButton(onPressed: onReject, child: const Text('Reject')),
+        FilledButton(onPressed: onApprove, child: const Text('Approve')),
+      ],
+      TextButton(onPressed: onClose, child: const Text('Close')),
+    ],
+  );
 }
 
 String? _requestLinkedSchoolId(Map<String, dynamic> request) {
   final scalar = request['schoolId']?.toString().trim();
   if (scalar != null && scalar.isNotEmpty) return scalar;
-  final linked = request['school'] ??
+  final linked =
+      request['school'] ??
       request['linkedSchool'] ??
       request['convertedSchool'];
   if (linked is Map) {
@@ -136,28 +137,31 @@ List<Map<String, dynamic>> eduPaySchoolReviewRows(
   List<Map<String, dynamic>> requests,
 ) {
   final schoolIds = schools.map(_reviewRowId).whereType<String>().toSet();
-  final requestRows = requests.where((request) {
-    final status =
-        (request['status'] ?? 'PENDING_REVIEW').toString().toUpperCase();
-    final linkedId = _requestLinkedSchoolId(request);
-    return !(status == 'APPROVED' &&
-        linkedId != null &&
-        schoolIds.contains(linkedId));
-  }).map(
-    (request) => <String, dynamic>{
-      'type': 'SCHOOL_REQUEST',
-      'schoolName': request['schoolName'] ?? request['name'],
-      'location': request['location'],
-      'contactPhone': request['contactPhone'],
-      'status': (request['status'] ?? 'PENDING_REVIEW')
-          .toString()
-          .trim()
-          .toUpperCase(),
-      'createdAt': request['createdAt'],
-      '_requestId': request['_id'] ?? request['id'],
-      '_request': request,
-    },
-  );
+  final requestRows = requests
+      .where((request) {
+        final status = (request['status'] ?? 'PENDING_REVIEW')
+            .toString()
+            .toUpperCase();
+        final linkedId = _requestLinkedSchoolId(request);
+        return !(status == 'APPROVED' &&
+            linkedId != null &&
+            schoolIds.contains(linkedId));
+      })
+      .map(
+        (request) => <String, dynamic>{
+          'type': 'SCHOOL_REQUEST',
+          'schoolName': request['schoolName'] ?? request['name'],
+          'location': request['location'],
+          'contactPhone': request['contactPhone'],
+          'status': (request['status'] ?? 'PENDING_REVIEW')
+              .toString()
+              .trim()
+              .toUpperCase(),
+          'createdAt': request['createdAt'],
+          '_requestId': request['_id'] ?? request['id'],
+          '_request': request,
+        },
+      );
   return [...requestRows, ...schools];
 }
 
@@ -228,18 +232,20 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
 
   Future<void> _loadAccess() async {
     final prefs = await SharedPreferences.getInstance();
-    adminRole = (prefs.getString('user_role') ??
-            prefs.getString('admin_role') ??
-            prefs.getString('role') ??
-            '')
-        .trim()
-        .toUpperCase()
-        .replaceAll(RegExp(r'[\s-]+'), '_');
-    permissions = (prefs.getStringList('staff_permissions') ??
-            prefs.getStringList('admin_effective_permissions') ??
-            <String>[])
-        .map((value) => value.trim().toLowerCase())
-        .toSet();
+    adminRole =
+        (prefs.getString('user_role') ??
+                prefs.getString('admin_role') ??
+                prefs.getString('role') ??
+                '')
+            .trim()
+            .toUpperCase()
+            .replaceAll(RegExp(r'[\s-]+'), '_');
+    permissions =
+        (prefs.getStringList('staff_permissions') ??
+                prefs.getStringList('admin_effective_permissions') ??
+                <String>[])
+            .map((value) => value.trim().toLowerCase())
+            .toSet();
     if (mounted) setState(() {});
   }
 
@@ -323,7 +329,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         final overview = responses[0];
         final academic =
             (responses[1]['usage'] as Map?)?.cast<String, dynamic>() ??
-                <String, dynamic>{};
+            <String, dynamic>{};
         data = <String, dynamic>{
           ...overview,
           'summary': <String, dynamic>{
@@ -395,8 +401,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       final source = section == 'Schools'
           ? (sourceData == null ? null : sourceData['schools'])
           : academicKey == null
-              ? null
-              : sourceData![academicKey];
+          ? null
+          : sourceData![academicKey];
       if (source is List) {
         return source
             .whereType<Map>()
@@ -405,17 +411,18 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       }
       final overview = data?['academicOverview'];
       if (overview is Map) {
-        final value = overview[{
-          'Students': 'students',
-          'Teachers': 'teachers',
-          'Classes': 'classes',
-          'Subjects': 'subjects',
-          'Attendance': 'attendance',
-          'Exams & Results': 'assessments',
-          'Academic Sessions': 'sessions',
-          'Timetable': 'timetable',
-          'School Activities': 'activities',
-        }[section]];
+        final value =
+            overview[{
+              'Students': 'students',
+              'Teachers': 'teachers',
+              'Classes': 'classes',
+              'Subjects': 'subjects',
+              'Attendance': 'attendance',
+              'Exams & Results': 'assessments',
+              'Academic Sessions': 'sessions',
+              'Timetable': 'timetable',
+              'School Activities': 'activities',
+            }[section]];
         if (value is List) {
           return value
               .whereType<Map>()
@@ -476,8 +483,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         if (value is List) {
           rows.addAll(
             value.whereType<Map>().map(
-                  (row) => {...Map<String, dynamic>.from(row), '_source': key},
-                ),
+              (row) => {...Map<String, dynamic>.from(row), '_source': key},
+            ),
           );
         }
       }
@@ -513,8 +520,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         if (value is List) {
           rows.addAll(
             value.whereType<Map>().map(
-                  (row) => {...Map<String, dynamic>.from(row), '_source': key},
-                ),
+              (row) => {...Map<String, dynamic>.from(row), '_source': key},
+            ),
           );
         }
       }
@@ -526,17 +533,18 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
           : <Map<String, dynamic>>[];
     }
-    final value = data?[{
-      'Schools & onboarding': 'schools',
-      'Fee approvals': 'fees',
-      'Parents & plans': 'plans',
-      'Savings & transactions': 'transactions',
-      'Settlements': 'settlements',
-      'Repayments': 'repayments',
-      'Sponsors': 'sponsors',
-      'Reconciliation': 'transactions',
-      'Audit logs': 'logs',
-    }[section]];
+    final value =
+        data?[{
+          'Schools & onboarding': 'schools',
+          'Fee approvals': 'fees',
+          'Parents & plans': 'plans',
+          'Savings & transactions': 'transactions',
+          'Settlements': 'settlements',
+          'Repayments': 'repayments',
+          'Sponsors': 'sponsors',
+          'Reconciliation': 'transactions',
+          'Audit logs': 'logs',
+        }[section]];
     final rows = value is List
         ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
         : <Map<String, dynamic>>[];
@@ -587,8 +595,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       'Sponsor contributions': data?['sponsorContributions'] is List
           ? (data!['sponsorContributions'] as List).length
           : 0,
-      'Audit events':
-          data?['audit'] is List ? (data!['audit'] as List).length : 0,
+      'Audit events': data?['audit'] is List
+          ? (data!['audit'] as List).length
+          : 0,
     };
     return GridView.count(
       shrinkWrap: true,
@@ -676,58 +685,56 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             child: loading
                 ? const _Loading()
                 : error != null
-                    ? _Error(message: error!, retry: _load)
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView(
-                          padding: const EdgeInsets.all(24),
-                          children: [
-                            Text(
-                              section,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _subtitle(section),
-                              style: TextStyle(color: Colors.grey.shade700),
-                            ),
-                            const SizedBox(height: 22),
-                            if (readiness != null &&
-                                (section == 'Overview' ||
-                                    section == 'Launch Readiness'))
-                              _readinessCard(),
-                            if (section == 'Overview')
-                              _summary(summary)
-                            else if (section == 'Reports')
-                              _reportsView()
-                            else if (section == 'Launch Readiness')
-                              _readinessView()
-                            else if (section == 'Settings')
-                              _settingsView()
-                            else
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (section == 'Parents & plans' ||
-                                      section == 'Savings & transactions') ...[
-                                    _savingsSummary(),
-                                    const SizedBox(height: 14),
-                                    _savingsFilters(),
-                                    const SizedBox(height: 14),
-                                  ],
-                                  section == 'Parents & plans' ||
-                                          section == 'Savings & transactions'
-                                      ? _savingsTable(_rows())
-                                      : _table(_rows()),
-                                ],
-                              ),
-                            if (section == 'Settlements') _settlementTools(),
-                          ],
+                ? _Error(message: error!, retry: _load)
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(
+                      padding: const EdgeInsets.all(24),
+                      children: [
+                        Text(
+                          section,
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
-                      ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _subtitle(section),
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 22),
+                        if (readiness != null &&
+                            (section == 'Overview' ||
+                                section == 'Launch Readiness'))
+                          _readinessCard(),
+                        if (section == 'Overview')
+                          _summary(summary)
+                        else if (section == 'Reports')
+                          _reportsView()
+                        else if (section == 'Launch Readiness')
+                          _readinessView()
+                        else if (section == 'Settings')
+                          _settingsView()
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (section == 'Parents & plans' ||
+                                  section == 'Savings & transactions') ...[
+                                _savingsSummary(),
+                                const SizedBox(height: 14),
+                                _savingsFilters(),
+                                const SizedBox(height: 14),
+                              ],
+                              section == 'Parents & plans' ||
+                                      section == 'Savings & transactions'
+                                  ? _savingsTable(_rows())
+                                  : _table(_rows()),
+                            ],
+                          ),
+                        if (section == 'Settlements') _settlementTools(),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
@@ -735,30 +742,30 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _desktopNav(String value) => ListTile(
-        leading: Icon(_icon(value)),
-        title: Text(value),
-        selected: section == value,
-        onTap: () {
-          setState(() => section = value);
-          _load();
-        },
-      );
+    leading: Icon(_icon(value)),
+    title: Text(value),
+    selected: section == value,
+    onTap: () {
+      setState(() => section = value);
+      _load();
+    },
+  );
 
   IconData _icon(String s) => switch (s) {
-        'Overview' => Icons.dashboard_outlined,
-        'Schools & onboarding' => Icons.school_outlined,
-        'Fee approvals' => Icons.fact_check_outlined,
-        'Parents & plans' => Icons.family_restroom_outlined,
-        'Savings & transactions' => Icons.account_balance_wallet_outlined,
-        'Settlements' => Icons.payments_outlined,
-        'Repayments' => Icons.replay_outlined,
-        'Sponsors' => Icons.handshake_outlined,
-        'Reconciliation' => Icons.compare_arrows_outlined,
-        'Reports' => Icons.assessment_outlined,
-        'Launch Readiness' => Icons.verified_outlined,
-        'Settings' => Icons.tune_outlined,
-        _ => Icons.history_outlined,
-      };
+    'Overview' => Icons.dashboard_outlined,
+    'Schools & onboarding' => Icons.school_outlined,
+    'Fee approvals' => Icons.fact_check_outlined,
+    'Parents & plans' => Icons.family_restroom_outlined,
+    'Savings & transactions' => Icons.account_balance_wallet_outlined,
+    'Settlements' => Icons.payments_outlined,
+    'Repayments' => Icons.replay_outlined,
+    'Sponsors' => Icons.handshake_outlined,
+    'Reconciliation' => Icons.compare_arrows_outlined,
+    'Reports' => Icons.assessment_outlined,
+    'Launch Readiness' => Icons.verified_outlined,
+    'Settings' => Icons.tune_outlined,
+    _ => Icons.history_outlined,
+  };
   String _subtitle(String s) => s == 'Overview'
       ? 'A precise view of EduPay money movement and partner health.'
       : 'Traceable records from the EduPay API.';
@@ -818,72 +825,68 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _savingsFilters() => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 220,
-                child: TextField(
-                  controller: savingsSearch,
-                  decoration: const InputDecoration(
-                    labelText: 'Parent, student or school',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onSubmitted: (_) => _load(),
-                ),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 220,
+            child: TextField(
+              controller: savingsSearch,
+              decoration: const InputDecoration(
+                labelText: 'Parent, student or school',
+                prefixIcon: Icon(Icons.search),
               ),
-              SizedBox(
-                width: 170,
-                child: DropdownButtonFormField<String>(
-                  value: savingsStatus,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: const [
-                    DropdownMenuItem(value: 'ALL', child: Text('All statuses')),
-                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
-                    DropdownMenuItem(
-                        value: 'COMPLETED', child: Text('COMPLETED')),
-                    DropdownMenuItem(value: 'PAUSED', child: Text('PAUSED')),
-                    DropdownMenuItem(
-                        value: 'CANCELLED', child: Text('CANCELLED')),
-                    DropdownMenuItem(value: 'SETTLED', child: Text('SETTLED')),
-                  ],
-                  onChanged: (value) {
-                    setState(() => savingsStatus = value ?? 'ALL');
-                    _load();
-                  },
-                ),
-              ),
-              SizedBox(
-                width: 145,
-                child: TextField(
-                  controller: savingsDateFrom,
-                  decoration:
-                      const InputDecoration(labelText: 'From (YYYY-MM-DD)'),
-                  onSubmitted: (_) => _load(),
-                ),
-              ),
-              SizedBox(
-                width: 145,
-                child: TextField(
-                  controller: savingsDateTo,
-                  decoration:
-                      const InputDecoration(labelText: 'To (YYYY-MM-DD)'),
-                  onSubmitted: (_) => _load(),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.filter_alt_outlined),
-                label: const Text('Apply filters'),
-              ),
-            ],
+              onSubmitted: (_) => _load(),
+            ),
           ),
-        ),
-      );
+          SizedBox(
+            width: 170,
+            child: DropdownButtonFormField<String>(
+              value: savingsStatus,
+              decoration: const InputDecoration(labelText: 'Status'),
+              items: const [
+                DropdownMenuItem(value: 'ALL', child: Text('All statuses')),
+                DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                DropdownMenuItem(value: 'COMPLETED', child: Text('COMPLETED')),
+                DropdownMenuItem(value: 'PAUSED', child: Text('PAUSED')),
+                DropdownMenuItem(value: 'CANCELLED', child: Text('CANCELLED')),
+                DropdownMenuItem(value: 'SETTLED', child: Text('SETTLED')),
+              ],
+              onChanged: (value) {
+                setState(() => savingsStatus = value ?? 'ALL');
+                _load();
+              },
+            ),
+          ),
+          SizedBox(
+            width: 145,
+            child: TextField(
+              controller: savingsDateFrom,
+              decoration: const InputDecoration(labelText: 'From (YYYY-MM-DD)'),
+              onSubmitted: (_) => _load(),
+            ),
+          ),
+          SizedBox(
+            width: 145,
+            child: TextField(
+              controller: savingsDateTo,
+              decoration: const InputDecoration(labelText: 'To (YYYY-MM-DD)'),
+              onSubmitted: (_) => _load(),
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: _load,
+            icon: const Icon(Icons.filter_alt_outlined),
+            label: const Text('Apply filters'),
+          ),
+        ],
+      ),
+    ),
+  );
 
   String _savingsText(Map<String, dynamic> row, String key) {
     final value = row[key];
@@ -919,8 +922,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
-          columns:
-              columns.map((label) => DataColumn(label: Text(label))).toList(),
+          columns: columns
+              .map((label) => DataColumn(label: Text(label)))
+              .toList(),
           rows: rows.map((row) {
             final cells = plans
                 ? <DataCell>[
@@ -941,14 +945,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                 : <DataCell>[
                     DataCell(
                       Text(
-                        _savingsText(
-                                  row,
-                                  'date',
-                                ) ==
-                                '—'
+                        _savingsText(row, 'date') == '—'
                             ? (_savingsText(row, 'createdAt') == '—'
-                                ? '—'
-                                : _savingsText(row, 'createdAt'))
+                                  ? '—'
+                                  : _savingsText(row, 'createdAt'))
                             : _savingsText(row, 'date'),
                       ),
                     ),
@@ -969,8 +969,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
 
   void _showSavingsHistory(Map<String, dynamic> row) {
     final history = row['history'];
-    final entries =
-        history is List ? history.whereType<Map>().toList() : const [];
+    final entries = history is List
+        ? history.whereType<Map>().toList()
+        : const [];
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1005,37 +1006,37 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _readinessView() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _readinessCard(),
-          const SizedBox(height: 14),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                _eduPayActive ? Icons.check_circle : Icons.pause_circle_outline,
-              ),
-              title: Text(
-                'EduPay Status ${_eduPayActive ? 'ACTIVE' : 'NOT ACTIVE'}',
-              ),
-              subtitle: Text(
-                _eduPayActive
-                    ? 'Automatically enabled'
-                    : 'Not automatically enabled',
-              ),
-            ),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _readinessCard(),
+      const SizedBox(height: 14),
+      Card(
+        child: ListTile(
+          leading: Icon(
+            _eduPayActive ? Icons.check_circle : Icons.pause_circle_outline,
           ),
-          const SizedBox(height: 8),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Provider credentials and account encryption are deployment-controlled. '
-                'They cannot be entered or exposed in this dashboard.',
-              ),
-            ),
+          title: Text(
+            'EduPay Status ${_eduPayActive ? 'ACTIVE' : 'NOT ACTIVE'}',
           ),
-        ],
-      );
+          subtitle: Text(
+            _eduPayActive
+                ? 'Automatically enabled'
+                : 'Not automatically enabled',
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Provider credentials and account encryption are deployment-controlled. '
+            'They cannot be entered or exposed in this dashboard.',
+          ),
+        ),
+      ),
+    ],
+  );
 
   Future<void> _editSettings() async {
     if (!canManageEduPay) return;
@@ -1076,7 +1077,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                       ),
                       decoration: InputDecoration(
                         labelText: key,
-                        helperText: key.contains('Rate') ||
+                        helperText:
+                            key.contains('Rate') ||
                                 key == 'maximumCoverPercentage'
                             ? 'Enter a percentage from 0 to 100'
                             : null,
@@ -1162,43 +1164,42 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _summary(Map<String, dynamic> s) => GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: MediaQuery.sizeOf(context).width < 700 ? 1 : 4,
-        childAspectRatio: 1.8,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        children: s.entries
-            .map(
-              (e) => Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        e.key
-                            .replaceAllMapped(
-                                RegExp(r'([A-Z])'), (m) => ' ${m[1]}')
-                            .trim(),
-                        style: TextStyle(color: Colors.grey.shade700),
-                      ),
-                      const Spacer(),
-                      Text(
-                        _display(e.value),
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xff08783e),
-                        ),
-                      ),
-                    ],
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    crossAxisCount: MediaQuery.sizeOf(context).width < 700 ? 1 : 4,
+    childAspectRatio: 1.8,
+    crossAxisSpacing: 14,
+    mainAxisSpacing: 14,
+    children: s.entries
+        .map(
+          (e) => Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    e.key
+                        .replaceAllMapped(RegExp(r'([A-Z])'), (m) => ' ${m[1]}')
+                        .trim(),
+                    style: TextStyle(color: Colors.grey.shade700),
                   ),
-                ),
+                  const Spacer(),
+                  Text(
+                    _display(e.value),
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xff08783e),
+                    ),
+                  ),
+                ],
               ),
-            )
-            .toList(),
-      );
+            ),
+          ),
+        )
+        .toList(),
+  );
 
   bool get _eduPayActive =>
       readiness?['ready'] == true &&
@@ -1209,51 +1210,49 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     required String title,
     required bool ready,
     String? detail,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              ready ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-              color: ready ? const Color(0xff08783e) : Colors.orange.shade800,
-              size: 21,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  if (detail != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      detail,
-                      style:
-                          TextStyle(color: Colors.grey.shade700, fontSize: 12),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Text(
-              ready ? 'READY' : 'NOT READY',
-              style: TextStyle(
-                color: ready ? const Color(0xff08783e) : Colors.orange.shade900,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          ready ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+          color: ready ? const Color(0xff08783e) : Colors.orange.shade800,
+          size: 21,
         ),
-      );
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              if (detail != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  detail,
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Text(
+          ready ? 'READY' : 'NOT READY',
+          style: TextStyle(
+            color: ready ? const Color(0xff08783e) : Colors.orange.shade900,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _readinessCard() {
     final payout =
         (readiness?['payoutConfig'] as Map?)?.cast<String, dynamic>() ?? {};
-    final missing = (payout['missingEnvironment'] as List?)
+    final missing =
+        (payout['missingEnvironment'] as List?)
             ?.map((value) => value.toString())
             .toList() ??
         <String>[];
@@ -1267,9 +1266,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
             Text(
               'EDUPAY LAUNCH READINESS',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xff10231a),
-                  ),
+                fontWeight: FontWeight.w900,
+                color: const Color(0xff10231a),
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1350,7 +1349,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
 
   Widget _settlementTools() {
     final canManage = permissions.contains('edupay.manage');
-    final canProcess = permissions.contains('edupay.settlement.process') &&
+    final canProcess =
+        permissions.contains('edupay.settlement.process') &&
         readiness?['ready'] == true;
     return Card(
       child: Padding(
@@ -1371,18 +1371,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               spacing: 10,
               children: [
                 FilledButton.tonal(
-                  onPressed:
-                      canManage ? () => _settlementAction('APPROVE') : null,
+                  onPressed: canManage
+                      ? () => _settlementAction('APPROVE')
+                      : null,
                   child: const Text('Approve settlement'),
                 ),
                 FilledButton(
-                  onPressed:
-                      canProcess ? () => _settlementAction('PROCESS') : null,
+                  onPressed: canProcess
+                      ? () => _settlementAction('PROCESS')
+                      : null,
                   child: const Text('Process payout'),
                 ),
                 OutlinedButton(
-                  onPressed:
-                      canProcess ? () => _settlementAction('REQUERY') : null,
+                  onPressed: canProcess
+                      ? () => _settlementAction('REQUERY')
+                      : null,
                   child: const Text('Requery payout'),
                 ),
               ],
@@ -1477,6 +1480,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _table(List<Map<String, dynamic>> rows) {
+    if (section == 'Fee approvals') return _feeApprovalsTable(rows);
     if (section == 'Parents & plans' || section == 'Savings & transactions') {
       rows = rows
           .map(
@@ -1516,88 +1520,96 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
-                    columns: (rows.first.keys.take(
-                      6,
-                    )).map((k) => DataColumn(label: Text(k))).toList()
-                      ..add(const DataColumn(label: Text('Actions'))),
+                    columns:
+                        (rows.first.keys.take(
+                            6,
+                          )).map((k) => DataColumn(label: Text(k))).toList()
+                          ..add(const DataColumn(label: Text('Actions'))),
                     rows: rows
                         .map(
                           (r) => DataRow(
-                            cells: r.entries
-                                .take(6)
-                                .map(
-                                  (entry) => DataCell(
-                                    Text(
-                                      entry.key == 'status'
-                                          ? _schoolStatusLabel(entry.value)
-                                          : _display(entry.value),
+                            cells:
+                                r.entries
+                                    .take(6)
+                                    .map(
+                                      (entry) => DataCell(
+                                        Text(
+                                          entry.key == 'status'
+                                              ? _schoolStatusLabel(entry.value)
+                                              : _display(entry.value),
+                                        ),
+                                      ),
+                                    )
+                                    .toList()
+                                  ..add(
+                                    DataCell(
+                                      Wrap(
+                                        spacing: 4,
+                                        children: [
+                                          if (section ==
+                                                  'Schools & onboarding' &&
+                                              _isSchoolRequestRow(r))
+                                            SchoolRequestActionControls(
+                                              row: r,
+                                              canManage:
+                                                  canReviewSchoolRequests,
+                                              onView: () => _schoolDetails(r),
+                                              onApprove: () =>
+                                                  _schoolRequestAction(
+                                                    r,
+                                                    'APPROVE',
+                                                  ),
+                                              onReject: () =>
+                                                  _schoolRequestAction(
+                                                    r,
+                                                    'REJECT',
+                                                  ),
+                                            ),
+                                          if (section == 'Schools' &&
+                                              !_isSchoolRequestRow(r)) ...[
+                                            TextButton(
+                                              onPressed: () =>
+                                                  _openAcademicProfile(r),
+                                              child: const Text(
+                                                'Open Academic Profile',
+                                              ),
+                                            ),
+                                            if (canManageEduPay)
+                                              IconButton(
+                                                tooltip: 'Edit school metadata',
+                                                onPressed: () => _editSchool(r),
+                                                icon: const Icon(
+                                                  Icons.edit_outlined,
+                                                ),
+                                              ),
+                                            if (canManageEduPay)
+                                              IconButton(
+                                                tooltip:
+                                                    'Reset administrator password',
+                                                onPressed: () =>
+                                                    _resetSchoolPassword(r),
+                                                icon: const Icon(
+                                                  Icons.lock_reset_outlined,
+                                                ),
+                                              ),
+                                          ],
+                                          if (section ==
+                                                  'Schools & onboarding' &&
+                                              !_isSchoolRequestRow(r)) ...[
+                                            IconButton(
+                                              tooltip: 'View details',
+                                              icon: const Icon(
+                                                Icons.visibility_outlined,
+                                              ),
+                                              onPressed: () =>
+                                                  _schoolDetails(r),
+                                            ),
+                                            ..._schoolActionButtons(r),
+                                          ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                )
-                                .toList()
-                              ..add(
-                                DataCell(
-                                  Wrap(
-                                    spacing: 4,
-                                    children: [
-                                      if (section == 'Schools & onboarding' &&
-                                          _isSchoolRequestRow(r))
-                                        SchoolRequestActionControls(
-                                          row: r,
-                                          canManage: canReviewSchoolRequests,
-                                          onView: () => _schoolDetails(r),
-                                          onApprove: () => _schoolRequestAction(
-                                            r,
-                                            'APPROVE',
-                                          ),
-                                          onReject: () => _schoolRequestAction(
-                                            r,
-                                            'REJECT',
-                                          ),
-                                        ),
-                                      if (section == 'Schools' &&
-                                          !_isSchoolRequestRow(r)) ...[
-                                        TextButton(
-                                          onPressed: () =>
-                                              _openAcademicProfile(r),
-                                          child: const Text(
-                                            'Open Academic Profile',
-                                          ),
-                                        ),
-                                        if (canManageEduPay)
-                                          IconButton(
-                                            tooltip: 'Edit school metadata',
-                                            onPressed: () => _editSchool(r),
-                                            icon: const Icon(
-                                              Icons.edit_outlined,
-                                            ),
-                                          ),
-                                        if (canManageEduPay)
-                                          IconButton(
-                                            tooltip:
-                                                'Reset administrator password',
-                                            onPressed: () =>
-                                                _resetSchoolPassword(r),
-                                            icon: const Icon(
-                                              Icons.lock_reset_outlined,
-                                            ),
-                                          ),
-                                      ],
-                                      if (section == 'Schools & onboarding' &&
-                                          !_isSchoolRequestRow(r)) ...[
-                                        IconButton(
-                                          tooltip: 'View details',
-                                          icon: const Icon(
-                                            Icons.visibility_outlined,
-                                          ),
-                                          onPressed: () => _schoolDetails(r),
-                                        ),
-                                        ..._schoolActionButtons(r),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
                           ),
                         )
                         .toList(),
@@ -1655,6 +1667,194 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     );
   }
 
+  Widget _feeApprovalsTable(List<Map<String, dynamic>> rows) {
+    final pending = rows
+        .where((r) => _reviewStatus(r) == 'PENDING_APPROVAL')
+        .toList();
+    if (pending.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'No pending school fees. Submitted fees appear here for review.',
+          ),
+        ),
+      );
+    }
+    return Card(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('School')),
+            DataColumn(label: Text('Session')),
+            DataColumn(label: Text('Term')),
+            DataColumn(label: Text('Class')),
+            DataColumn(label: Text('Amount')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Actions')),
+          ],
+          rows: pending.map((row) {
+            final id = _reviewRowId(row);
+            return DataRow(
+              cells: [
+                DataCell(Text(_display(row['schoolName'] ?? row['school']))),
+                DataCell(Text(_display(row['sessionName'] ?? row['session']))),
+                DataCell(Text(_display(row['termName'] ?? row['term']))),
+                DataCell(Text(_display(row['className'] ?? row['classLevel']))),
+                DataCell(Text(_display(row['amount']))),
+                DataCell(Text(_reviewStatus(row))),
+                DataCell(
+                  Wrap(
+                    spacing: 4,
+                    children: [
+                      TextButton(
+                        onPressed: id == null
+                            ? null
+                            : () => _showFeeDetails(row),
+                        child: const Text('Review'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: !canManageEduPay || id == null
+                            ? null
+                            : () => _feeAction(row, 'APPROVE'),
+                        child: const Text('Approve'),
+                      ),
+                      TextButton(
+                        onPressed: !canManageEduPay || id == null
+                            ? null
+                            : () => _feeAction(row, 'REJECT'),
+                        child: const Text('Reject'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showFeeDetails(Map<String, dynamic> row) async {
+    final visible = row.entries.where((entry) {
+      final key = entry.key.toLowerCase();
+      return !key.contains('token') &&
+          key != '_id' &&
+          key != 'id' &&
+          entry.value is! Map &&
+          entry.value is! List;
+    }).toList();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Pending school fee review'),
+        content: SizedBox(
+          width: 520,
+          child: ListView(
+            shrinkWrap: true,
+            children: visible
+                .map(
+                  (entry) => ListTile(
+                    dense: true,
+                    title: Text(entry.key),
+                    subtitle: Text(_display(entry.value)),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _feeAction(Map<String, dynamic> row, String action) async {
+    final id = _reviewRowId(row);
+    if (id == null || !canManageEduPay) return;
+    String? note;
+    if (action == 'REJECT') {
+      final controller = TextEditingController();
+      note = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Reject school fee'),
+          content: TextField(
+            controller: controller,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Rejection reason',
+              hintText: 'Explain what the school must correct.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (controller.text.trim().isEmpty) return;
+                Navigator.pop(dialogContext, controller.text.trim());
+              },
+              child: const Text('Reject fee'),
+            ),
+          ],
+        ),
+      );
+      if (note == null || note.trim().isEmpty) return;
+    } else {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Approve school fee?'),
+          content: const Text(
+            'Approval publishes this official fee to eligible parent plans.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Approve fee'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    try {
+      if (action == 'APPROVE') {
+        await _api.approveFee(id);
+      } else {
+        await _api.rejectFee(id, note!);
+      }
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              action == 'APPROVE'
+                  ? 'Fee approved and published.'
+                  : 'Fee rejected with feedback.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      _showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Widget _mobileSchoolReviewCards(List<Map<String, dynamic>> rows) {
     return Column(
       children: rows.map((row) {
@@ -1710,23 +1910,22 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _mobileAcademicSchoolCards(List<Map<String, dynamic>> rows) => Column(
-        children: rows
-            .map(
-              (row) => Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  title:
-                      Text('${row['name'] ?? row['schoolName'] ?? 'School'}'),
-                  subtitle: Text('${row['location'] ?? row['address'] ?? ''}'),
-                  trailing: TextButton(
-                    onPressed: () => _openAcademicProfile(row),
-                    child: const Text('Open Academic Profile'),
-                  ),
-                ),
+    children: rows
+        .map(
+          (row) => Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              title: Text('${row['name'] ?? row['schoolName'] ?? 'School'}'),
+              subtitle: Text('${row['location'] ?? row['address'] ?? ''}'),
+              trailing: TextButton(
+                onPressed: () => _openAcademicProfile(row),
+                child: const Text('Open Academic Profile'),
               ),
-            )
-            .toList(),
-      );
+            ),
+          ),
+        )
+        .toList(),
+  );
 
   Future<void> _openAcademicProfile(Map<String, dynamic> row) async {
     final id = (row['id'] ?? row['_id'])?.toString();
@@ -1875,7 +2074,7 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     if (id == null || id.isEmpty) return;
     Map<String, dynamic> details =
         (row['_request'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{...row};
+        <String, dynamic>{...row};
     try {
       final response = await _api.schoolRequestDetail(id);
       final value =
@@ -2026,8 +2225,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                       child: TextField(
                         controller: controllers[f],
                         obscureText: f == 'temporaryPassword',
-                        keyboardType:
-                            f == 'email' ? TextInputType.emailAddress : null,
+                        keyboardType: f == 'email'
+                            ? TextInputType.emailAddress
+                            : null,
                         decoration: InputDecoration(labelText: f),
                       ),
                     ),
@@ -2134,10 +2334,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   String _schoolAlias(String field) => switch (field) {
-        'schoolName' => 'name',
-        'phone' => 'contactPhone',
-        _ => field,
-      };
+    'schoolName' => 'name',
+    'phone' => 'contactPhone',
+    _ => field,
+  };
 
   Future<void> _resetSchoolPassword(Map<String, dynamic> row) async {
     final id = _reviewRowId(row);
@@ -2193,8 +2393,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   void _showSuccess(String message) => ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
   Future<void> _schoolAction(Map<String, dynamic> row, String action) async {
     final id = row['id']?.toString() ?? row['_id']?.toString();
     if (id == null || id.isEmpty) return;
@@ -2277,10 +2477,11 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     } else {
       Map<String, dynamic> details =
           (row['_request'] as Map?)?.cast<String, dynamic>() ??
-              <String, dynamic>{...row};
+          <String, dynamic>{...row};
       try {
         final response = await _api.schoolRequestDetail(id);
-        final value = response['request'] ??
+        final value =
+            response['request'] ??
             response['schoolRequest'] ??
             response['data'];
         if (value is Map) details = Map<String, dynamic>.from(value);
@@ -2458,11 +2659,11 @@ class _Empty extends StatelessWidget {
   const _Empty();
   @override
   Widget build(BuildContext c) => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(40),
-          child: Center(child: Text('No records returned by the server.')),
-        ),
-      );
+    child: Padding(
+      padding: EdgeInsets.all(40),
+      child: Center(child: Text('No records returned by the server.')),
+    ),
+  );
 }
 
 class _Error extends StatelessWidget {
@@ -2471,13 +2672,13 @@ class _Error extends StatelessWidget {
   final VoidCallback retry;
   @override
   Widget build(BuildContext c) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: retry, child: const Text('Try again')),
-          ],
-        ),
-      );
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(message, textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        FilledButton(onPressed: retry, child: const Text('Try again')),
+      ],
+    ),
+  );
 }

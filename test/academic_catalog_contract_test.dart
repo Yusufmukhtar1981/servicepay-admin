@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('academic catalog UI and API contracts stay discoverable', () {
-    final screen =
-        File('lib/school/academic_operations_screen.dart').readAsStringSync();
-    final portal =
-        File('lib/school/school_portal_screen.dart').readAsStringSync();
+    final screen = File(
+      'lib/school/academic_operations_screen.dart',
+    ).readAsStringSync();
+    final portal = File(
+      'lib/school/school_portal_screen.dart',
+    ).readAsStringSync();
     final api = File('lib/school/edupay_school_api.dart').readAsStringSync();
 
     for (final label in const [
@@ -59,12 +61,16 @@ void main() {
     expect(screen, contains('Subject added successfully.'));
     expect(screen, contains('await _load();'));
     expect(screen, contains('_currentSchoolYear'));
-    expect(screen,
-        contains('Academic session and First Term created successfully.'));
     expect(
-        screen,
-        contains(
-            'No classes or subjects have been assigned to your teacher account yet.'));
+      screen,
+      contains('Academic session and First Term created successfully.'),
+    );
+    expect(
+      screen,
+      contains(
+        'No classes or subjects have been assigned to your teacher account yet.',
+      ),
+    );
     expect(screen, contains('if (!widget.manager)'));
     expect(portal, contains('Second Term'));
     expect(portal, contains('Third Term'));
@@ -76,8 +82,25 @@ void main() {
     expect(portal, contains('Enter an official fee amount greater than zero.'));
     expect(portal, contains('_editSession'));
     expect(portal, contains('_editTerm'));
+    expect(portal, contains('Create First, Second and Third Terms'));
+    expect(portal, contains('createStandardTerms'));
+    expect(portal, contains('Set current'));
+    expect(portal, contains("'isCurrent': true"));
+    expect(portal, contains('before submitting.'));
     expect(portal, contains("'Fees / EduPay' => 'fees'"));
     expect(portal, isNot(contains("value: 'DRAFT'")));
+  });
+
+  test('fee review controls and API routes remain discoverable', () {
+    final center = File(
+      'lib/admin/edupay_control_center_screen.dart',
+    ).readAsStringSync();
+    final api = File('lib/admin/edupay_api.dart').readAsStringSync();
+    expect(center, contains('Pending school fee review'));
+    expect(center, contains('Approve fee'));
+    expect(center, contains('Reject fee'));
+    expect(center, contains('Rejection reason'));
+    expect(api, contains("'/admin/edupay/fees/\$feeId'"));
   });
 
   test('calendar and fee APIs expose scoped management operations', () {
@@ -85,7 +108,9 @@ void main() {
     expect(api, contains('updateAcademicSession'));
     expect(api, contains('updateAcademicTerm'));
     expect(
-        api, contains("request('PATCH', '/edupay/school/academic/sessions/"));
+      api,
+      contains("request('PATCH', '/edupay/school/academic/sessions/"),
+    );
     expect(api, contains("request('PATCH', '/edupay/school/academic/terms/"));
     expect(api, contains('createFee'));
     expect(api, contains("request('POST', '/edupay/school/fees'"));

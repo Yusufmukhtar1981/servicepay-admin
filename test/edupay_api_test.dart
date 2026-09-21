@@ -588,4 +588,59 @@ void main() {
       );
     },
   );
+
+  test('academic current actions send ACTIVE and isCurrent', () async {
+    final requests = <http.Request>[];
+    final api = EduPaySchoolApi(
+      baseUrl: 'https://example.test/api',
+      client: MockClient((request) async {
+        requests.add(request);
+        return http.Response(jsonEncode({'success': true}), 200);
+      }),
+    );
+    await api.updateAcademicSession('session-1', {
+      'status': 'ACTIVE',
+      'isCurrent': true,
+    });
+    await api.updateAcademicTerm('term-1', {
+      'status': 'ACTIVE',
+      'isCurrent': true,
+    });
+    expect(jsonDecode(requests[0].body), {
+      'status': 'ACTIVE',
+      'isCurrent': true,
+    });
+    expect(jsonDecode(requests[1].body), {
+      'status': 'ACTIVE',
+      'isCurrent': true,
+    });
+  });
+
+  test(
+    'admin fee approval and rejection use audited lifecycle route',
+    () async {
+      final requests = <http.Request>[];
+      final api = EduPayApi(
+        baseUrl: 'https://example.test/api',
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response(jsonEncode({'success': true}), 200);
+        }),
+      );
+      await api.approveFee('fee-1');
+      await api.rejectFee(
+        'fee-2',
+        'Amount does not match the official circular.',
+      );
+      expect(requests.map((r) => '${r.method} ${r.url.path}'), [
+        'PATCH /api/admin/edupay/fees/fee-1',
+        'PATCH /api/admin/edupay/fees/fee-2',
+      ]);
+      expect(jsonDecode(requests[0].body), {'action': 'APPROVE'});
+      expect(jsonDecode(requests[1].body), {
+        'action': 'REJECT',
+        'note': 'Amount does not match the official circular.',
+      });
+    },
+  );
 }

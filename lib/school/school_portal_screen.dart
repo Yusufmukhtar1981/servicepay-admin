@@ -689,27 +689,49 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
               .take(5)
               .map((k) => DataColumn(label: Text(k)))
               .toList()
-            ..addAll(calendarTable
-                ? const [DataColumn(label: Text('Actions'))]
-                : const []),
+            ..addAll(
+              calendarTable
+                  ? const [DataColumn(label: Text('Actions'))]
+                  : const [],
+            ),
           rows: filtered
               .map(
                 (r) => DataRow(
                   cells: r.values
                       .take(5)
-                      .map((v) => DataCell(Text(
-                          '${v is String && v.toUpperCase() == 'DRAFT' ? 'UPCOMING' : v}')))
+                      .map(
+                        (v) => DataCell(
+                          Text(
+                            '${v is String && v.toUpperCase() == 'DRAFT' ? 'UPCOMING' : v}',
+                          ),
+                        ),
+                      )
                       .toList()
-                    ..addAll(calendarTable
-                        ? [
-                            DataCell(TextButton(
-                              onPressed: () => tab == 'Terms'
-                                  ? _editTerm(r)
-                                  : _editSession(r),
-                              child: const Text('Edit'),
-                            ))
-                          ]
-                        : const []),
+                    ..addAll(
+                      calendarTable
+                          ? [
+                              DataCell(
+                                Wrap(
+                                  spacing: 4,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () => tab == 'Terms'
+                                          ? _editTerm(r)
+                                          : _editSession(r),
+                                      child: const Text('Edit'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => tab == 'Terms'
+                                          ? _setCurrentTerm(r)
+                                          : _setCurrentSession(r),
+                                      child: const Text('Set current'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ]
+                          : const [],
+                    ),
                 ),
               )
               .toList(),
@@ -733,9 +755,11 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     final sessionId = (row['_id'] ?? row['id'])?.toString();
     if (sessionId == null || sessionId.isEmpty) return;
     final startsAt = TextEditingController(
-        text: '${row['startsAt'] ?? row['startDate'] ?? ''}'.split('T').first);
+      text: '${row['startsAt'] ?? row['startDate'] ?? ''}'.split('T').first,
+    );
     final endsAt = TextEditingController(
-        text: '${row['endsAt'] ?? row['endDate'] ?? ''}'.split('T').first);
+      text: '${row['endsAt'] ?? row['endDate'] ?? ''}'.split('T').first,
+    );
     var status = '${row['status'] ?? 'UPCOMING'}'.toUpperCase();
     if (status == 'DRAFT') status = 'UPCOMING';
     final ok = await showDialog<bool>(
@@ -743,31 +767,36 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text('Edit academic session: ${row['name'] ?? ''}'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(
-              controller: startsAt,
-              decoration:
-                  const InputDecoration(labelText: 'Start date (YYYY-MM-DD)'),
-            ),
-            TextField(
-              controller: endsAt,
-              decoration:
-                  const InputDecoration(labelText: 'End date (YYYY-MM-DD)'),
-            ),
-            DropdownButton<String>(
-              isExpanded: true,
-              value: const {'UPCOMING', 'ACTIVE', 'CLOSED'}.contains(status)
-                  ? status
-                  : 'UPCOMING',
-              items: const [
-                DropdownMenuItem(value: 'UPCOMING', child: Text('UPCOMING')),
-                DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
-                DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
-              ],
-              onChanged: (value) =>
-                  setDialogState(() => status = value ?? 'UPCOMING'),
-            ),
-          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: startsAt,
+                decoration: const InputDecoration(
+                  labelText: 'Start date (YYYY-MM-DD)',
+                ),
+              ),
+              TextField(
+                controller: endsAt,
+                decoration: const InputDecoration(
+                  labelText: 'End date (YYYY-MM-DD)',
+                ),
+              ),
+              DropdownButton<String>(
+                isExpanded: true,
+                value: const {'UPCOMING', 'ACTIVE', 'CLOSED'}.contains(status)
+                    ? status
+                    : 'UPCOMING',
+                items: const [
+                  DropdownMenuItem(value: 'UPCOMING', child: Text('UPCOMING')),
+                  DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                  DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => status = value ?? 'UPCOMING'),
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -790,13 +819,15 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Academic session updated.')));
+          const SnackBar(content: Text('Academic session updated.')),
+        );
         await _load();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
   }
@@ -805,9 +836,11 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     final termId = (row['_id'] ?? row['id'])?.toString();
     if (termId == null || termId.isEmpty) return;
     final startsAt = TextEditingController(
-        text: '${row['startsAt'] ?? row['startDate'] ?? ''}'.split('T').first);
+      text: '${row['startsAt'] ?? row['startDate'] ?? ''}'.split('T').first,
+    );
     final endsAt = TextEditingController(
-        text: '${row['endsAt'] ?? row['endDate'] ?? ''}'.split('T').first);
+      text: '${row['endsAt'] ?? row['endDate'] ?? ''}'.split('T').first,
+    );
     var status = '${row['status'] ?? 'UPCOMING'}'.toUpperCase();
     if (status == 'DRAFT') status = 'UPCOMING';
     final ok = await showDialog<bool>(
@@ -815,33 +848,39 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text('Edit term: ${row['name'] ?? ''}'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(
-                'Session: ${row['session'] is Map ? (row['session'] as Map)['name'] ?? 'Selected session' : row['session'] ?? 'Selected session'}'),
-            TextField(
-              controller: startsAt,
-              decoration:
-                  const InputDecoration(labelText: 'Start date (YYYY-MM-DD)'),
-            ),
-            TextField(
-              controller: endsAt,
-              decoration:
-                  const InputDecoration(labelText: 'End date (YYYY-MM-DD)'),
-            ),
-            DropdownButton<String>(
-              isExpanded: true,
-              value: const {'UPCOMING', 'ACTIVE', 'CLOSED'}.contains(status)
-                  ? status
-                  : 'UPCOMING',
-              items: const [
-                DropdownMenuItem(value: 'UPCOMING', child: Text('UPCOMING')),
-                DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
-                DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
-              ],
-              onChanged: (value) =>
-                  setDialogState(() => status = value ?? 'UPCOMING'),
-            ),
-          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Session: ${row['session'] is Map ? (row['session'] as Map)['name'] ?? 'Selected session' : row['session'] ?? 'Selected session'}',
+              ),
+              TextField(
+                controller: startsAt,
+                decoration: const InputDecoration(
+                  labelText: 'Start date (YYYY-MM-DD)',
+                ),
+              ),
+              TextField(
+                controller: endsAt,
+                decoration: const InputDecoration(
+                  labelText: 'End date (YYYY-MM-DD)',
+                ),
+              ),
+              DropdownButton<String>(
+                isExpanded: true,
+                value: const {'UPCOMING', 'ACTIVE', 'CLOSED'}.contains(status)
+                    ? status
+                    : 'UPCOMING',
+                items: const [
+                  DropdownMenuItem(value: 'UPCOMING', child: Text('UPCOMING')),
+                  DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                  DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => status = value ?? 'UPCOMING'),
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -863,14 +902,16 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         if (endsAt.text.trim().isNotEmpty) 'endsAt': endsAt.text.trim(),
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Academic term updated.')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Academic term updated.')));
         await _load();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     }
   }
@@ -1058,6 +1099,8 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     final endsAt = TextEditingController();
     String? selectedSession;
     String status = 'UPCOMING';
+    var createStandardTerms = type == 'session';
+    String? validationMessage;
     const termNames = ['First Term', 'Second Term', 'Third Term'];
     final ok = await showDialog<bool>(
       context: context,
@@ -1073,8 +1116,10 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                   value: termNames.contains(name.text) ? name.text : null,
                   hint: const Text('Select term'),
                   items: termNames
-                      .map((value) =>
-                          DropdownMenuItem(value: value, child: Text(value)))
+                      .map(
+                        (value) =>
+                            DropdownMenuItem(value: value, child: Text(value)),
+                      )
                       .toList(),
                   onChanged: (value) =>
                       setDialogState(() => name.text = value ?? ''),
@@ -1088,19 +1133,23 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                 TextField(
                   controller: startsAt,
                   decoration: const InputDecoration(
-                      labelText: 'Start date (YYYY-MM-DD)'),
+                    labelText: 'Start date (YYYY-MM-DD)',
+                  ),
                 ),
                 TextField(
                   controller: endsAt,
-                  decoration:
-                      const InputDecoration(labelText: 'End date (YYYY-MM-DD)'),
+                  decoration: const InputDecoration(
+                    labelText: 'End date (YYYY-MM-DD)',
+                  ),
                 ),
                 DropdownButton<String>(
                   isExpanded: true,
                   value: status,
                   items: const [
                     DropdownMenuItem(
-                        value: 'UPCOMING', child: Text('UPCOMING')),
+                      value: 'UPCOMING',
+                      child: Text('UPCOMING'),
+                    ),
                     DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
                     DropdownMenuItem(value: 'CLOSED', child: Text('CLOSED')),
                   ],
@@ -1132,6 +1181,26 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                     parent.text = value ?? '';
                   }),
                 ),
+              if (type == 'session')
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: createStandardTerms,
+                  title: const Text('Create First, Second and Third Terms'),
+                  subtitle: const Text(
+                    'Recommended for a new academic session.',
+                  ),
+                  onChanged: (value) => setDialogState(
+                    () => createStandardTerms = value ?? false,
+                  ),
+                ),
+              if (validationMessage != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    validationMessage!,
+                    style: TextStyle(color: Colors.red.shade700),
+                  ),
+                ),
             ],
           ),
           actions: [
@@ -1140,7 +1209,22 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(d, true),
+              onPressed: () {
+                final missing = <String>[
+                  if (name.text.trim().isEmpty)
+                    type == 'term' ? 'a term name' : 'a session name',
+                  if (type == 'term' && selectedSession == null)
+                    'an academic session',
+                ];
+                if (missing.isNotEmpty) {
+                  setDialogState(() {
+                    validationMessage =
+                        'Select ${missing.join(' and ')} before submitting.';
+                  });
+                  return;
+                }
+                Navigator.pop(d, true);
+              },
               child: const Text('Create'),
             ),
           ],
@@ -1151,6 +1235,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     try {
       final body = {
         'name': name.text.trim(),
+        if (type == 'session') 'createStandardTerms': createStandardTerms,
         if (type == 'session' || type == 'term') 'status': status,
         if (startsAt.text.trim().isNotEmpty) 'startsAt': startsAt.text.trim(),
         if (endsAt.text.trim().isNotEmpty) 'endsAt': endsAt.text.trim(),
@@ -1191,18 +1276,20 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
     if (!mounted) return;
     final amount = TextEditingController();
     String? sessionId, termId, classId;
+    String? validationMessage;
     String id(Map<String, dynamic> row) => (row['_id'] ?? row['id']).toString();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create draft fee'),
-        content: SingleChildScrollView(
-          child: StatefulBuilder(
-            builder: (context, setDialogState) => Column(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Create draft fee'),
+          content: SingleChildScrollView(
+            child: Column(
               children: [
                 TextField(
                   controller: amount,
                   keyboardType: TextInputType.number,
+                  onChanged: (_) => setDialogState(() {}),
                   decoration: const InputDecoration(labelText: 'Amount'),
                 ),
                 DropdownButton<String>(
@@ -1260,22 +1347,44 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                       .toList(),
                   onChanged: (value) => setDialogState(() => classId = value),
                 ),
+                if (validationMessage != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      validationMessage!,
+                      style: TextStyle(color: Colors.red.shade700),
+                    ),
+                  ),
               ],
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final parsed = double.tryParse(amount.text.trim());
+                final missing = <String>[
+                  if (parsed == null || parsed <= 0) 'a valid amount',
+                  if (sessionId == null) 'a session',
+                  if (termId == null) 'a term',
+                  if (classId == null) 'a class',
+                ];
+                if (missing.isNotEmpty) {
+                  setDialogState(
+                    () => validationMessage =
+                        'Select ${missing.join(', ')} before submitting.',
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Submit draft'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: sessionId != null && termId != null && classId != null
-                ? () => Navigator.pop(dialogContext, true)
-                : null,
-            child: const Text('Submit draft'),
-          ),
-        ],
       ),
     );
     if (ok != true) {
@@ -1295,6 +1404,49 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Draft fee submitted for approval.')),
+        );
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    }
+  }
+
+  Future<void> _setCurrentSession(Map<String, dynamic> row) async {
+    final id = (row['_id'] ?? row['id'])?.toString();
+    if (id == null || id.isEmpty) return;
+    try {
+      await api.updateAcademicSession(id, {
+        'status': 'ACTIVE',
+        'isCurrent': true,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Current academic session updated.')),
+        );
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    }
+  }
+
+  Future<void> _setCurrentTerm(Map<String, dynamic> row) async {
+    final id = (row['_id'] ?? row['id'])?.toString();
+    if (id == null || id.isEmpty) return;
+    try {
+      await api.updateAcademicTerm(id, {'status': 'ACTIVE', 'isCurrent': true});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Current academic term updated.')),
         );
         await _load();
       }

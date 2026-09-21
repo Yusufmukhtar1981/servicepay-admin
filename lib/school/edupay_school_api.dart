@@ -263,6 +263,11 @@ class EduPaySchoolApi {
       request('GET', '/edupay/school/classes');
   Future<Map<String, dynamic>> fees() => request('GET', '/edupay/school/fees');
 
+  /// Read-only, school-scoped savings projection. The backend derives the
+  /// school from the authenticated membership; no client school id is sent.
+  Future<Map<String, dynamic>> savings() =>
+      request('GET', '/edupay/school/savings');
+
   /// Student Activity Center endpoints are all resolved by the backend from
   /// the authenticated school session.  No schoolId supplied by the client is
   /// trusted, which keeps this API safe for multi-school staff accounts.

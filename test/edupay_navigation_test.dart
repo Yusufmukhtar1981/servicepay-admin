@@ -49,4 +49,19 @@ void main() {
     expect(labels, isNot(contains('My Classes')));
     expect(labels, isNot(contains('Attendance')));
   });
+
+  test('savings visibility is limited to manager and finance roles', () {
+    expect(
+      schoolPortalNavigationTabsForRole('OWNER'),
+      contains('School Fees Savings'),
+    );
+    expect(
+      schoolPortalNavigationTabsForRole('FINANCE'),
+      contains('School Fees Savings'),
+    );
+    expect(
+      schoolPortalNavigationTabsForRole('TEACHER'),
+      isNot(contains('School Fees Savings')),
+    );
+  });
 }

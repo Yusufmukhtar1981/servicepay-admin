@@ -179,6 +179,10 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   String? error;
   final schoolSearch = TextEditingController();
   String schoolStatus = 'ALL';
+  final savingsSearch = TextEditingController();
+  String savingsStatus = 'ALL';
+  final savingsDateFrom = TextEditingController();
+  final savingsDateTo = TextEditingController();
   final financeSections = const <String>[
     'Overview',
     'Schools & onboarding',
@@ -287,6 +291,24 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         if (mounted) setState(() => loading = false);
         return;
       }
+      if (section == 'Parents & plans' || section == 'Savings & transactions') {
+        final result = section == 'Parents & plans'
+            ? await _api.adminPlans(
+                search: savingsSearch.text,
+                status: savingsStatus,
+                dateFrom: savingsDateFrom.text,
+                dateTo: savingsDateTo.text,
+              )
+            : await _api.adminTransactions(
+                search: savingsSearch.text,
+                status: savingsStatus,
+                dateFrom: savingsDateFrom.text,
+                dateTo: savingsDateTo.text,
+              );
+        data = result;
+        if (mounted) setState(() => loading = false);
+        return;
+      }
       if (section == 'Launch Readiness') {
         await _loadReadiness();
         data = await _api.request('GET', '/admin/edupay/settings');
@@ -350,6 +372,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   @override
   void dispose() {
     schoolSearch.dispose();
+    savingsSearch.dispose();
+    savingsDateFrom.dispose();
+    savingsDateTo.dispose();
     super.dispose();
   }
 
@@ -441,7 +466,12 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     }
     if (section == 'Savings & transactions' || section == 'Reconciliation') {
       final rows = <Map<String, dynamic>>[];
-      for (final key in ['contributions', 'ledger', 'repaymentTransactions']) {
+      for (final key in [
+        'transactions',
+        'contributions',
+        'ledger',
+        'repaymentTransactions',
+      ]) {
         final value = data?[key];
         if (value is List) {
           rows.addAll(
@@ -451,7 +481,30 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           );
         }
       }
-      return rows;
+      return rows
+          .map(
+            (row) => {
+              if (row['targetAmount'] != null) ...{
+                'parent': row['parentName'] ?? row['parent'],
+                'student': row['studentName'] ?? row['student'],
+                'targetAmount': row['targetAmount'],
+                'amountSaved': row['amountSaved'] ?? row['saved'],
+                'remaining': row['remaining'] ?? row['remainingAmount'],
+                'status': row['status'],
+                'history': row['history'],
+              } else ...{
+                'date': row['date'] ?? row['createdAt'] ?? row['occurredAt'],
+                'reference': row['reference'] ?? row['transactionReference'],
+                'parent': row['parentName'] ?? row['parent'],
+                'student': row['studentName'] ?? row['student'],
+                'school': row['schoolName'] ?? row['school'],
+                'amount': row['amount'] ?? row['amountSaved'] ?? row['saved'],
+                'status': row['status'],
+                'type': row['type'] ?? row['transactionType'] ?? row['_source'],
+              },
+            },
+          )
+          .toList();
     }
     if (section == 'Sponsors') {
       final rows = <Map<String, dynamic>>[];
@@ -487,6 +540,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     final rows = value is List
         ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
         : <Map<String, dynamic>>[];
+    if (section == 'Parents & plans') {
+      return rows
+          .map(
+            (row) => {
+              'parent': row['parentName'] ?? row['parent'],
+              'student': row['studentName'] ?? row['student'],
+              'school': row['schoolName'] ?? row['school'],
+              'targetAmount': row['targetAmount'] ?? row['target'],
+              'amountSaved': row['amountSaved'] ?? row['saved'],
+              'remaining': row['remaining'] ?? row['remainingAmount'],
+              'status': row['status'],
+            },
+          )
+          .toList();
+    }
     if (section == 'Schools & onboarding' &&
         data?['onboardingRequests'] is List) {
       final requests = (data!['onboardingRequests'] as List)
@@ -640,7 +708,22 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                             else if (section == 'Settings')
                               _settingsView()
                             else
-                              _table(_rows()),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (section == 'Parents & plans' ||
+                                      section == 'Savings & transactions') ...[
+                                    _savingsSummary(),
+                                    const SizedBox(height: 14),
+                                    _savingsFilters(),
+                                    const SizedBox(height: 14),
+                                  ],
+                                  section == 'Parents & plans' ||
+                                          section == 'Savings & transactions'
+                                      ? _savingsTable(_rows())
+                                      : _table(_rows()),
+                                ],
+                              ),
                             if (section == 'Settlements') _settlementTools(),
                           ],
                         ),
@@ -698,6 +781,225 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
               ),
             )
             .toList(),
+      ),
+    );
+  }
+
+  Widget _savingsSummary() {
+    final summary = (data?['summary'] as Map?)?.cast<String, dynamic>() ?? {};
+    final keys = <String, String>{
+      'activePlans': 'Active plans',
+      'totalSaved': 'Total saved',
+      'completedPlans': 'Completed plans',
+    };
+    final values = keys.entries
+        .map((entry) => MapEntry(entry.value, summary[entry.key] ?? 0))
+        .toList();
+    if (values.every((entry) => entry.value == 0) && summary.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: values
+          .map(
+            (entry) => SizedBox(
+              width: 190,
+              child: Card(
+                child: ListTile(
+                  title: Text(entry.key),
+                  subtitle: Text(_display(entry.value)),
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _savingsFilters() => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 220,
+                child: TextField(
+                  controller: savingsSearch,
+                  decoration: const InputDecoration(
+                    labelText: 'Parent, student or school',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onSubmitted: (_) => _load(),
+                ),
+              ),
+              SizedBox(
+                width: 170,
+                child: DropdownButtonFormField<String>(
+                  value: savingsStatus,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text('All statuses')),
+                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
+                    DropdownMenuItem(
+                        value: 'COMPLETED', child: Text('COMPLETED')),
+                    DropdownMenuItem(value: 'PAUSED', child: Text('PAUSED')),
+                    DropdownMenuItem(
+                        value: 'CANCELLED', child: Text('CANCELLED')),
+                    DropdownMenuItem(value: 'SETTLED', child: Text('SETTLED')),
+                  ],
+                  onChanged: (value) {
+                    setState(() => savingsStatus = value ?? 'ALL');
+                    _load();
+                  },
+                ),
+              ),
+              SizedBox(
+                width: 145,
+                child: TextField(
+                  controller: savingsDateFrom,
+                  decoration:
+                      const InputDecoration(labelText: 'From (YYYY-MM-DD)'),
+                  onSubmitted: (_) => _load(),
+                ),
+              ),
+              SizedBox(
+                width: 145,
+                child: TextField(
+                  controller: savingsDateTo,
+                  decoration:
+                      const InputDecoration(labelText: 'To (YYYY-MM-DD)'),
+                  onSubmitted: (_) => _load(),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.filter_alt_outlined),
+                label: const Text('Apply filters'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  String _savingsText(Map<String, dynamic> row, String key) {
+    final value = row[key];
+    if (value == null) return '—';
+    return value.toString();
+  }
+
+  Widget _savingsTable(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return const _Empty();
+    final plans = section == 'Parents & plans';
+    final columns = plans
+        ? const [
+            'Parent',
+            'Student',
+            'School',
+            'Target',
+            'Saved',
+            'Remaining',
+            'Status',
+            'History',
+          ]
+        : const [
+            'Date',
+            'Reference',
+            'Parent',
+            'Student',
+            'School',
+            'Amount',
+            'Status',
+            'Type',
+          ];
+    return Card(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns:
+              columns.map((label) => DataColumn(label: Text(label))).toList(),
+          rows: rows.map((row) {
+            final cells = plans
+                ? <DataCell>[
+                    DataCell(Text(_savingsText(row, 'parent'))),
+                    DataCell(Text(_savingsText(row, 'student'))),
+                    DataCell(Text(_savingsText(row, 'school'))),
+                    DataCell(Text(_savingsText(row, 'targetAmount'))),
+                    DataCell(Text(_savingsText(row, 'amountSaved'))),
+                    DataCell(Text(_savingsText(row, 'remaining'))),
+                    DataCell(Text(_savingsText(row, 'status'))),
+                    DataCell(
+                      TextButton(
+                        onPressed: () => _showSavingsHistory(row),
+                        child: const Text('View history'),
+                      ),
+                    ),
+                  ]
+                : <DataCell>[
+                    DataCell(
+                      Text(
+                        _savingsText(
+                                  row,
+                                  'date',
+                                ) ==
+                                '—'
+                            ? (_savingsText(row, 'createdAt') == '—'
+                                ? '—'
+                                : _savingsText(row, 'createdAt'))
+                            : _savingsText(row, 'date'),
+                      ),
+                    ),
+                    DataCell(Text(_savingsText(row, 'reference'))),
+                    DataCell(Text(_savingsText(row, 'parent'))),
+                    DataCell(Text(_savingsText(row, 'student'))),
+                    DataCell(Text(_savingsText(row, 'school'))),
+                    DataCell(Text(_savingsText(row, 'amount'))),
+                    DataCell(Text(_savingsText(row, 'status'))),
+                    DataCell(Text(_savingsText(row, 'type'))),
+                  ];
+            return DataRow(cells: cells);
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _showSavingsHistory(Map<String, dynamic> row) {
+    final history = row['history'];
+    final entries =
+        history is List ? history.whereType<Map>().toList() : const [];
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Savings history'),
+        content: entries.isEmpty
+            ? const Text('No savings history is available for this plan.')
+            : SizedBox(
+                width: 520,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: entries.map((entry) {
+                    final item = Map<String, dynamic>.from(entry);
+                    return ListTile(
+                      title: Text(
+                        '${item['amount'] ?? item['amountSaved'] ?? '—'} · ${item['status'] ?? '—'}',
+                      ),
+                      subtitle: Text(
+                        '${item['date'] ?? item['createdAt'] ?? '—'} · ${item['reference'] ?? '—'}',
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
@@ -1175,6 +1477,21 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
   }
 
   Widget _table(List<Map<String, dynamic>> rows) {
+    if (section == 'Parents & plans' || section == 'Savings & transactions') {
+      rows = rows
+          .map(
+            (row) => Map<String, dynamic>.fromEntries(
+              row.entries.where(
+                (entry) =>
+                    !entry.key.startsWith('_') &&
+                    entry.key != '_id' &&
+                    entry.key != 'id' &&
+                    !entry.key.toLowerCase().contains('token'),
+              ),
+            ),
+          )
+          .toList();
+    }
     if (section == 'Schools & onboarding') {
       rows = rows.where((r) {
         final q = schoolSearch.text.trim().toLowerCase();
@@ -1244,14 +1561,16 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                                           onPressed: () =>
                                               _openAcademicProfile(r),
                                           child: const Text(
-                                              'Open Academic Profile'),
+                                            'Open Academic Profile',
+                                          ),
                                         ),
                                         if (canManageEduPay)
                                           IconButton(
                                             tooltip: 'Edit school metadata',
                                             onPressed: () => _editSchool(r),
-                                            icon:
-                                                const Icon(Icons.edit_outlined),
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                            ),
                                           ),
                                         if (canManageEduPay)
                                           IconButton(
@@ -1260,7 +1579,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
                                             onPressed: () =>
                                                 _resetSchoolPassword(r),
                                             icon: const Icon(
-                                                Icons.lock_reset_outlined),
+                                              Icons.lock_reset_outlined,
+                                            ),
                                           ),
                                       ],
                                       if (section == 'Schools & onboarding' &&
@@ -1700,27 +2020,31 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
           child: SingleChildScrollView(
             child: Column(
               children: fields
-                  .map((f) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: TextField(
-                          controller: controllers[f],
-                          obscureText: f == 'temporaryPassword',
-                          keyboardType:
-                              f == 'email' ? TextInputType.emailAddress : null,
-                          decoration: InputDecoration(labelText: f),
-                        ),
-                      ))
+                  .map(
+                    (f) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: TextField(
+                        controller: controllers[f],
+                        obscureText: f == 'temporaryPassword',
+                        keyboardType:
+                            f == 'email' ? TextInputType.emailAddress : null,
+                        decoration: InputDecoration(labelText: f),
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('Create')),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Create'),
+          ),
         ],
       ),
     );
@@ -1734,7 +2058,8 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
         (body['email'] ?? '').toString().isEmpty ||
         (body['temporaryPassword'] ?? '').toString().length < 8) {
       _showError(
-          'School name, email and a temporary password of at least 8 characters are required.');
+        'School name, email and a temporary password of at least 8 characters are required.',
+      );
       return;
     }
     try {
@@ -1757,32 +2082,39 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       'phone',
       'address',
       'state',
-      'lga'
+      'lga',
     ];
     final controllers = {
       for (final f in fields)
         f: TextEditingController(
-            text: '${row[f] ?? row[_schoolAlias(f)] ?? ''}'),
+          text: '${row[f] ?? row[_schoolAlias(f)] ?? ''}',
+        ),
     };
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
         title: const Text('Edit school metadata'),
         content: SingleChildScrollView(
-            child: Column(
-          children: fields
-              .map((f) => TextField(
-                  controller: controllers[f],
-                  decoration: InputDecoration(labelText: f)))
-              .toList(),
-        )),
+          child: Column(
+            children: fields
+                .map(
+                  (f) => TextField(
+                    controller: controllers[f],
+                    decoration: InputDecoration(labelText: f),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('Save')),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -1815,25 +2147,34 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
       context: context,
       builder: (d) => AlertDialog(
         title: const Text('Reset administrator password'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
               controller: password,
               obscureText: true,
               decoration: const InputDecoration(
-                  labelText: 'Strong temporary password')),
-          TextField(
+                labelText: 'Strong temporary password',
+              ),
+            ),
+            TextField(
               controller: confirm,
               obscureText: true,
               decoration: const InputDecoration(
-                  labelText: 'Confirm temporary password')),
-        ]),
+                labelText: 'Confirm temporary password',
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('Reset password')),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Reset password'),
+          ),
         ],
       ),
     );
@@ -1851,10 +2192,9 @@ class _EduPayControlCenterScreenState extends State<EduPayControlCenterScreen> {
     }
   }
 
-  void _showSuccess(String message) =>
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+  void _showSuccess(String message) => ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
   Future<void> _schoolAction(Map<String, dynamic> row, String action) async {
     final id = row['id']?.toString() ?? row['_id']?.toString();
     if (id == null || id.isEmpty) return;

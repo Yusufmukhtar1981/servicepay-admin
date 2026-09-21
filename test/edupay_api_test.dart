@@ -413,6 +413,95 @@ void main() {
     });
   });
 
+  test('school savings visibility is read-only and tenant-derived', () async {
+    final requests = <http.Request>[];
+    final api = EduPaySchoolApi(
+      baseUrl: 'https://example.test/api',
+      client: MockClient((value) async {
+        requests.add(value);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'summary': {'activePlans': 1},
+            'plans': [
+              {
+                'student': 'Student',
+                'target': 1000,
+                'saved': 250,
+                'status': 'ACTIVE',
+              },
+            ],
+            'history': const [],
+          }),
+          200,
+        );
+      }),
+    );
+    final result = await api.savings();
+    expect(requests, hasLength(1));
+    final request = requests.single;
+    expect(request.method, 'GET');
+    expect(request.url.path, '/api/edupay/school/savings');
+    expect(request.url.queryParameters.containsKey('schoolId'), isFalse);
+    expect(result['plans'], isA<List>());
+  });
+
+  test(
+    'admin savings methods use server-side filters and never expose ids',
+    () async {
+      final requests = <http.Request>[];
+      final api = EduPayApi(
+        baseUrl: 'https://example.test/api',
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'summary': {
+                'activePlans': 1,
+                'totalSaved': 250,
+                'completedPlans': 0,
+              },
+              'plans': [
+                {
+                  'parent': 'Parent',
+                  'student': 'Student',
+                  'school': 'School',
+                  'target': 1000,
+                  'saved': 250,
+                  'remaining': 750,
+                  'status': 'ACTIVE',
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      final result = await api.adminPlans(
+        search: 'Student',
+        status: 'ACTIVE',
+        dateFrom: '2026-01-01',
+        dateTo: '2026-01-31',
+      );
+      await api.adminTransactions(status: 'COMPLETED');
+      expect(result['plans'], isA<List>());
+      expect(requests.first.method, 'GET');
+      expect(requests.first.url.path, '/api/admin/edupay/plans');
+      expect(requests.first.url.queryParameters, {
+        'search': 'Student',
+        'status': 'ACTIVE',
+        'dateFrom': '2026-01-01',
+        'dateTo': '2026-01-31',
+      });
+      expect(requests.every((request) => request.method != 'POST'), isTrue);
+      expect(
+        requests.every((request) => !request.url.path.contains('/_id')),
+        isTrue,
+      );
+    },
+  );
+
   test(
     'Student Activity Center uses school-scoped activity contracts',
     () async {

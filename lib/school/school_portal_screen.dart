@@ -21,6 +21,7 @@ List<String> schoolPortalNavigationTabsForRole(String role) {
       'Parents',
       'Academic Sessions',
       'Fees / EduPay',
+      'School Fees Savings',
       'Notifications',
       'Settings',
       'Logout',
@@ -31,6 +32,7 @@ List<String> schoolPortalNavigationTabsForRole(String role) {
       'Dashboard',
       'Students',
       'Expected School Fees',
+      'School Fees Savings',
       'Upcoming Settlements',
       'Completed Settlements',
       'Reconciliation',
@@ -143,6 +145,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         'Fee Structures' => '/edupay/school/fees',
         'Fees / EduPay' => '/edupay/school/fees',
         'Expected School Fees' => '/edupay/school/fees',
+        'School Fees Savings' => '/edupay/school/savings',
         'Upcoming Settlements' => '/edupay/school/settlements',
         'Completed Settlements' => '/edupay/school/settlements',
         'Servicepay 5% Commission' => '/edupay/school/settlements',
@@ -237,9 +240,7 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
   @override
   Widget build(BuildContext context) {
     if (!roleLoaded) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
       drawer: MediaQuery.sizeOf(context).width < 700
@@ -342,158 +343,164 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
                           const SizedBox(height: 20),
                           tab == 'Profile'
                               ? _profileCard()
-                              : (teacherRole ||
-                                      const {
-                                        'Teachers',
-                                        'Classes',
-                                        'Subjects',
-                                        'Attendance',
-                                        'Results / Report Cards',
-                                        'Timetable',
-                                        'Activities / Updates',
-                                        'Academic Sessions',
-                                      }.contains(tab))
-                                  ? AcademicOperationsScreen(
-                                      api: api,
-                                      manager: managerRole,
-                                      teacher: teacherRole,
-                                      initialSection: switch (tab) {
-                                        'My Classes' => 'Classes & subjects',
-                                        'My Students' => 'Students',
-                                        'Teachers' => 'Teachers',
-                                        'Classes' => 'Classes & subjects',
-                                        'Subjects' => 'Classes & subjects',
-                                        'Attendance' => 'Attendance',
-                                        'Results / Report Cards' =>
-                                          'Assessments',
-                                        'Results / Assessments' =>
-                                          'Assessments',
-                                        'Timetable' => 'Timetable',
-                                        'Activities / Updates' => 'Activities',
-                                        'Activities' => 'Activities',
-                                        'Academic Sessions' =>
-                                          'Sessions & terms',
-                                        'Announcements' => 'Activities',
-                                        'Assignments' => 'Activities',
-                                        _ => 'Dashboard',
-                                      },
-                                      allowedSections: managerRole
-                                          ? null
-                                          : const [
-                                              'Dashboard',
-                                              'Classes & subjects',
-                                              'Students',
-                                              'Attendance',
-                                              'Assessments',
-                                              'Timetable',
-                                              'Activities',
-                                            ],
-                                    )
-                                  : tab == 'Parents'
-                                      ? StudentActivityCenterScreen(
+                              : tab == 'School Fees Savings'
+                                  ? _savingsView()
+                                  : (teacherRole ||
+                                          const {
+                                            'Teachers',
+                                            'Classes',
+                                            'Subjects',
+                                            'Attendance',
+                                            'Results / Report Cards',
+                                            'Timetable',
+                                            'Activities / Updates',
+                                            'Academic Sessions',
+                                          }.contains(tab))
+                                      ? AcademicOperationsScreen(
                                           api: api,
-                                          initialSection: 'Parents/Guardians',
-                                          onOpenStudents: () {
-                                            setState(() => tab = 'Students');
-                                            _load();
+                                          manager: managerRole,
+                                          teacher: teacherRole,
+                                          initialSection: switch (tab) {
+                                            'My Classes' =>
+                                              'Classes & subjects',
+                                            'My Students' => 'Students',
+                                            'Teachers' => 'Teachers',
+                                            'Classes' => 'Classes & subjects',
+                                            'Subjects' => 'Classes & subjects',
+                                            'Attendance' => 'Attendance',
+                                            'Results / Report Cards' =>
+                                              'Assessments',
+                                            'Results / Assessments' =>
+                                              'Assessments',
+                                            'Timetable' => 'Timetable',
+                                            'Activities / Updates' =>
+                                              'Activities',
+                                            'Activities' => 'Activities',
+                                            'Academic Sessions' =>
+                                              'Sessions & terms',
+                                            'Announcements' => 'Activities',
+                                            'Assignments' => 'Activities',
+                                            _ => 'Dashboard',
                                           },
+                                          allowedSections: managerRole
+                                              ? null
+                                              : const [
+                                                  'Dashboard',
+                                                  'Classes & subjects',
+                                                  'Students',
+                                                  'Attendance',
+                                                  'Assessments',
+                                                  'Timetable',
+                                                  'Activities',
+                                                ],
                                         )
-                                      : tab == 'Notifications'
+                                      : tab == 'Parents'
                                           ? StudentActivityCenterScreen(
                                               api: api,
-                                              initialSection: 'Announcements',
+                                              initialSection:
+                                                  'Parents/Guardians',
+                                              onOpenStudents: () {
+                                                setState(
+                                                    () => tab = 'Students');
+                                                _load();
+                                              },
                                             )
-                                          : tab == 'Academic workspace'
-                                              ? AcademicOperationsScreen(
-                                                  api: api)
-                                              : tab == 'Dashboard'
-                                                  ? _dashboard()
-                                                  : tab == 'Academic setup'
-                                                      ? _academicSetup()
-                                                      : const {
-                                                          'Academic Sessions',
-                                                          'Terms',
-                                                          'Classes',
-                                                          'Fee Structures',
-                                                        }.contains(tab)
-                                                          ? Column(
-                                                              children: [
-                                                                Align(
-                                                                  alignment:
-                                                                      Alignment
-                                                                          .centerLeft,
-                                                                  child:
-                                                                      FilledButton
-                                                                          .icon(
-                                                                    onPressed: tab ==
-                                                                            'Fee Structures'
-                                                                        ? _createFee
-                                                                        : () =>
-                                                                            _academicDialog(
-                                                                              tab == 'Academic Sessions'
-                                                                                  ? 'session'
-                                                                                  : tab == 'Terms'
-                                                                                      ? 'term'
-                                                                                      : 'class',
-                                                                            ),
-                                                                    icon: const Icon(
-                                                                        Icons
-                                                                            .add),
-                                                                    label: Text(
-                                                                        'Create $tab'),
-                                                                  ),
-                                                                ),
-                                                                const SizedBox(
-                                                                    height: 12),
-                                                                _records(),
-                                                              ],
-                                                            )
-                                                          : tab == 'Draft fees'
+                                          : tab == 'Notifications'
+                                              ? StudentActivityCenterScreen(
+                                                  api: api,
+                                                  initialSection:
+                                                      'Announcements',
+                                                )
+                                              : tab == 'Academic workspace'
+                                                  ? AcademicOperationsScreen(
+                                                      api: api)
+                                                  : tab == 'Dashboard'
+                                                      ? _dashboard()
+                                                      : tab == 'Academic setup'
+                                                          ? _academicSetup()
+                                                          : const {
+                                                              'Academic Sessions',
+                                                              'Terms',
+                                                              'Classes',
+                                                              'Fee Structures',
+                                                            }.contains(tab)
                                                               ? Column(
-                                                                  crossAxisAlignment:
-                                                                      CrossAxisAlignment
-                                                                          .start,
                                                                   children: [
-                                                                    FilledButton
-                                                                        .icon(
-                                                                      onPressed:
-                                                                          _createFee,
-                                                                      icon: const Icon(
-                                                                          Icons
-                                                                              .add),
-                                                                      label: const Text(
-                                                                          'Create draft fee'),
+                                                                    Align(
+                                                                      alignment:
+                                                                          Alignment
+                                                                              .centerLeft,
+                                                                      child: FilledButton
+                                                                          .icon(
+                                                                        onPressed: tab ==
+                                                                                'Fee Structures'
+                                                                            ? _createFee
+                                                                            : () =>
+                                                                                _academicDialog(
+                                                                                  tab == 'Academic Sessions'
+                                                                                      ? 'session'
+                                                                                      : tab == 'Terms'
+                                                                                          ? 'term'
+                                                                                          : 'class',
+                                                                                ),
+                                                                        icon: const Icon(
+                                                                            Icons.add),
+                                                                        label: Text(
+                                                                            'Create $tab'),
+                                                                      ),
                                                                     ),
                                                                     const SizedBox(
                                                                         height:
-                                                                            18),
-                                                                    const Card(
-                                                                      child:
-                                                                          Padding(
-                                                                        padding:
-                                                                            EdgeInsets.all(24),
-                                                                        child:
-                                                                            Text(
-                                                                          'Draft fees are submitted to Head Office for approval.',
-                                                                        ),
-                                                                      ),
-                                                                    ),
+                                                                            12),
+                                                                    _records(),
                                                                   ],
                                                                 )
                                                               : tab ==
-                                                                      'Settings'
-                                                                  ? const Card(
-                                                                      child:
-                                                                          Padding(
-                                                                        padding:
-                                                                            EdgeInsets.all(24),
-                                                                        child:
-                                                                            Text(
-                                                                          'School settings are managed by Head Office.',
+                                                                      'Draft fees'
+                                                                  ? Column(
+                                                                      crossAxisAlignment:
+                                                                          CrossAxisAlignment
+                                                                              .start,
+                                                                      children: [
+                                                                        FilledButton
+                                                                            .icon(
+                                                                          onPressed:
+                                                                              _createFee,
+                                                                          icon:
+                                                                              const Icon(Icons.add),
+                                                                          label:
+                                                                              const Text('Create draft fee'),
                                                                         ),
-                                                                      ),
+                                                                        const SizedBox(
+                                                                            height:
+                                                                                18),
+                                                                        const Card(
+                                                                          child:
+                                                                              Padding(
+                                                                            padding:
+                                                                                EdgeInsets.all(24),
+                                                                            child:
+                                                                                Text(
+                                                                              'Draft fees are submitted to Head Office for approval.',
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      ],
                                                                     )
-                                                                  : _records(),
+                                                                  : tab ==
+                                                                          'Settings'
+                                                                      ? const Card(
+                                                                          child:
+                                                                              Padding(
+                                                                            padding:
+                                                                                EdgeInsets.all(24),
+                                                                            child:
+                                                                                Text(
+                                                                              'School settings are managed by Head Office.',
+                                                                            ),
+                                                                          ),
+                                                                        )
+                                                                      : _records(),
                         ],
                       ),
           ),
@@ -692,6 +699,143 @@ class _SchoolPortalScreenState extends State<SchoolPortalScreen> {
         ),
       ),
     );
+  }
+
+  Widget _savingsView() {
+    final summary = (data?['summary'] as Map?)?.cast<String, dynamic>() ?? {};
+    final plans = _list(data ?? const {}, 'plans');
+    final history = _list(data ?? const {}, 'history');
+    final rows = plans.isNotEmpty ? plans : history;
+    final columns = <String, String>{
+      'student': 'Student',
+      'className': 'Class',
+      'targetAmount': 'Fee target',
+      'amountSaved': 'Saved',
+      'remaining': 'Outstanding',
+      'status': 'Plan/payment status',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (summary.isNotEmpty)
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: summary.entries
+                .map(
+                  (entry) => SizedBox(
+                    width: 190,
+                    child: Card(
+                      child: ListTile(
+                        title: Text(entry.key),
+                        subtitle: Text('${entry.value ?? '—'}'),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No school-fee savings records are available yet.'),
+            ),
+          )
+        else
+          Card(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: columns.values
+                    .map((label) => DataColumn(label: Text(label)))
+                    .toList(),
+                rows: rows
+                    .map(
+                      (row) => DataRow(
+                        cells: columns.keys
+                            .map(
+                              (key) => DataCell(
+                                Text('${_savingsValue(row, key) ?? '—'}'),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+        if (history.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text(
+            'Saving history',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Date')),
+                  DataColumn(label: Text('Amount')),
+                  DataColumn(label: Text('Status')),
+                  DataColumn(label: Text('Reference')),
+                ],
+                rows: history
+                    .map(
+                      (entry) => DataRow(
+                        cells: [
+                          DataCell(
+                            Text(
+                              '${entry['createdAt'] ?? entry['date'] ?? '—'}',
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              '${entry['amount'] ?? entry['amountSaved'] ?? entry['saved'] ?? '—'}',
+                            ),
+                          ),
+                          DataCell(Text('${entry['status'] ?? '—'}')),
+                          DataCell(
+                            Text(
+                              '${entry['reference'] ?? entry['transactionReference'] ?? '—'}',
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          'Read-only school visibility. Parent balances and savings ledger entries cannot be edited here.',
+          style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  String _savingsAlias(String key) => switch (key) {
+        'student' => 'studentName',
+        'className' => 'class',
+        'amountSaved' => 'saved',
+        'remaining' => 'remainingAmount',
+        _ => key,
+      };
+
+  dynamic _savingsValue(Map<String, dynamic> row, String key) {
+    final value = row[key] ?? row[_savingsAlias(key)];
+    if (value != null) return value;
+    if (key == 'remaining') {
+      return row['remainingAmount'] ?? row['remaining'];
+    }
+    return null;
   }
 
   Widget _academicSetup() => Column(

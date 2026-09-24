@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../lib/admin/phase1_operations_api.dart';
 import '../lib/admin/main_navigation.dart';
+import '../lib/admin/admin_permissions.dart';
 import '../lib/admin/phase1_operations_screen.dart';
 import '../lib/admin/roles_permissions_screen.dart';
 
@@ -141,6 +142,79 @@ void main() {
     expect(requests, hasLength(2));
     expect(requests[0].headers['idempotency-key'], 'same-attempt');
     expect(requests[1].headers['idempotency-key'], 'same-attempt');
+  });
+
+  test('hierarchy assignment client preserves audit contract', () async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'token'});
+    final requests = <http.Request>[];
+    final api = Phase1OperationsApi(
+      client: MockClient((request) async {
+        requests.add(request);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'duplicate': false,
+            'records': <dynamic>[],
+          }),
+          200,
+        );
+      }),
+    );
+    await api.hierarchyUsers(role: 'AGENT', search: 'Ada', page: 2);
+    await api.assignHierarchy(
+      userId: 'agent-1',
+      parentId: 'state-2',
+      reason: 'Regional coverage change',
+      requestId: 'request-1',
+    );
+    await api.hierarchyHistory(role: 'AGENT', type: 'REASSIGNMENT');
+    expect(requests[0].url.path, '/api/admin/hierarchy/users');
+    expect(requests[0].url.queryParameters['role'], 'AGENT');
+    expect(requests[0].url.queryParameters['search'], 'Ada');
+    expect(requests[1].url.path, '/api/admin/hierarchy/assignments');
+    expect(jsonDecode(requests[1].body), {
+      'userId': 'agent-1',
+      'parentId': 'state-2',
+      'reason': 'Regional coverage change',
+      'requestId': 'request-1',
+    });
+    expect(requests[2].url.path, '/api/admin/hierarchy/history');
+    expect(requests[2].url.queryParameters['type'], 'REASSIGNMENT');
+  });
+
+  test('hierarchy management is never granted to scoped manager roles', () {
+    expect(
+      AdminAccess(
+        role: 'STATE_MANAGER',
+        permissions: <String>{'hierarchy.manage'},
+      ).hasHeadOfficePermission('hierarchy.manage'),
+      isFalse,
+    );
+    expect(
+      AdminAccess(
+        role: 'HEAD_OFFICE',
+        permissions: <String>{'hierarchy.manage'},
+      ).hasHeadOfficePermission('hierarchy.manage'),
+      isTrue,
+    );
+    expect(
+      AdminMainNavigation.visibleDestinationLabels(
+        AdminAccess(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{'hierarchy.manage'},
+        ),
+      ),
+      contains('Hierarchy Management'),
+    );
+    expect(
+      AdminMainNavigation.visibleDestinationLabels(
+        AdminAccess(
+          role: 'STATE_MANAGER',
+          permissions: <String>{'hierarchy.manage'},
+        ),
+      ),
+      isNot(contains('Hierarchy Management')),
+    );
   });
 
   testWidgets(

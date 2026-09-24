@@ -49,6 +49,7 @@ import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
 import 'svp_management_screen.dart';
 import 'edupay_control_center_screen.dart';
+import 'phase1_operations_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -526,6 +527,23 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_balance_wallet_outlined,
         activeIcon: Icons.account_balance_wallet_rounded,
         label: 'Wallet',
+      );
+    }
+
+    if (isHeadOffice ||
+        const <String>{
+          'ZONAL_MANAGER',
+          'STATE_MANAGER',
+          'AGENT',
+          'AGGREGATOR',
+        }.contains(AdminAccess.normalizeRole(adminRole))) {
+      addNavigationPage(
+        page: Phase1OperationsScreen(
+          role: adminRole,
+        ),
+        icon: Icons.account_tree_outlined,
+        activeIcon: Icons.account_tree_rounded,
+        label: 'Hierarchy & Wallet Operations',
       );
     }
 

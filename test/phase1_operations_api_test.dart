@@ -1,12 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../lib/admin/phase1_operations_api.dart';
 import '../lib/admin/main_navigation.dart';
+import '../lib/admin/phase1_operations_screen.dart';
 
 void main() {
   test('manager visibility is role-scoped and wallet adjustment is exact', () {
@@ -127,5 +129,93 @@ void main() {
     expect(requests, hasLength(2));
     expect(requests[0].headers['idempotency-key'], 'same-attempt');
     expect(requests[1].headers['idempotency-key'], 'same-attempt');
+  });
+
+  testWidgets(
+      'Head Office without exact wallet permission keeps hierarchy only',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Phase1OperationsScreen(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{},
+        ),
+      ),
+    );
+    expect(find.text('Create Zonal Manager'), findsNWidgets(2));
+    expect(find.text('Manual customer wallet adjustment'), findsNothing);
+  });
+
+  testWidgets('Head Office exact wallet permission renders wallet controls',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Phase1OperationsScreen(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{'wallets.adjust'},
+        ),
+      ),
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pump();
+    expect(find.textContaining('Manual customer wallet adjustment'),
+        findsOneWidget);
+    expect(find.text('Search customers'), findsOneWidget);
+  });
+
+  testWidgets('downline totals, recent rows and pagination render',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'token'});
+    final api = Phase1OperationsApi(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/summary')) {
+          return http.Response(
+            jsonEncode({
+              'summary': {
+                'totalDownline': 4,
+                'customers': 2,
+                'transactionCount': 7,
+                'transactionValue': 1250,
+                'recentTransactions': [
+                  {'type': 'Airtime', 'status': 'SUCCESS', 'amount': 100},
+                ],
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'transactions': List.generate(
+              25,
+              (index) => {
+                'type': 'Transfer',
+                'status': 'SUCCESS',
+                'amount': index,
+              },
+            ),
+          }),
+          200,
+        );
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Phase1OperationsScreen(
+          role: 'STATE_MANAGER',
+          api: api,
+        ),
+      ),
+    );
+    await tester.tap(find.text('View permitted downline summary'));
+    await tester.pumpAndSettle();
+    expect(find.text('Total downline: 4'), findsOneWidget);
+    expect(find.text('Customers: 2'), findsOneWidget);
+    expect(find.text('Transactions: 7'), findsOneWidget);
+    expect(find.text('Value: 1250'), findsOneWidget);
+    expect(find.text('Recent transactions'), findsOneWidget);
+    expect(find.text('Transactions (page 1)'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Next'), 400);
+    expect(find.text('Next'), findsOneWidget);
   });
 }

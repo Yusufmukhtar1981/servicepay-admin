@@ -7,10 +7,12 @@ class Phase1OperationsScreen extends StatefulWidget {
     super.key,
     this.api,
     required this.role,
+    this.permissions = const <String>{},
   });
 
   final Phase1OperationsApi? api;
   final String role;
+  final Set<String> permissions;
 
   @override
   State<Phase1OperationsScreen> createState() => _Phase1OperationsScreenState();
@@ -33,6 +35,7 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
   List<dynamic> _customers = <dynamic>[];
   Map<String, dynamic> _summary = <String, dynamic>{};
   List<dynamic> _transactions = <dynamic>[];
+  List<dynamic> _recentTransactions = <dynamic>[];
   int _transactionPage = 1;
   String? _walletIntentKey;
   Map<String, dynamic>? _selectedCustomer;
@@ -45,6 +48,10 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
         'AGENT',
         'AGGREGATOR',
       }.contains(widget.role.trim().toUpperCase());
+  bool get _canAdjustWallet =>
+      widget.permissions.map((value) => value.trim().toLowerCase()).contains(
+            'wallets.adjust',
+          );
 
   @override
   void dispose() {
@@ -181,6 +188,8 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
           _summary = Map<String, dynamic>.from(
             (summary['summary'] is Map ? summary['summary'] : summary),
           );
+          final recent = _summary['recentTransactions'];
+          _recentTransactions = recent is List ? recent : <dynamic>[];
           final rows = transactions['transactions'] ?? transactions['items'];
           _transactions = rows is List ? rows : <dynamic>[];
         });
@@ -251,40 +260,48 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
         decoration: InputDecoration(labelText: label),
       );
 
+  Widget _transactionTile(dynamic row) => ListTile(
+        dense: true,
+        title: Text('${row['type'] ?? row['serviceType'] ?? 'Transaction'}'),
+        subtitle: Text('${row['status'] ?? ''}  ${row['amount'] ?? ''}'),
+      );
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Phase 1 Operations')),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_message != null)
-              Card(
-                color: Colors.amber.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(_message!),
-                ),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Phase 1 Operations')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_message != null)
+            Card(
+              color: Colors.amber.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(_message!),
               ),
-            if (_isHeadOffice) ...[
-              const Text('Create Zonal Manager',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              _field(_name, 'Full name'),
-              _field(_email, 'Email'),
-              _field(_phone, 'Phone'),
-              _field(_password, 'Temporary password'),
-              _field(_zone, 'Zone (required)'),
-              _field(_state, 'State (optional)'),
-              FilledButton(
-                onPressed: _busy ? null : _createZonal,
-                child: const Text('Create Zonal Manager'),
-              ),
-              const Divider(height: 32),
-              const Text('Promote existing account',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              FilledButton.tonal(
-                onPressed: _busy ? null : _promote,
-                child: const Text('Choose account and target role'),
-              ),
+            ),
+          if (_isHeadOffice) ...[
+            const Text('Create Zonal Manager',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            _field(_name, 'Full name'),
+            _field(_email, 'Email'),
+            _field(_phone, 'Phone'),
+            _field(_password, 'Temporary password'),
+            _field(_zone, 'Zone (required)'),
+            _field(_state, 'State (optional)'),
+            FilledButton(
+              onPressed: _busy ? null : _createZonal,
+              child: const Text('Create Zonal Manager'),
+            ),
+            const Divider(height: 32),
+            const Text('Promote existing account',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            FilledButton.tonal(
+              onPressed: _busy ? null : _promote,
+              child: const Text('Choose account and target role'),
+            ),
+            if (_canAdjustWallet) ...<Widget>[
               const Divider(height: 32),
               const Text('Manual customer wallet adjustment',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -335,63 +352,71 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
                 ),
               ],
             ],
-            if (_isManager)
-              OutlinedButton(
-                onPressed: _busy ? null : _loadDownline,
-                child: const Text('View permitted downline summary'),
-              ),
-            if (_summary.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('Permitted downline summary',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Wrap(
-                spacing: 8,
-                children: _summary.entries
-                    .where((entry) => entry.value is num)
-                    .map(
-                      (entry) => Chip(
-                        label: Text('${entry.key}: ${entry.value}'),
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 8),
-              Text('Transactions (page $_transactionPage)'),
-              ..._transactions.map(
-                (row) => ListTile(
-                  dense: true,
-                  title: Text(
-                    '${row['type'] ?? row['serviceType'] ?? 'Transaction'}',
-                  ),
-                  subtitle: Text(
-                    '${row['status'] ?? ''}  ${row['amount'] ?? ''}',
-                  ),
+          ],
+          if (_isManager)
+            OutlinedButton(
+              onPressed: _busy ? null : _loadDownline,
+              child: const Text('View permitted downline summary'),
+            ),
+          if (_summary.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('Permitted downline summary',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Wrap(spacing: 8, children: [
+              Chip(
+                label: Text(
+                  'Total downline: ${_summary['totalDownline'] ?? 0}',
                 ),
               ),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: _transactionPage <= 1 || _busy
-                        ? null
-                        : () {
-                            setState(() => _transactionPage--);
-                            _loadDownline();
-                          },
-                    child: const Text('Previous'),
-                  ),
-                  TextButton(
-                    onPressed: _transactions.length < 25 || _busy
-                        ? null
-                        : () {
-                            setState(() => _transactionPage++);
-                            _loadDownline();
-                          },
-                    child: const Text('Next'),
-                  ),
-                ],
+              Chip(
+                label: Text('Customers: ${_summary['customers'] ?? 0}'),
               ),
+              Chip(
+                label: Text(
+                  'Transactions: ${_summary['transactionCount'] ?? 0}',
+                ),
+              ),
+              Chip(
+                label: Text(
+                  'Value: ${_summary['transactionValue'] ?? 0}',
+                ),
+              ),
+            ]),
+            if (_recentTransactions.isNotEmpty) ...[
+              const Text(
+                'Recent transactions',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              ..._recentTransactions.map(_transactionTile),
             ],
+            const SizedBox(height: 8),
+            Text('Transactions (page $_transactionPage)'),
+            ..._transactions.map(_transactionTile),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _transactionPage <= 1 || _busy
+                      ? null
+                      : () {
+                          setState(() => _transactionPage--);
+                          _loadDownline();
+                        },
+                  child: const Text('Previous'),
+                ),
+                TextButton(
+                  onPressed: _transactions.length < 25 || _busy
+                      ? null
+                      : () {
+                          setState(() => _transactionPage++);
+                          _loadDownline();
+                        },
+                  child: const Text('Next'),
+                ),
+              ],
+            ),
           ],
-        ),
-      );
+        ],
+      ),
+    );
+  }
 }

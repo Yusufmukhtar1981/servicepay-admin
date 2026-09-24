@@ -514,7 +514,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * WALLET / FINANCE
      * =====================================================
      */
-    if (isHeadOffice || hasPermission('wallets.adjust')) {
+    if (permissions.contains('wallets.adjust')) {
       addNavigationPage(
         page: const AdminManualFundingScreen(),
         icon: Icons.account_balance_wallet_outlined,
@@ -533,6 +533,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       addNavigationPage(
         page: Phase1OperationsScreen(
           role: adminRole,
+          permissions: permissions,
         ),
         icon: Icons.account_tree_outlined,
         activeIcon: Icons.account_tree_rounded,

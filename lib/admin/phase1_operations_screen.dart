@@ -185,10 +185,17 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
       );
       if (mounted) {
         setState(() {
-          _summary = Map<String, dynamic>.from(
-            (summary['summary'] is Map ? summary['summary'] : summary),
-          );
-          final recent = _summary['recentTransactions'];
+          final counts = summary['counts'];
+          _summary = counts is Map
+              ? Map<String, dynamic>.from(counts)
+              : Map<String, dynamic>.from(
+                  (summary['summary'] is Map ? summary['summary'] : summary),
+                );
+          if (_summary.containsKey('transactions') &&
+              !_summary.containsKey('transactionCount')) {
+            _summary['transactionCount'] = _summary['transactions'];
+          }
+          final recent = summary['recentTransactions'];
           _recentTransactions = recent is List ? recent : <dynamic>[];
           final rows = transactions['transactions'] ?? transactions['items'];
           _transactions = rows is List ? rows : <dynamic>[];

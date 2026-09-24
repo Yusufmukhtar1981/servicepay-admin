@@ -171,15 +171,18 @@ void main() {
         if (request.url.path.endsWith('/summary')) {
           return http.Response(
             jsonEncode({
-              'summary': {
+              'counts': {
                 'totalDownline': 4,
                 'customers': 2,
-                'transactionCount': 7,
+                'transactions': 7,
                 'transactionValue': 1250,
-                'recentTransactions': [
-                  {'type': 'Airtime', 'status': 'SUCCESS', 'amount': 100},
-                ],
               },
+              'recentTransactions': [
+                {'type': 'Airtime', 'status': 'SUCCESS', 'amount': 100},
+              ],
+              'users': [
+                {'id': 'user-1', 'fullName': 'Downline User'},
+              ],
             }),
             200,
           );
@@ -214,6 +217,7 @@ void main() {
     expect(find.text('Transactions: 7'), findsOneWidget);
     expect(find.text('Value: 1250'), findsOneWidget);
     expect(find.text('Recent transactions'), findsOneWidget);
+    expect(find.text('Airtime'), findsOneWidget);
     expect(find.text('Transactions (page 1)'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Next'), 400);
     expect(find.text('Next'), findsOneWidget);

@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'phase1_operations_api.dart';
+import 'hierarchy_management_screen.dart';
+import 'admin_permissions.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({
@@ -76,6 +78,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       widget.permissions
           .map((permission) => permission.trim().toLowerCase())
           .contains('wallets.adjust');
+
+  bool get _canManageHierarchy {
+    final AdminAccess access = AdminAccess(
+      role: widget.adminRole,
+      permissions: widget.permissions,
+    );
+    return access.hasHeadOfficePermission(AdminPermissions.hierarchyManage);
+  }
 
   @override
   void initState() {
@@ -1158,6 +1168,39 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                 onTap: () async {
                                   Navigator.pop(sheetContext);
                                   await _promoteUser(user, 'ZONAL_MANAGER');
+                                },
+                              ),
+                            if (_canManageHierarchy &&
+                                const <String>{
+                                  'STATE_MANAGER',
+                                  'AGENT',
+                                  'AGGREGATOR',
+                                  'CUSTOMER',
+                                }.contains(_userRole(user)))
+                              _actionButton(
+                                label: _userRole(user) == 'STATE_MANAGER'
+                                    ? 'Assign/Reassign Zonal Manager'
+                                    : _userRole(user) == 'CUSTOMER'
+                                        ? 'Assign/Reassign Aggregator'
+                                        : 'Assign/Reassign State Manager',
+                                icon: Icons.account_tree_outlined,
+                                onTap: () {
+                                  Navigator.pop(sheetContext);
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => HierarchyManagementScreen(
+                                        role: widget.adminRole,
+                                        permissions: widget.permissions,
+                                        api: _operationsApi,
+                                        initialRole: _userRole(user) ==
+                                                    'AGENT' ||
+                                                _userRole(user) == 'AGGREGATOR'
+                                            ? 'AGENT'
+                                            : _userRole(user),
+                                        initialSearch: _displayName(user),
+                                      ),
+                                    ),
+                                  );
                                 },
                               ),
                           ],

@@ -8,8 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../lib/admin/phase1_operations_api.dart';
 import '../lib/admin/main_navigation.dart';
+import '../lib/admin/admin_permissions.dart';
 import '../lib/admin/phase1_operations_screen.dart';
 import '../lib/admin/roles_permissions_screen.dart';
+import '../lib/admin/hierarchy_management_screen.dart';
 
 void main() {
   test('Head Office role assignment uses secured existing route and body', () {
@@ -143,6 +145,79 @@ void main() {
     expect(requests[1].headers['idempotency-key'], 'same-attempt');
   });
 
+  test('hierarchy assignment client preserves audit contract', () async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'token'});
+    final requests = <http.Request>[];
+    final api = Phase1OperationsApi(
+      client: MockClient((request) async {
+        requests.add(request);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'duplicate': false,
+            'records': <dynamic>[],
+          }),
+          200,
+        );
+      }),
+    );
+    await api.hierarchyUsers(role: 'AGENT', search: 'Ada', page: 2);
+    await api.assignHierarchy(
+      userId: 'agent-1',
+      parentId: 'state-2',
+      reason: 'Regional coverage change',
+      requestId: 'request-1',
+    );
+    await api.hierarchyHistory(role: 'AGENT', type: 'REASSIGNMENT');
+    expect(requests[0].url.path, '/api/admin/hierarchy/users');
+    expect(requests[0].url.queryParameters['role'], 'AGENT');
+    expect(requests[0].url.queryParameters['search'], 'Ada');
+    expect(requests[1].url.path, '/api/admin/hierarchy/assignments');
+    expect(jsonDecode(requests[1].body), {
+      'userId': 'agent-1',
+      'parentId': 'state-2',
+      'reason': 'Regional coverage change',
+      'requestId': 'request-1',
+    });
+    expect(requests[2].url.path, '/api/admin/hierarchy/history');
+    expect(requests[2].url.queryParameters['type'], 'REASSIGNMENT');
+  });
+
+  test('hierarchy management is never granted to scoped manager roles', () {
+    expect(
+      AdminAccess(
+        role: 'STATE_MANAGER',
+        permissions: <String>{'hierarchy.manage'},
+      ).hasHeadOfficePermission('hierarchy.manage'),
+      isFalse,
+    );
+    expect(
+      AdminAccess(
+        role: 'HEAD_OFFICE',
+        permissions: <String>{'hierarchy.manage'},
+      ).hasHeadOfficePermission('hierarchy.manage'),
+      isTrue,
+    );
+    expect(
+      AdminMainNavigation.visibleDestinationLabels(
+        AdminAccess(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{'hierarchy.manage'},
+        ),
+      ),
+      contains('Hierarchy Management'),
+    );
+    expect(
+      AdminMainNavigation.visibleDestinationLabels(
+        AdminAccess(
+          role: 'STATE_MANAGER',
+          permissions: <String>{'hierarchy.manage'},
+        ),
+      ),
+      isNot(contains('Hierarchy Management')),
+    );
+  });
+
   testWidgets(
       'Head Office without exact wallet permission keeps hierarchy only',
       (tester) async {
@@ -156,6 +231,142 @@ void main() {
     );
     expect(find.text('Create Zonal Manager'), findsNWidgets(2));
     expect(find.text('Manual customer wallet adjustment'), findsNothing);
+  });
+
+  testWidgets('hierarchy selector searches server-side and confirms assignment',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    SharedPreferences.setMockInitialValues({'auth_token': 'token'});
+    final requests = <http.Request>[];
+    final api = Phase1OperationsApi(
+      client: MockClient((request) async {
+        requests.add(request);
+        if (request.url.path.endsWith('/users')) {
+          final role = request.url.queryParameters['role'];
+          return http.Response(
+            jsonEncode({
+              'users': role == 'STATE_MANAGER'
+                  ? [
+                      {
+                        '_id': 'state-1',
+                        'fullName': 'State A',
+                        'phone': '0801',
+                        'email': 'state@test',
+                        'currentParent': {
+                          '_id': 'zonal-old',
+                          'fullName': 'Zonal Old',
+                          'role': 'ZONAL_MANAGER',
+                        },
+                      }
+                    ]
+                  : [
+                      {
+                        '_id': 'zonal-new',
+                        'fullName': 'Zonal New',
+                        'phone': '0802',
+                        'email': 'new@test',
+                      }
+                    ],
+              'pagination': {'totalPages': 1},
+            }),
+            200,
+          );
+        }
+        return http.Response(jsonEncode({'success': true}), 200);
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HierarchyManagementScreen(
+            role: 'HEAD_OFFICE',
+            permissions: const <String>{'hierarchy.manage'},
+            api: api,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(requests.where((request) => request.url.path.endsWith('/users')),
+        isNotEmpty);
+    expect(requests.last.url.queryParameters['role'], 'STATE_MANAGER');
+    expect(find.text('Unable to load hierarchy users'), findsNothing);
+    expect(find.text('No matching users found.'), findsNothing);
+    expect(find.text('State A'), findsOneWidget);
+    await tester.tap(find.text('Reassign'));
+    await tester.pumpAndSettle();
+    expect(find.text('Select Zonal Manager'), findsOneWidget);
+    expect(find.text('Zonal New'), findsOneWidget);
+    await tester.tap(find.text('Zonal New'));
+    await tester.pumpAndSettle();
+    expect(find.text('Confirm reassignment'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Coverage correction');
+    await tester.tap(find.text('Save assignment'));
+    await tester.pumpAndSettle();
+    expect(
+      requests.any(
+          (http.Request request) => request.url.path.endsWith('/assignments')),
+      isTrue,
+    );
+  });
+
+  testWidgets('reporting chain drills down through actual parent IDs',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    SharedPreferences.setMockInitialValues({'auth_token': 'token'});
+    final requests = <http.Request>[];
+    final api = Phase1OperationsApi(
+      client: MockClient((request) async {
+        requests.add(request);
+        final role = request.url.queryParameters['role'];
+        final data = switch (role) {
+          'ZONAL_MANAGER' => {'_id': 'zone-1', 'fullName': 'Zone One', 'role': role},
+          'STATE_MANAGER' => {'_id': 'state-1', 'fullName': 'State One', 'role': role},
+          'AGENT' => {'_id': 'agent-1', 'fullName': 'Aggregator One', 'role': role},
+          _ => {'_id': 'customer-1', 'fullName': 'Customer One', 'role': role},
+        };
+        return http.Response(jsonEncode({
+          'users': [data],
+          'pagination': {'pages': 1, 'total': 1},
+        }), 200);
+      }),
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: HierarchyManagementScreen(
+          role: 'HEAD_OFFICE',
+          permissions: const {'hierarchy.manage'},
+          api: api,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View reporting chain'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['role'], 'ZONAL_MANAGER');
+    await tester.tap(find.text('Zone One'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['parentId'], 'zone-1');
+    expect(requests.last.url.queryParameters['role'], 'STATE_MANAGER');
+    await tester.tap(find.text('State One').last);
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['parentId'], 'state-1');
+    expect(requests.last.url.queryParameters['role'], 'AGENT');
+    await tester.tap(find.text('Aggregator One'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['parentId'], 'agent-1');
+    expect(requests.last.url.queryParameters['role'], 'CUSTOMER');
+    expect(find.text('Customer One'), findsOneWidget);
   });
 
   testWidgets('Head Office exact wallet permission renders wallet controls',

@@ -54,6 +54,69 @@ class Phase1OperationsApi {
   Future<Map<String, dynamic>> hierarchySummary() =>
       _request('GET', '/management/downline/summary');
 
+  Future<Map<String, dynamic>> hierarchyUsers({
+    required String role,
+    String search = '',
+    String parentId = '',
+    bool includeInactive = false,
+    int page = 1,
+    int limit = 25,
+  }) =>
+      _request(
+        'GET',
+        '/admin/hierarchy/users',
+        query: <String, String>{
+          'role': role,
+          'search': search.trim(),
+          if (parentId.isNotEmpty) 'parentId': parentId,
+          if (includeInactive) 'includeInactive': 'true',
+          'page': page.toString(),
+          'limit': limit.toString(),
+        },
+      );
+
+  Future<Map<String, dynamic>> assignHierarchy({
+    required String userId,
+    required String parentId,
+    required String reason,
+    required String requestId,
+  }) =>
+      _request(
+        'POST',
+        '/admin/hierarchy/assignments',
+        body: <String, dynamic>{
+          'userId': userId,
+          'parentId': parentId,
+          'reason': reason.trim(),
+          'requestId': requestId,
+        },
+      );
+
+  Future<Map<String, dynamic>> hierarchyHistory({
+    String userId = '',
+    String role = '',
+    String actorId = '',
+    String type = '',
+    String from = '',
+    String to = '',
+    int page = 1,
+    int limit = 25,
+  }) =>
+      _request(
+        'GET',
+        '/admin/hierarchy/history',
+        query: <String, String>{
+          if (userId.trim().isNotEmpty) 'userId': userId.trim(),
+          if (role.trim().isNotEmpty) 'role': role.trim(),
+          if (actorId.trim().isNotEmpty) 'actorId': actorId.trim(),
+          if (type.trim().isNotEmpty) 'type': type.trim(),
+          if (from.trim().isNotEmpty) 'from': from.trim(),
+          if (to.trim().isNotEmpty) 'to': to.trim(),
+          'page': page.toString(),
+          'limit': limit.toString(),
+        },
+      );
+
   Future<Map<String, dynamic>> downlineTransactions({
     int page = 1,
     int limit = 25,

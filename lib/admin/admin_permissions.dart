@@ -81,6 +81,7 @@ abstract final class AdminPermissions {
   static const svpManagementView = 'svp.management.view';
   static const svpReportsView = 'svp.reports.view';
   static const svpAuditView = 'svp.audit.view';
+  static const hierarchyManage = 'hierarchy.manage';
 
   // Head Office organization administration permissions.
   static const organizationsView = 'organizations.view';

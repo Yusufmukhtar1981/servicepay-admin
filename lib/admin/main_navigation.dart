@@ -50,6 +50,7 @@ import 'admin_privacy_requests_screen.dart';
 import 'svp_management_screen.dart';
 import 'edupay_control_center_screen.dart';
 import 'phase1_operations_screen.dart';
+import 'hierarchy_management_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -119,6 +120,9 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.has(AdminPermissions.referralsView)) {
       labels.add('Referral Monitoring');
+    }
+    if (access.hasHeadOfficePermission(AdminPermissions.hierarchyManage)) {
+      labels.add('Hierarchy Management');
     }
     if (canAccessEduPayNavigation(
       role: access.role,
@@ -540,6 +544,21 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_tree_outlined,
         activeIcon: Icons.account_tree_rounded,
         label: 'Hierarchy & Wallet Operations',
+      );
+    }
+
+    if (AdminAccess(
+      role: adminRole,
+      permissions: permissions,
+    ).hasHeadOfficePermission(AdminPermissions.hierarchyManage)) {
+      addNavigationPage(
+        page: HierarchyManagementScreen(
+          role: adminRole,
+          permissions: permissions,
+        ),
+        icon: Icons.account_tree_outlined,
+        activeIcon: Icons.account_tree_rounded,
+        label: 'Hierarchy Management',
       );
     }
 

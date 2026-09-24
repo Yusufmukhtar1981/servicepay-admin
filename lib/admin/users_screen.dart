@@ -475,7 +475,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       );
       _walletPendingIntent = null;
       _walletPendingKey = null;
-      if (mounted) _showSnack('Wallet adjustment completed.');
+      if (mounted) {
+        _showSnack('Wallet adjustment completed.');
+        await _loadUsers();
+      }
     } catch (error) {
       if (mounted) _showSnack(error.toString(), error: true);
     } finally {
@@ -532,17 +535,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       ),
                     );
                   }
-                  final dynamic rawData = snapshot.data?['data'];
-                  final dynamic rawItems =
-                      rawData is Map ? rawData['items'] : null;
+                  final dynamic rawItems = snapshot.data?['history'];
                   final List<Map<String, dynamic>> items = rawItems is List
                       ? rawItems
                           .whereType<Map>()
                           .map((Map item) => Map<String, dynamic>.from(item))
                           .toList()
                       : <Map<String, dynamic>>[];
-                  final dynamic rawPagination =
-                      rawData is Map ? rawData['pagination'] : null;
+                  final dynamic rawPagination = snapshot.data?['pagination'];
                   final int totalPages = rawPagination is Map
                       ? int.tryParse(
                               '${rawPagination['totalPages'] ?? rawPagination['pages'] ?? page}') ??

@@ -5,8 +5,21 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'phase1_operations_api.dart';
+
 class AdminUsersScreen extends StatefulWidget {
-  const AdminUsersScreen({super.key});
+  const AdminUsersScreen({
+    super.key,
+    this.adminRole = '',
+    this.permissions = const <String>{},
+    this.api,
+  });
+
+  /// These values are supplied by the authenticated parent. They are only
+  /// presentation guards; the API remains the authority for every operation.
+  final String adminRole;
+  final Set<String> permissions;
+  final Phase1OperationsApi? api;
 
   @override
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
@@ -32,7 +45,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     },
     {
       'role': 'AGENT',
-      'label': 'Agents',
+      'label': 'Aggregators / Agents',
       'icon': Icons.groups_rounded,
     },
     {
@@ -48,10 +61,21 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   bool _loading = true;
   bool _actionLoading = false;
+  String? _walletPendingIntent;
+  String? _walletPendingKey;
 
   String _errorMessage = '';
 
   Timer? _searchDebounce;
+
+  late final Phase1OperationsApi _operationsApi =
+      widget.api ?? Phase1OperationsApi();
+
+  bool get _canAdjustWallet =>
+      widget.adminRole.trim().toUpperCase() == 'HEAD_OFFICE' &&
+      widget.permissions
+          .map((permission) => permission.trim().toLowerCase())
+          .contains('wallets.adjust');
 
   @override
   void initState() {
@@ -258,6 +282,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         return 'State Manager';
       case 'AGENT':
         return 'Agent';
+      case 'AGGREGATOR':
+        return 'Aggregator';
       case 'CUSTOMER':
         return 'Customer';
       default:
@@ -285,6 +311,316 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       default:
         return const Color(0xFF667085);
     }
+  }
+
+  String _userRole(Map<String, dynamic> user) =>
+      _text(user, 'role', fallback: _selectedRole).trim().toUpperCase();
+
+  Future<void> _promoteUser(
+    Map<String, dynamic> user,
+    String targetRole,
+  ) async {
+    final String id = _text(user, '_id', fallback: '');
+    if (id.isEmpty) {
+      _showSnack('User ID was not found.', error: true);
+      return;
+    }
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text('Promote to ${_roleLabel(targetRole)}?'),
+        content: Text(
+          'Promote ${_displayName(user)} to ${_roleLabel(targetRole)}? '
+          'The server will preserve this user identity and apply its policy checks.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm promotion'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      setState(() => _actionLoading = true);
+      await _operationsApi.promoteUser(userId: id, targetRole: targetRole);
+      if (!mounted) return;
+      _showSnack('User promoted to ${_roleLabel(targetRole)}.');
+      await _loadUsers();
+    } catch (error) {
+      if (mounted) _showSnack(error.toString(), error: true);
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
+  }
+
+  Future<void> _adjustWallet(
+    Map<String, dynamic> user, {
+    String initialAction = 'CREDIT',
+  }) async {
+    if (!_canAdjustWallet) return;
+    final String id = _text(user, '_id', fallback: '');
+    if (id.isEmpty) {
+      _showSnack('Customer ID was not found.', error: true);
+      return;
+    }
+    final TextEditingController amount = TextEditingController();
+    final TextEditingController reason = TextEditingController();
+    final TextEditingController reference = TextEditingController();
+    String action = initialAction;
+    try {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) => StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) =>
+              AlertDialog(
+            title: Text('Adjust ${_displayName(user)} wallet'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Current balance: ₦${_text(user, 'walletBalance', fallback: '0')}',
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: action,
+                    decoration: const InputDecoration(labelText: 'Action'),
+                    items: const <DropdownMenuItem<String>>[
+                      DropdownMenuItem(value: 'CREDIT', child: Text('CREDIT')),
+                      DropdownMenuItem(value: 'DEBIT', child: Text('DEBIT')),
+                    ],
+                    onChanged: (String? value) {
+                      if (value != null) setDialogState(() => action = value);
+                    },
+                  ),
+                  TextField(
+                    controller: amount,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Amount'),
+                  ),
+                  TextField(
+                    controller: reason,
+                    decoration: const InputDecoration(
+                        labelText: 'Reason (minimum 5 characters)'),
+                  ),
+                  TextField(
+                    controller: reference,
+                    decoration: const InputDecoration(
+                        labelText: 'Reference (required)'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'This action changes the customer wallet. Review the details before confirming.',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final double? value = double.tryParse(amount.text.trim());
+                  if (value == null ||
+                      value <= 0 ||
+                      reason.text.trim().length < 5 ||
+                      reference.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'Enter a positive amount, a reason of at least 5 characters, and a reference.')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext, true);
+                },
+                child: const Text('Confirm adjustment'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmed != true) return;
+      final intent = [
+        id,
+        action,
+        amount.text.trim(),
+        reason.text.trim(),
+        reference.text.trim(),
+      ].join('\u001f');
+      if (_walletPendingIntent != intent) {
+        _walletPendingIntent = intent;
+        _walletPendingKey = phase1IdempotencyKey();
+      }
+      setState(() => _actionLoading = true);
+      await _operationsApi.adjustWallet(
+        identifier: id,
+        action: action,
+        amount: amount.text.trim(),
+        reason: reason.text.trim(),
+        reference: reference.text.trim(),
+        // Preserve the key after an ambiguous network failure. The same
+        // customer/action/amount/reason/reference can safely be retried.
+        idempotencyKey: _walletPendingKey!,
+      );
+      _walletPendingIntent = null;
+      _walletPendingKey = null;
+      if (mounted) _showSnack('Wallet adjustment completed.');
+    } catch (error) {
+      if (mounted) _showSnack(error.toString(), error: true);
+    } finally {
+      amount.dispose();
+      reason.dispose();
+      reference.dispose();
+      if (mounted) setState(() => _actionLoading = false);
+    }
+  }
+
+  void _showAdjustmentHistory(Map<String, dynamic> user) {
+    if (!_canAdjustWallet) return;
+    final String customerId = _text(user, '_id', fallback: '');
+    if (customerId.isEmpty) {
+      _showSnack('Customer ID was not found.', error: true);
+      return;
+    }
+    int page = 1;
+    Future<Map<String, dynamic>> load() =>
+        _operationsApi.walletAdjustmentHistory(
+          customerId: customerId,
+          page: page,
+          limit: 50,
+        );
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) {
+          Future<Map<String, dynamic>> request = load();
+          return AlertDialog(
+            title: Text('${_displayName(user)} adjustment history'),
+            content: SizedBox(
+              width: 520,
+              child: FutureBuilder<Map<String, dynamic>>(
+                future: request,
+                builder: (
+                  BuildContext context,
+                  AsyncSnapshot<Map<String, dynamic>> snapshot,
+                ) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const SizedBox(
+                      height: 110,
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return SizedBox(
+                      height: 110,
+                      child: Center(
+                        child: Text(
+                          'Unable to load adjustment history: '
+                          '${snapshot.error}',
+                        ),
+                      ),
+                    );
+                  }
+                  final dynamic rawData = snapshot.data?['data'];
+                  final dynamic rawItems =
+                      rawData is Map ? rawData['items'] : null;
+                  final List<Map<String, dynamic>> items = rawItems is List
+                      ? rawItems
+                          .whereType<Map>()
+                          .map((Map item) => Map<String, dynamic>.from(item))
+                          .toList()
+                      : <Map<String, dynamic>>[];
+                  final dynamic rawPagination =
+                      rawData is Map ? rawData['pagination'] : null;
+                  final int totalPages = rawPagination is Map
+                      ? int.tryParse(
+                              '${rawPagination['totalPages'] ?? rawPagination['pages'] ?? page}') ??
+                          page
+                      : page;
+                  if (items.isEmpty) {
+                    return const SizedBox(
+                      height: 110,
+                      child:
+                          Center(child: Text('No wallet adjustments found.')),
+                    );
+                  }
+                  return SizedBox(
+                    height: 360,
+                    child: Column(
+                      children: <Widget>[
+                        Expanded(
+                          child: ListView.separated(
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (BuildContext context, int index) {
+                              final Map<String, dynamic> item = items[index];
+                              final String direction =
+                                  '${item['direction'] ?? ''}'.toUpperCase();
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  '${direction.isEmpty ? 'Adjustment' : direction} '
+                                  '₦${item['amount'] ?? '0'}',
+                                ),
+                                subtitle: Text(
+                                  '${item['narration'] ?? 'No narration'}\n'
+                                  'Before: ₦${item['balanceBefore'] ?? '—'}  '
+                                  'After: ₦${item['balanceAfter'] ?? '—'}\n'
+                                  '${item['date'] ?? ''}  '
+                                  'Ref: ${item['reference'] ?? '—'}',
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            IconButton(
+                              tooltip: 'Previous page',
+                              onPressed: page > 1
+                                  ? () => setDialogState(() => page--)
+                                  : null,
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                            Text('Page $page of $totalPages'),
+                            IconButton(
+                              tooltip: 'Next page',
+                              onPressed: page < totalPages
+                                  ? () => setDialogState(() => page++)
+                                  : null,
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _changeStatus(
@@ -768,6 +1104,62 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                 );
                               },
                             ),
+                            if (_userRole(user) == 'CUSTOMER' &&
+                                _canAdjustWallet) ...[
+                              _actionButton(
+                                label: 'Credit Wallet',
+                                icon: Icons.add_card_rounded,
+                                onTap: () async {
+                                  Navigator.pop(sheetContext);
+                                  await _adjustWallet(user,
+                                      initialAction: 'CREDIT');
+                                },
+                              ),
+                              _actionButton(
+                                label: 'Debit Wallet',
+                                icon: Icons.remove_circle_outline_rounded,
+                                onTap: () async {
+                                  Navigator.pop(sheetContext);
+                                  await _adjustWallet(user,
+                                      initialAction: 'DEBIT');
+                                },
+                              ),
+                              _actionButton(
+                                label: 'Wallet Adjustment',
+                                icon: Icons.history_rounded,
+                                onTap: () {
+                                  Navigator.pop(sheetContext);
+                                  _adjustWallet(user);
+                                },
+                              ),
+                              _actionButton(
+                                label: 'Adjustment History',
+                                icon: Icons.receipt_long_rounded,
+                                onTap: () {
+                                  Navigator.pop(sheetContext);
+                                  _showAdjustmentHistory(user);
+                                },
+                              ),
+                            ],
+                            if (_userRole(user) == 'AGENT' ||
+                                _userRole(user) == 'AGGREGATOR')
+                              _actionButton(
+                                label: 'Promote to State Manager',
+                                icon: Icons.trending_up_rounded,
+                                onTap: () async {
+                                  Navigator.pop(sheetContext);
+                                  await _promoteUser(user, 'STATE_MANAGER');
+                                },
+                              ),
+                            if (_userRole(user) == 'STATE_MANAGER')
+                              _actionButton(
+                                label: 'Promote to Zonal Manager',
+                                icon: Icons.upgrade_rounded,
+                                onTap: () async {
+                                  Navigator.pop(sheetContext);
+                                  await _promoteUser(user, 'ZONAL_MANAGER');
+                                },
+                              ),
                           ],
                         ),
                         const SizedBox(height: 30),

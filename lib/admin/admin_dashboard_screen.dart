@@ -329,7 +329,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     final Widget? page = switch (module) {
       'customer360' => const AdminCustomer360Screen(),
-      'users' => const AdminUsersScreen(),
+      'users' => AdminUsersScreen(
+          adminRole: widget.initialAccess?.role ?? '',
+          permissions: widget.initialAccess?.permissions ?? const <String>{},
+        ),
       'transactions' => const AdminTransactionsScreen(),
       'kyc' => const AdminKycScreen(),
       'withdrawals' => const AdminRiderWithdrawalsScreen(),
@@ -792,7 +795,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       return;
     }
 
-    final linkedScreen = fintechScreenForTitle(title);
+    final linkedScreen = fintechScreenForTitle(
+      title,
+      access: widget.initialAccess,
+    );
 
     if (linkedScreen != null) {
       Navigator.of(context).push(
@@ -809,7 +815,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
-            fintechScreenForTitle(title) ??
+            fintechScreenForTitle(title, access: widget.initialAccess) ??
             _FintechOperationalModuleScreen(title: title),
       ),
     );

@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -73,6 +72,20 @@ class Phase1OperationsApi {
         '/admin/wallet-adjustment/customers',
         query: <String, String>{
           if (search.trim().isNotEmpty) 'search': search.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> walletAdjustmentHistory({
+    required String customerId,
+    int page = 1,
+    int limit = 50,
+  }) =>
+      _request(
+        'GET',
+        '/admin/wallet-adjustment/customers/${Uri.encodeComponent(customerId)}/history',
+        query: <String, String>{
+          'page': page.toString(),
+          'limit': limit.clamp(1, 50).toString(),
         },
       );
 
@@ -174,6 +187,5 @@ class Phase1OperationsException implements Exception {
   String toString() => message;
 }
 
-@visibleForTesting
 String phase1IdempotencyKey() =>
     'admin-wallet-${DateTime.now().microsecondsSinceEpoch}';

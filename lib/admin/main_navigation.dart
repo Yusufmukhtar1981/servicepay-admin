@@ -236,7 +236,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      */
     if (isHeadOffice || hasPermission('dashboard.view')) {
       addNavigationPage(
-        page: const AdminDashboardScreen(),
+        page: AdminDashboardScreen(
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+        ),
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
@@ -693,7 +695,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           'roles.update',
         ])) {
       addNavigationPage(
-        page: const StaffManagementScreen(),
+        page: StaffManagementScreen(role: adminRole),
         icon: Icons.groups_outlined,
         activeIcon: Icons.groups_rounded,
         label: 'Staff',

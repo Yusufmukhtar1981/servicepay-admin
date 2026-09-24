@@ -15,6 +15,7 @@ import 'admin_settings_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'users_screen.dart';
 import 'staff_management_screen.dart';
+import 'admin_permissions.dart';
 import 'admin_control_center_screen.dart';
 import 'admin_partner_screen.dart';
 import 'admin_business_withdrawals_screen.dart';
@@ -50,7 +51,7 @@ const Map<String, String> controlCenterModuleIds = <String, String>{
 String? controlCenterModuleIdForTitle(String title) =>
     controlCenterModuleIds[title];
 
-Widget? fintechScreenForTitle(String title) {
+Widget? fintechScreenForTitle(String title, {AdminAccess? access}) {
   if (title == 'Privacy Controls' || title == 'Account Deletion Requests') {
     return const AdminPrivacyRequestsScreen();
   }
@@ -109,10 +110,16 @@ Widget? fintechScreenForTitle(String title) {
     case 'Commissions Setup':
       return AdminProductCommissionScreen();
     case 'Customers':
-      return AdminUsersScreen();
+      return AdminUsersScreen(
+        adminRole: access?.role ?? '',
+        permissions: access?.permissions ?? const <String>{},
+      );
 
     case 'Customer Wallets':
-      return AdminUsersScreen();
+      return AdminUsersScreen(
+        adminRole: access?.role ?? '',
+        permissions: access?.permissions ?? const <String>{},
+      );
     case 'Deliveries':
       return AdminDeliveryManagementScreen();
     case 'Empowerment':
@@ -135,7 +142,7 @@ Widget? fintechScreenForTitle(String title) {
     case 'Service Pricing':
       return AdminDataPricingScreen();
     case 'Staff Management':
-      return StaffManagementScreen();
+      return StaffManagementScreen(role: access?.role ?? '');
     case 'Wallet Funding':
       return AdminManualFundingScreen();
     case 'Maintenance Mode':

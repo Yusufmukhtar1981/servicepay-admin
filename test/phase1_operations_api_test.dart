@@ -9,8 +9,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../lib/admin/phase1_operations_api.dart';
 import '../lib/admin/main_navigation.dart';
 import '../lib/admin/phase1_operations_screen.dart';
+import '../lib/admin/roles_permissions_screen.dart';
 
 void main() {
+  test('Head Office role assignment uses secured existing route and body', () {
+    expect(
+      headOfficeRoleAssignmentPath('user/one'),
+      '/staff-management/staff/user%2Fone/head-office-role',
+    );
+    expect(
+      headOfficeRoleAssignmentBody('role-wallet'),
+      {'roleId': 'role-wallet'},
+    );
+  });
+
   test('manager visibility is role-scoped and wallet adjustment is exact', () {
     expect(
       canAccessAdminNavigationModule(

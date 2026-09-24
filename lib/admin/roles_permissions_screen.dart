@@ -1,8 +1,17 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+@visibleForTesting
+String headOfficeRoleAssignmentPath(String staffId) =>
+    '/staff-management/staff/${Uri.encodeComponent(staffId)}/head-office-role';
+
+@visibleForTesting
+Map<String, dynamic> headOfficeRoleAssignmentBody(String roleId) =>
+    <String, dynamic>{'roleId': roleId};
 
 class RolesPermissionsScreen extends StatefulWidget {
   const RolesPermissionsScreen({
@@ -10,17 +19,13 @@ class RolesPermissionsScreen extends StatefulWidget {
   });
 
   @override
-  State<RolesPermissionsScreen> createState() =>
-      _RolesPermissionsScreenState();
+  State<RolesPermissionsScreen> createState() => _RolesPermissionsScreenState();
 }
 
-class _RolesPermissionsScreenState
-    extends State<RolesPermissionsScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+class _RolesPermissionsScreenState extends State<RolesPermissionsScreen> {
+  static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryColor =
-      Color(0xFF149B8F);
+  static const Color primaryColor = Color(0xFF149B8F);
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -37,8 +42,7 @@ class _RolesPermissionsScreenState
   }
 
   Future<String?> getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     const List<String> keys = [
       'auth_token',
@@ -87,8 +91,7 @@ class _RolesPermissionsScreenState
 
     return {
       'success': false,
-      'message':
-          'The server returned an invalid response.',
+      'message': 'The server returned an invalid response.',
     };
   }
 
@@ -106,8 +109,7 @@ class _RolesPermissionsScreenState
 
       final String text = value.toString().trim();
 
-      if (text.isNotEmpty &&
-          text.toLowerCase() != 'null') {
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
         return text;
       }
     }
@@ -124,8 +126,7 @@ class _RolesPermissionsScreenState
 
     return value
         .map(
-          (dynamic item) =>
-              item.toString().trim().toLowerCase(),
+          (dynamic item) => item.toString().trim().toLowerCase(),
         )
         .where(
           (String item) => item.isNotEmpty,
@@ -156,8 +157,7 @@ class _RolesPermissionsScreenState
         );
       }
 
-      final Future<http.Response> rolesRequest =
-          http.get(
+      final Future<http.Response> rolesRequest = http.get(
         Uri.parse(
           '$baseUrl/staff-management/roles',
         ),
@@ -167,8 +167,7 @@ class _RolesPermissionsScreenState
         },
       );
 
-      final Future<http.Response> permissionsRequest =
-          http.get(
+      final Future<http.Response> permissionsRequest = http.get(
         Uri.parse(
           '$baseUrl/staff-management/permissions',
         ),
@@ -178,27 +177,22 @@ class _RolesPermissionsScreenState
         },
       );
 
-      final List<http.Response> responses =
-          await Future.wait(
+      final List<http.Response> responses = await Future.wait(
         [
           rolesRequest,
           permissionsRequest,
         ],
       );
 
-      final http.Response rolesResponse =
-          responses[0];
+      final http.Response rolesResponse = responses[0];
 
-      final http.Response permissionsResponse =
-          responses[1];
+      final http.Response permissionsResponse = responses[1];
 
-      final Map<String, dynamic> rolesResult =
-          decodeResponse(
+      final Map<String, dynamic> rolesResult = decodeResponse(
         rolesResponse,
       );
 
-      final Map<String, dynamic> permissionsResult =
-          decodeResponse(
+      final Map<String, dynamic> permissionsResult = decodeResponse(
         permissionsResponse,
       );
 
@@ -206,8 +200,7 @@ class _RolesPermissionsScreenState
           rolesResponse.statusCode >= 300 ||
           rolesResult['success'] != true) {
         throw Exception(
-          rolesResult['message']?.toString() ??
-              'Unable to load staff roles.',
+          rolesResult['message']?.toString() ?? 'Unable to load staff roles.',
         );
       }
 
@@ -221,27 +214,21 @@ class _RolesPermissionsScreenState
       }
 
       final dynamic rawRoles =
-          rolesResult['roles'] ??
-          rolesResult['data'] ??
-          rolesResult['results'];
+          rolesResult['roles'] ?? rolesResult['data'] ?? rolesResult['results'];
 
-      final List<Map<String, dynamic>> loadedRoles =
-          rawRoles is List
-              ? rawRoles
-                  .whereType<Map>()
-                  .map(
-                    (Map item) =>
-                        Map<String, dynamic>.from(
-                      item,
-                    ),
-                  )
-                  .toList()
-              : <Map<String, dynamic>>[];
+      final List<Map<String, dynamic>> loadedRoles = rawRoles is List
+          ? rawRoles
+              .whereType<Map>()
+              .map(
+                (Map item) => Map<String, dynamic>.from(
+                  item,
+                ),
+              )
+              .toList()
+          : <Map<String, dynamic>>[];
 
-      final List<String> loadedPermissions =
-          stringList(
-        permissionsResult['permissions'] ??
-            permissionsResult['data'],
+      final List<String> loadedPermissions = stringList(
+        permissionsResult['permissions'] ?? permissionsResult['data'],
       );
 
       loadedPermissions.sort();
@@ -261,9 +248,7 @@ class _RolesPermissionsScreenState
       }
 
       setState(() {
-        errorMessage = error
-            .toString()
-            .replaceFirst(
+        errorMessage = error.toString().replaceFirst(
               'Exception: ',
               '',
             );
@@ -297,8 +282,7 @@ class _RolesPermissionsScreenState
       return;
     }
 
-    final TextEditingController displayNameController =
-        TextEditingController(
+    final TextEditingController displayNameController = TextEditingController(
       text: textValue(
         role,
         const [
@@ -308,24 +292,21 @@ class _RolesPermissionsScreenState
       ),
     );
 
-    final TextEditingController departmentController =
-        TextEditingController(
+    final TextEditingController departmentController = TextEditingController(
       text: textValue(
         role,
         const ['department'],
       ),
     );
 
-    final TextEditingController descriptionController =
-        TextEditingController(
+    final TextEditingController descriptionController = TextEditingController(
       text: textValue(
         role,
         const ['description'],
       ),
     );
 
-    final Set<String> selectedPermissions =
-        stringList(
+    final Set<String> selectedPermissions = stringList(
       role['permissions'],
     ).toSet();
 
@@ -337,8 +318,7 @@ class _RolesPermissionsScreenState
 
     bool isSaving = false;
 
-    final bool? updated =
-        await showModalBottomSheet<bool>(
+    final bool? updated = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -351,14 +331,12 @@ class _RolesPermissionsScreenState
             StateSetter setSheetState,
           ) {
             Future<void> saveRole() async {
-              final String displayName =
-                  displayNameController.text.trim();
+              final String displayName = displayNameController.text.trim();
 
-              final String department =
-                  departmentController.text
-                      .trim()
-                      .toUpperCase()
-                      .replaceAll(' ', '_');
+              final String department = departmentController.text
+                  .trim()
+                  .toUpperCase()
+                  .replaceAll(' ', '_');
 
               if (displayName.isEmpty) {
                 showMessage(
@@ -381,50 +359,39 @@ class _RolesPermissionsScreenState
               });
 
               try {
-                final String? token =
-                    await getToken();
+                final String? token = await getToken();
 
-                if (token == null ||
-                    token.isEmpty) {
+                if (token == null || token.isEmpty) {
                   throw Exception(
                     'Login session has expired.',
                   );
                 }
 
-                final http.Response response =
-                    await http.put(
+                final http.Response response = await http.put(
                   Uri.parse(
                     '$baseUrl/staff-management/roles/$roleId',
                   ),
                   headers: {
                     'Accept': 'application/json',
-                    'Content-Type':
-                        'application/json',
-                    'Authorization':
-                        'Bearer $token',
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $token',
                   },
                   body: jsonEncode({
                     'displayName': displayName,
                     'department': department,
-                    'description':
-                        descriptionController.text
-                            .trim(),
-                    'permissions':
-                        selectedPermissions.toList()
-                          ..sort(),
+                    'description': descriptionController.text.trim(),
+                    'permissions': selectedPermissions.toList()..sort(),
                     'status': selectedStatus,
                   }),
                 );
 
-                final Map<String, dynamic> result =
-                    decodeResponse(response);
+                final Map<String, dynamic> result = decodeResponse(response);
 
                 if (response.statusCode < 200 ||
                     response.statusCode >= 300 ||
                     result['success'] != true) {
                   throw Exception(
-                    result['message']?.toString() ??
-                        'Unable to update role.',
+                    result['message']?.toString() ?? 'Unable to update role.',
                   );
                 }
 
@@ -435,9 +402,7 @@ class _RolesPermissionsScreenState
                 Navigator.of(sheetContext).pop(true);
               } catch (error) {
                 showMessage(
-                  error
-                      .toString()
-                      .replaceFirst(
+                  error.toString().replaceFirst(
                         'Exception: ',
                         '',
                       ),
@@ -457,11 +422,7 @@ class _RolesPermissionsScreenState
                 left: 18,
                 right: 18,
                 top: 18,
-                bottom:
-                    MediaQuery.of(context)
-                            .viewInsets
-                            .bottom +
-                        20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
               child: Column(
                 children: [
@@ -470,8 +431,7 @@ class _RolesPermissionsScreenState
                     height: 5,
                     decoration: BoxDecoration(
                       color: Colors.grey.shade300,
-                      borderRadius:
-                          BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -482,8 +442,7 @@ class _RolesPermissionsScreenState
                           'Edit Role & Permissions',
                           style: TextStyle(
                             fontSize: 21,
-                            fontWeight:
-                                FontWeight.w900,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
@@ -491,8 +450,7 @@ class _RolesPermissionsScreenState
                         onPressed: isSaving
                             ? null
                             : () {
-                                Navigator.of(context)
-                                    .pop(false);
+                                Navigator.of(context).pop(false);
                               },
                         icon: const Icon(
                           Icons.close_rounded,
@@ -505,64 +463,50 @@ class _RolesPermissionsScreenState
                     child: ListView(
                       children: [
                         TextField(
-                          controller:
-                              displayNameController,
+                          controller: displayNameController,
                           enabled: !isSaving,
-                          decoration:
-                              const InputDecoration(
-                            labelText:
-                                'Role display name',
+                          decoration: const InputDecoration(
+                            labelText: 'Role display name',
                             prefixIcon: Icon(
                               Icons.badge_outlined,
                             ),
-                            border:
-                                OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                           ),
                         ),
                         const SizedBox(height: 14),
                         TextField(
-                          controller:
-                              departmentController,
+                          controller: departmentController,
                           enabled: !isSaving,
-                          decoration:
-                              const InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Department',
                             prefixIcon: Icon(
                               Icons.business_outlined,
                             ),
-                            border:
-                                OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                           ),
                         ),
                         const SizedBox(height: 14),
                         TextField(
-                          controller:
-                              descriptionController,
+                          controller: descriptionController,
                           enabled: !isSaving,
                           maxLines: 3,
-                          decoration:
-                              const InputDecoration(
-                            labelText:
-                                'Role description',
+                          decoration: const InputDecoration(
+                            labelText: 'Role description',
                             prefixIcon: Icon(
                               Icons.notes_rounded,
                             ),
-                            border:
-                                OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                           ),
                         ),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<String>(
-                          value:
-                              selectedStatus,
-                          decoration:
-                              const InputDecoration(
+                          value: selectedStatus,
+                          decoration: const InputDecoration(
                             labelText: 'Role status',
                             prefixIcon: Icon(
                               Icons.toggle_on_outlined,
                             ),
-                            border:
-                                OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                           ),
                           items: const [
                             DropdownMenuItem(
@@ -580,9 +524,7 @@ class _RolesPermissionsScreenState
                                   String? value,
                                 ) {
                                   setSheetState(() {
-                                    selectedStatus =
-                                        value ??
-                                            'ACTIVE';
+                                    selectedStatus = value ?? 'ACTIVE';
                                   });
                                 },
                         ),
@@ -594,8 +536,7 @@ class _RolesPermissionsScreenState
                                 'Permissions',
                                 style: TextStyle(
                                   fontSize: 18,
-                                  fontWeight:
-                                      FontWeight.w900,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
                             ),
@@ -620,8 +561,7 @@ class _RolesPermissionsScreenState
                                   ? null
                                   : () {
                                       setSheetState(() {
-                                        selectedPermissions
-                                            .clear();
+                                        selectedPermissions.clear();
                                       });
                                     },
                               child: const Text(
@@ -632,11 +572,9 @@ class _RolesPermissionsScreenState
                         ),
                         const SizedBox(height: 6),
                         ...buildPermissionGroups(
-                          selectedPermissions:
-                              selectedPermissions,
+                          selectedPermissions: selectedPermissions,
                           isSaving: isSaving,
-                          setSheetState:
-                              setSheetState,
+                          setSheetState: setSheetState,
                         ),
                       ],
                     ),
@@ -646,18 +584,15 @@ class _RolesPermissionsScreenState
                     width: double.infinity,
                     height: 54,
                     child: FilledButton.icon(
-                      onPressed:
-                          isSaving ? null : saveRole,
+                      onPressed: isSaving ? null : saveRole,
                       style: FilledButton.styleFrom(
-                        backgroundColor:
-                            primaryColor,
+                        backgroundColor: primaryColor,
                       ),
                       icon: isSaving
                           ? const SizedBox(
                               width: 22,
                               height: 22,
-                              child:
-                                  CircularProgressIndicator(
+                              child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
                                 color: Colors.white,
                               ),
@@ -666,12 +601,9 @@ class _RolesPermissionsScreenState
                               Icons.save_rounded,
                             ),
                       label: Text(
-                        isSaving
-                            ? 'Saving...'
-                            : 'Save Role',
+                        isSaving ? 'Saving...' : 'Save Role',
                         style: const TextStyle(
-                          fontWeight:
-                              FontWeight.w800,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
@@ -700,6 +632,96 @@ class _RolesPermissionsScreenState
     }
   }
 
+  Future<void> assignHeadOfficeRole() async {
+    final eligibleRoles = roles.where((role) {
+      final status = textValue(role, const ['status'], fallback: 'ACTIVE');
+      return status.toUpperCase() == 'ACTIVE' &&
+          stringList(role['permissions']).contains('wallets.adjust');
+    }).toList();
+    if (eligibleRoles.isEmpty) {
+      showMessage('No active role grants wallets.adjust.', isError: true);
+      return;
+    }
+    final targetController = TextEditingController();
+    String roleId = textValue(eligibleRoles.first, const ['_id', 'id']);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Assign Head Office wallet role'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: targetController,
+                decoration: const InputDecoration(
+                  labelText: 'Eligible HEAD_OFFICE user ID',
+                ),
+              ),
+              DropdownButtonFormField<String>(
+                value: roleId,
+                decoration: const InputDecoration(labelText: 'Active role'),
+                items: eligibleRoles.map((role) {
+                  final id = textValue(role, const ['_id', 'id']);
+                  return DropdownMenuItem(
+                    value: id,
+                    child: Text(textValue(role, const ['displayName', 'name'])),
+                  );
+                }).toList(),
+                onChanged: (value) => setState(() => roleId = value ?? roleId),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This explicitly changes the target account permissions. '
+                'Confirm only after verifying the target is an active '
+                'HEAD_OFFICE user.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm assignment'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final targetId = targetController.text.trim();
+    targetController.dispose();
+    if (confirmed != true || targetId.isEmpty || roleId.isEmpty) return;
+    try {
+      final token = await getToken();
+      if (token == null || token.isEmpty)
+        throw Exception('Login session has expired.');
+      final response = await http.put(
+        Uri.parse('$baseUrl${headOfficeRoleAssignmentPath(targetId)}'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(headOfficeRoleAssignmentBody(roleId)),
+      );
+      final result = decodeResponse(response);
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          result['success'] != true) {
+        throw Exception(
+            result['message']?.toString() ?? 'Unable to assign role.');
+      }
+      showMessage('Active wallet role assigned. The target must sign in again.',
+          isError: false);
+    } catch (error) {
+      showMessage(error.toString().replaceFirst('Exception: ', ''),
+          isError: true);
+    }
+  }
+
   List<Widget> buildPermissionGroups({
     required Set<String> selectedPermissions,
     required bool isSaving,
@@ -707,12 +729,9 @@ class _RolesPermissionsScreenState
   }) {
     final Map<String, List<String>> groups = {};
 
-    for (final String permission
-        in permissionCatalog) {
+    for (final String permission in permissionCatalog) {
       final String group =
-          permission.contains('.')
-              ? permission.split('.').first
-              : 'other';
+          permission.contains('.') ? permission.split('.').first : 'other';
 
       groups
           .putIfAbsent(
@@ -722,13 +741,11 @@ class _RolesPermissionsScreenState
           .add(permission);
     }
 
-    final List<String> groupNames =
-        groups.keys.toList()..sort();
+    final List<String> groupNames = groups.keys.toList()..sort();
 
     return groupNames.map(
       (String groupName) {
-        final List<String> permissions =
-            groups[groupName]!..sort();
+        final List<String> permissions = groups[groupName]!..sort();
 
         return Card(
           elevation: 0,
@@ -736,17 +753,14 @@ class _RolesPermissionsScreenState
             bottom: 10,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14),
             side: const BorderSide(
               color: Color(0xFFE5E7EB),
             ),
           ),
           child: ExpansionTile(
             title: Text(
-              groupName
-                  .replaceAll('_', ' ')
-                  .toUpperCase(),
+              groupName.replaceAll('_', ' ').toUpperCase(),
               style: const TextStyle(
                 fontWeight: FontWeight.w900,
               ),
@@ -757,8 +771,7 @@ class _RolesPermissionsScreenState
             ),
             children: permissions.map(
               (String permission) {
-                final bool selected =
-                    selectedPermissions.contains(
+                final bool selected = selectedPermissions.contains(
                   permission,
                 );
 
@@ -767,8 +780,7 @@ class _RolesPermissionsScreenState
                   title: Text(
                     permission,
                   ),
-                  controlAffinity:
-                      ListTileControlAffinity.leading,
+                  controlAffinity: ListTileControlAffinity.leading,
                   onChanged: isSaving
                       ? null
                       : (
@@ -830,8 +842,7 @@ class _RolesPermissionsScreenState
       fallback: 'ACTIVE',
     ).toUpperCase();
 
-    final List<String> permissions =
-        stringList(
+    final List<String> permissions = stringList(
       role['permissions'],
     );
 
@@ -860,14 +871,12 @@ class _RolesPermissionsScreenState
         child: Padding(
           padding: const EdgeInsets.all(17),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor:
-                        const Color(
+                    backgroundColor: const Color(
                       0xFFE5F7F4,
                     ),
                     child: const Icon(
@@ -878,23 +887,20 @@ class _RolesPermissionsScreenState
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           displayName,
                           style: const TextStyle(
                             fontSize: 17,
-                            fontWeight:
-                                FontWeight.w900,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                         if (internalName.isNotEmpty)
                           Text(
                             internalName,
                             style: const TextStyle(
-                              color:
-                                  Color(0xFF6B7280),
+                              color: Color(0xFF6B7280),
                               fontSize: 12,
                             ),
                           ),
@@ -902,8 +908,7 @@ class _RolesPermissionsScreenState
                     ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 6,
                     ),
@@ -915,8 +920,7 @@ class _RolesPermissionsScreenState
                           : const Color(
                               0xFFFEE2E2,
                             ),
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         20,
                       ),
                     ),
@@ -931,8 +935,7 @@ class _RolesPermissionsScreenState
                                 0xFFB91C1C,
                               ),
                         fontSize: 11,
-                        fontWeight:
-                            FontWeight.w900,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
@@ -1005,9 +1008,7 @@ class _RolesPermissionsScreenState
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : primaryColor,
+          backgroundColor: isError ? Colors.red.shade700 : primaryColor,
         ),
       );
   }
@@ -1017,8 +1018,7 @@ class _RolesPermissionsScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF7F9F8),
+      backgroundColor: const Color(0xFFF7F9F8),
       appBar: AppBar(
         title: const Text(
           'Roles & Permissions',
@@ -1052,12 +1052,10 @@ class _RolesPermissionsScreenState
               padding: const EdgeInsets.all(17),
               decoration: BoxDecoration(
                 color: const Color(0xFFE5F7F4),
-                borderRadius:
-                    BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: const Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     Icons.security_rounded,
@@ -1077,22 +1075,30 @@ class _RolesPermissionsScreenState
               ),
             ),
             const SizedBox(height: 18),
+            if (!isLoading && errorMessage.isEmpty && roles.isNotEmpty)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: assignHeadOfficeRole,
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  label: const Text('Assign wallet role to HEAD_OFFICE user'),
+                ),
+              ),
+            if (!isLoading && errorMessage.isEmpty && roles.isNotEmpty)
+              const SizedBox(height: 12),
             if (isLoading)
               const Padding(
                 padding: EdgeInsets.all(40),
                 child: Center(
-                  child:
-                      CircularProgressIndicator(),
+                  child: CircularProgressIndicator(),
                 ),
               )
             else if (errorMessage.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color:
-                      const Color(0xFFFEE2E2),
-                  borderRadius:
-                      BorderRadius.circular(16),
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
                   children: [
@@ -1100,10 +1106,8 @@ class _RolesPermissionsScreenState
                       errorMessage,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        color:
-                            Color(0xFF991B1B),
-                        fontWeight:
-                            FontWeight.w700,
+                        color: Color(0xFF991B1B),
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -1123,8 +1127,7 @@ class _RolesPermissionsScreenState
                   child: Text(
                     'No staff role was found.',
                     style: TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),

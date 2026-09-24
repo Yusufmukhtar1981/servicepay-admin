@@ -31,6 +31,10 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
   bool _busy = false;
   String? _message;
   List<dynamic> _customers = <dynamic>[];
+  Map<String, dynamic> _summary = <String, dynamic>{};
+  List<dynamic> _transactions = <dynamic>[];
+  int _transactionPage = 1;
+  String? _walletIntentKey;
   Map<String, dynamic>? _selectedCustomer;
 
   bool get _isHeadOffice => widget.role.trim().toUpperCase() == 'HEAD_OFFICE';
@@ -79,9 +83,10 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
   }
 
   Future<void> _createZonal() async {
-    if ([_name, _email, _phone, _password].any((c) => c.text.trim().isEmpty)) {
-      setState(
-          () => _message = 'Name, email, phone and password are required.');
+    if ([_name, _email, _phone, _password, _zone]
+        .any((c) => c.text.trim().isEmpty)) {
+      setState(() =>
+          _message = 'Name, email, phone, password and zone are required.');
       return;
     }
     await _run(() async {
@@ -144,16 +149,52 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
     )) {
       return;
     }
+    final intentKey = _walletIntentKey ??= phase1IdempotencyKey();
     await _run(() async {
       await _api.adjustWallet(
-        customerId: '${customer['_id'] ?? customer['id'] ?? ''}',
+        identifier:
+            '${customer['_id'] ?? customer['id'] ?? customer['phone'] ?? ''}',
         action: action,
         amount: _amount.text,
         reason: _reason.text,
         reference: _reference.text,
-        idempotencyKey: phase1IdempotencyKey(),
+        idempotencyKey: intentKey,
       );
-      if (mounted) setState(() => _message = 'Wallet adjustment completed.');
+      if (mounted) {
+        setState(() {
+          _message = 'Wallet adjustment completed.';
+          _walletIntentKey = null;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadDownline() async {
+    await _run(() async {
+      final summary = await _api.hierarchySummary();
+      final transactions = await _api.downlineTransactions(
+        page: _transactionPage,
+        limit: 25,
+      );
+      if (mounted) {
+        setState(() {
+          _summary = Map<String, dynamic>.from(
+            (summary['summary'] is Map ? summary['summary'] : summary),
+          );
+          final rows = transactions['transactions'] ?? transactions['items'];
+          _transactions = rows is List ? rows : <dynamic>[];
+        });
+      }
+    });
+  }
+
+  void _cancelWalletIntent() {
+    setState(() {
+      _walletIntentKey = null;
+      _selectedCustomer = null;
+      _amount.clear();
+      _reason.clear();
+      _reference.clear();
     });
   }
 
@@ -199,8 +240,14 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
       ) ??
       false;
 
-  Widget _field(TextEditingController controller, String label) => TextField(
+  Widget _field(
+    TextEditingController controller,
+    String label, {
+    bool resetsWalletIntent = false,
+  }) =>
+      TextField(
         controller: controller,
+        onChanged: resetsWalletIntent ? (_) => _walletIntentKey = null : null,
         decoration: InputDecoration(labelText: label),
       );
 
@@ -225,7 +272,7 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
               _field(_email, 'Email'),
               _field(_phone, 'Phone'),
               _field(_password, 'Temporary password'),
-              _field(_zone, 'Zone (optional)'),
+              _field(_zone, 'Zone (required)'),
               _field(_state, 'State (optional)'),
               FilledButton(
                 onPressed: _busy ? null : _createZonal,
@@ -254,16 +301,17 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
                     'Balance: ₦${row['walletBalance'] ?? row['balance'] ?? 0}',
                   ),
                   selected: identical(_selectedCustomer, row),
-                  onTap: () => setState(
-                    () => _selectedCustomer =
-                        Map<String, dynamic>.from(row as Map),
-                  ),
+                  onTap: () => setState(() {
+                    _selectedCustomer = Map<String, dynamic>.from(row as Map);
+                    _walletIntentKey = null;
+                  }),
                 ),
               ),
               if (_selectedCustomer != null) ...[
-                _field(_amount, 'Amount'),
-                _field(_reason, 'Mandatory reason'),
-                _field(_reference, 'Mandatory reference'),
+                _field(_amount, 'Amount', resetsWalletIntent: true),
+                _field(_reason, 'Mandatory reason', resetsWalletIntent: true),
+                _field(_reference, 'Mandatory reference',
+                    resetsWalletIntent: true),
                 Row(
                   children: [
                     Expanded(
@@ -281,21 +329,68 @@ class _Phase1OperationsScreenState extends State<Phase1OperationsScreen> {
                     ),
                   ],
                 ),
+                TextButton(
+                  onPressed: _busy ? null : _cancelWalletIntent,
+                  child: const Text('Cancel adjustment'),
+                ),
               ],
             ],
             if (_isManager)
               OutlinedButton(
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                          await _api.hierarchySummary();
-                          if (mounted) {
-                            setState(() => _message =
-                                'Downline summary loaded for your permitted scope.');
-                          }
-                        }),
+                onPressed: _busy ? null : _loadDownline,
                 child: const Text('View permitted downline summary'),
               ),
+            if (_summary.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text('Permitted downline summary',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Wrap(
+                spacing: 8,
+                children: _summary.entries
+                    .where((entry) => entry.value is num)
+                    .map(
+                      (entry) => Chip(
+                        label: Text('${entry.key}: ${entry.value}'),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+              Text('Transactions (page $_transactionPage)'),
+              ..._transactions.map(
+                (row) => ListTile(
+                  dense: true,
+                  title: Text(
+                    '${row['type'] ?? row['serviceType'] ?? 'Transaction'}',
+                  ),
+                  subtitle: Text(
+                    '${row['status'] ?? ''}  ${row['amount'] ?? ''}',
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: _transactionPage <= 1 || _busy
+                        ? null
+                        : () {
+                            setState(() => _transactionPage--);
+                            _loadDownline();
+                          },
+                    child: const Text('Previous'),
+                  ),
+                  TextButton(
+                    onPressed: _transactions.length < 25 || _busy
+                        ? null
+                        : () {
+                            setState(() => _transactionPage++);
+                            _loadDownline();
+                          },
+                    child: const Text('Next'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       );

@@ -25,19 +25,19 @@ class Phase1OperationsApi {
     required String email,
     required String phone,
     required String password,
-    String zone = '',
+    required String zone,
     String state = '',
   }) =>
       _request(
         'POST',
-        '/admin/role-users',
+        '/admin/role-users/zonal-managers',
         body: <String, dynamic>{
           'fullName': fullName.trim(),
           'email': email.trim(),
           'phone': phone.trim(),
           'password': password,
           'role': 'ZONAL_MANAGER',
-          if (zone.trim().isNotEmpty) 'zone': zone.trim(),
+          'zone': zone.trim(),
           if (state.trim().isNotEmpty) 'state': state.trim(),
         },
       );
@@ -53,7 +53,20 @@ class Phase1OperationsApi {
       );
 
   Future<Map<String, dynamic>> hierarchySummary() =>
-      _request('GET', '/admin/hierarchy/summary');
+      _request('GET', '/management/downline/summary');
+
+  Future<Map<String, dynamic>> downlineTransactions({
+    int page = 1,
+    int limit = 25,
+  }) =>
+      _request(
+        'GET',
+        '/management/downline/transactions',
+        query: <String, String>{
+          'page': page.toString(),
+          'limit': limit.toString(),
+        },
+      );
 
   Future<Map<String, dynamic>> searchCustomers(String search) => _request(
         'GET',
@@ -64,7 +77,7 @@ class Phase1OperationsApi {
       );
 
   Future<Map<String, dynamic>> adjustWallet({
-    required String customerId,
+    required String identifier,
     required String action,
     required String amount,
     required String reason,
@@ -74,13 +87,15 @@ class Phase1OperationsApi {
       _request(
         'POST',
         '/admin/wallet-adjustment',
+        headers: <String, String>{
+          'Idempotency-Key': idempotencyKey,
+        },
         body: <String, dynamic>{
-          'customerId': customerId,
+          'identifier': identifier,
           'action': action,
           'amount': amount,
           'reason': reason.trim(),
           'reference': reference.trim(),
-          'idempotencyKey': idempotencyKey,
         },
       );
 
@@ -88,20 +103,22 @@ class Phase1OperationsApi {
     String method,
     String path, {
     Map<String, String>? query,
+    Map<String, String>? headers,
     Map<String, dynamic>? body,
   }) async {
     final token = await _token();
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
-    final headers = <String, String>{
+    final requestHeaders = <String, String>{
       'Accept': 'application/json',
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $token',
+      ...?headers,
     };
     final response = switch (method) {
       'POST' => await _client
-          .post(uri, headers: headers, body: jsonEncode(body ?? {}))
+          .post(uri, headers: requestHeaders, body: jsonEncode(body ?? {}))
           .timeout(const Duration(seconds: 30)),
-      _ => await _client.get(uri, headers: headers).timeout(
+      _ => await _client.get(uri, headers: requestHeaders).timeout(
             const Duration(seconds: 30),
           ),
     };

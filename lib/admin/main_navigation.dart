@@ -514,14 +514,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * WALLET / FINANCE
      * =====================================================
      */
-    if (isHeadOffice ||
-        hasAnyPermission(const <String>[
-          'wallets.view',
-          'wallets.fund',
-          'wallets.adjust',
-          'finance.view',
-          'finance.reconcile',
-        ])) {
+    if (isHeadOffice || hasPermission('wallets.adjust')) {
       addNavigationPage(
         page: const AdminManualFundingScreen(),
         icon: Icons.account_balance_wallet_outlined,

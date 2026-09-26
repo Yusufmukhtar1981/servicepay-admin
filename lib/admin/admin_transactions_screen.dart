@@ -5,6 +5,37 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+@visibleForTesting
+List<MapEntry<String, String>> transactionProviderDetailFields(
+  Map<String, dynamic> transaction,
+) {
+  const List<MapEntry<String, String>> fields = <MapEntry<String, String>>[
+    MapEntry<String, String>('Provider', 'provider'),
+    MapEntry<String, String>('Provider Reference', 'providerReference'),
+    MapEntry<String, String>('Provider Status', 'providerStatus'),
+    MapEntry<String, String>('ServicePay Status', 'status'),
+    MapEntry<String, String>('Fallback Provider', 'fallbackProvider'),
+    MapEntry<String, String>(
+      'Reconciliation Status',
+      'reconciliationStatus',
+    ),
+  ];
+  return fields
+      .where((MapEntry<String, String> field) {
+        final dynamic value = transaction[field.value];
+        return transaction.containsKey(field.value) &&
+            value != null &&
+            value.toString().trim().isNotEmpty;
+      })
+      .map(
+        (MapEntry<String, String> field) => MapEntry<String, String>(
+          field.key,
+          transaction[field.value].toString(),
+        ),
+      )
+      .toList(growable: false);
+}
+
 class AdminTransactionsScreen extends StatefulWidget {
   const AdminTransactionsScreen({super.key});
 
@@ -688,9 +719,6 @@ class _AdminTransactionsScreenState
     final Map<String, dynamic> transaction =
         toMap(rawTransaction);
 
-    final String status =
-        transactionStatus(transaction);
-
     final String service =
         transactionService(transaction);
 
@@ -802,11 +830,16 @@ class _AdminTransactionsScreenState
                     ),
                   ),
                   const SizedBox(height: 18),
-                  detailRow(
-                    'Status',
-                    formatText(status),
-                    valueColor:
-                        statusColor(status),
+                  ...transactionProviderDetailFields(transaction).map(
+                    (MapEntry<String, String> field) => detailRow(
+                      field.key,
+                      field.key == 'ServicePay Status'
+                          ? formatText(field.value)
+                          : field.value,
+                      valueColor: field.key == 'ServicePay Status'
+                          ? statusColor(field.value)
+                          : null,
+                    ),
                   ),
                   detailRow(
                     'Reference',

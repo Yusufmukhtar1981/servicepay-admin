@@ -51,6 +51,7 @@ import 'svp_management_screen.dart';
 import 'edupay_control_center_screen.dart';
 import 'phase1_operations_screen.dart';
 import 'hierarchy_management_screen.dart';
+import 'provider_management_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -102,6 +103,11 @@ bool canAccessPromoLeaderboardNavigation({
   required Set<String> permissions,
 }) {
   return AdminAccess(role: role, permissions: permissions).isHeadOffice;
+}
+
+@visibleForTesting
+bool canAccessProviderManagementNavigation({required String role}) {
+  return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE';
 }
 
 class AdminMainNavigation extends StatefulWidget {
@@ -344,7 +350,14 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * SERVICEPAY SOLAR - HEAD OFFICE ONLY
      * =====================================================
      */
-    if (isHeadOffice) {
+    if (canAccessProviderManagementNavigation(role: adminRole)) {
+      addNavigationPage(
+        page: const ProviderManagementScreen(),
+        icon: Icons.hub_outlined,
+        activeIcon: Icons.hub_rounded,
+        label: 'Provider Management',
+      );
+
       addNavigationPage(
         page: const AdminSolarScreen(),
         icon: Icons.solar_power_outlined,

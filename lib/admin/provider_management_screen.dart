@@ -579,7 +579,10 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     final bool enabled = provider['enabled'] == true;
     final bool available = provider['available'] == true;
     final String? reason = provider['reason']?.toString();
-    final bool locked = serviceLocked || _lockedProvider(service, provider) || id.isEmpty;
+    final ProviderCapabilities capabilities =
+        service.capabilitiesFor(provider);
+    final bool locked =
+        serviceLocked || _lockedProvider(service, provider) || id.isEmpty;
     return Container(
       margin: const EdgeInsets.only(top: 9),
       padding: const EdgeInsets.fromLTRB(12, 11, 9, 11),
@@ -613,6 +616,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          _capabilityReadiness(capabilities),
           if (reason != null && reason.trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 5),
             Text(
@@ -627,7 +632,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
           if (_isTelecomAbodeProvider(provider)) ...<Widget>[
             const SizedBox(height: 5),
             const Text(
-              'Telecom Abode actions are not supported yet.',
+              'Telecom Abode remains locked. Reported capabilities do not '
+              'enable routing actions.',
               style: TextStyle(
                 color: Color(0xFF865019),
                 fontSize: 11,
@@ -754,6 +760,129 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
           ),
         ),
       );
+
+  Widget _capabilityReadiness(ProviderCapabilities capabilities) {
+    final bool? ready = capabilities.productionReady;
+    final String readyText = ready == null
+        ? 'Production readiness: Not reported'
+        : 'Production readiness: ${ready ? 'Ready' : 'Not ready'}';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F5F0),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            readyText,
+            style: TextStyle(
+              color: ready == true ? _green : const Color(0xFF6D5A3F),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              _capabilityStatus(
+                'Adapter implemented',
+                capabilities.adapterImplemented,
+              ),
+              _capabilityStatus(
+                'Credentials configured',
+                capabilities.credentialsConfigured,
+              ),
+              _capabilityStatus(
+                'Catalog available',
+                capabilities.catalogAvailable,
+              ),
+              _capabilityStatus(
+                'Purchase supported',
+                capabilities.purchaseSupported,
+              ),
+              _capabilityStatus(
+                'Query supported',
+                capabilities.querySupported,
+              ),
+              _capabilityStatus(
+                'Webhook supported',
+                capabilities.webhookSupported,
+              ),
+              _capabilityStatus(
+                'Webhook verified',
+                capabilities.webhookVerified,
+              ),
+              _capabilityStatus(
+                'Financial safety verified',
+                capabilities.financialSafetyVerified,
+              ),
+            ],
+          ),
+          if (capabilities.readinessReasons.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 7),
+            const Text(
+              'Readiness checks:',
+              style: TextStyle(
+                color: Color(0xFF58685F),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 3),
+            ...capabilities.readinessReasons.map(
+              (String reason) => Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      '• ',
+                      style: TextStyle(color: Color(0xFF865019)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        reason,
+                        style: const TextStyle(
+                          color: Color(0xFF704A20),
+                          fontSize: 10,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _capabilityStatus(String label, bool? value) {
+    final String status =
+        value == null ? 'Not reported' : (value ? 'Yes' : 'No');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      decoration: BoxDecoration(
+        color: value == true ? const Color(0xFFE5F2E8) : const Color(0xFFE9ECE9),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        '$label: $status',
+        style: TextStyle(
+          color: value == true ? _green : const Color(0xFF59665E),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 
   Widget _pill(String text, Color background, Color foreground, IconData icon) =>
       Container(

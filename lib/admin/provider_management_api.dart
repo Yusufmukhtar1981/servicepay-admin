@@ -28,6 +28,9 @@ class ProviderService {
   final String? updatedAt;
   final String? updatedBy;
 
+  ProviderCapabilities capabilitiesFor(Map<String, dynamic> provider) =>
+      ProviderCapabilities.fromJson(provider['capabilities']);
+
   factory ProviderService.fromJson(Map<String, dynamic> json) {
     final dynamic rawProviders = json['providers'];
     return ProviderService(
@@ -75,15 +78,82 @@ class ProviderService {
   }
 }
 
-class ProviderManagementApi {
-  ProviderManagementApi({http.Client? client})
-      : _client = client ?? http.Client();
+@immutable
+class ProviderCapabilities {
+  const ProviderCapabilities({
+    required this.adapterImplemented,
+    required this.credentialsConfigured,
+    required this.catalogAvailable,
+    required this.purchaseSupported,
+    required this.querySupported,
+    required this.webhookSupported,
+    required this.webhookVerified,
+    required this.financialSafetyVerified,
+    required this.productionReady,
+    required this.readinessReasons,
+  });
 
-  static const String _baseUrl = 'https://api.servicepay.ng/api';
+  final bool? adapterImplemented;
+  final bool? credentialsConfigured;
+  final bool? catalogAvailable;
+  final bool? purchaseSupported;
+  final bool? querySupported;
+  final bool? webhookSupported;
+  final bool? webhookVerified;
+  final bool? financialSafetyVerified;
+  final bool? productionReady;
+  final List<String> readinessReasons;
+
+  factory ProviderCapabilities.fromJson(dynamic json) {
+    final Map<dynamic, dynamic>? values = json is Map ? json : null;
+    final dynamic rawReasons = values?['readinessReasons'];
+    return ProviderCapabilities(
+      adapterImplemented: _reportedBoolean(values?['adapterImplemented']),
+      credentialsConfigured:
+          _reportedBoolean(values?['credentialsConfigured']),
+      catalogAvailable: _reportedBoolean(values?['catalogAvailable']),
+      purchaseSupported: _reportedBoolean(values?['purchaseSupported']),
+      querySupported: _reportedBoolean(values?['querySupported']),
+      webhookSupported: _reportedBoolean(values?['webhookSupported']),
+      webhookVerified: _reportedBoolean(values?['webhookVerified']),
+      financialSafetyVerified:
+          _reportedBoolean(values?['financialSafetyVerified']),
+      productionReady: _reportedBoolean(values?['productionReady']),
+      readinessReasons: rawReasons is List
+          ? rawReasons
+              .whereType<String>()
+              .where((String reason) => reason.trim().isNotEmpty)
+              .toList(growable: false)
+          : const <String>[],
+    );
+  }
+
+  static bool? _reportedBoolean(dynamic value) =>
+      value is bool ? value : null;
+}
+
+class ProviderManagementApi {
+  ProviderManagementApi({http.Client? client, String? baseUrl})
+      : _client = client ?? http.Client(),
+        baseUrl = baseUrl ?? _defaultBaseUrl;
+
+  static const String _defaultBaseUrl = String.fromEnvironment(
+    'SERVICEPAY_API_BASE_URL',
+    defaultValue: 'https://api.servicepay.ng/api',
+  );
   static const String _resource =
       '/admin/fintech-operations/provider-management';
 
   final http.Client _client;
+  final String baseUrl;
+
+  Uri get _resourceUri {
+    final String normalizedBase = baseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final Uri configuredUri = Uri.parse('$normalizedBase$_resource');
+    return configuredUri.hasScheme
+        ? configuredUri
+        : Uri.base.resolveUri(configuredUri);
+  }
 
   Future<Map<String, String>> _headers() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -110,7 +180,7 @@ class ProviderManagementApi {
 
   Future<List<ProviderService>> loadServices() async {
     final http.Response response = await _client.get(
-      Uri.parse('$_baseUrl$_resource'),
+      _resourceUri,
       headers: await _headers(),
     );
     final dynamic decoded = _decode(response.body);
@@ -156,7 +226,7 @@ class ProviderManagementApi {
     required String action,
     required String provider,
   }) async {
-    final Uri uri = Uri.parse('$_baseUrl$_resource');
+    final Uri uri = _resourceUri;
     final http.Response response = await _client.patch(
       uri,
       headers: await _headers(),

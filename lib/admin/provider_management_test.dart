@@ -17,12 +17,14 @@ Map<String, dynamic> _provider({
   required bool enabled,
   required bool available,
   String? reason,
+  Map<String, dynamic>? capabilities,
 }) =>
     <String, dynamic>{
       'provider': key,
       'enabled': enabled,
       'available': available,
       if (reason != null) 'reason': reason,
+      if (capabilities != null) 'capabilities': capabilities,
     };
 
 Map<String, dynamic> _service({
@@ -142,6 +144,30 @@ void main() {
     expect(services[1].fallbackSupported, isFalse);
   });
 
+  test('preview relative base keeps GET on current-origin /api', () async {
+    late http.Request request;
+    final ProviderManagementApi api = ProviderManagementApi(
+      baseUrl: '/api',
+      client: MockClient((http.Request incoming) async {
+        request = incoming;
+        return http.Response(jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{'items': _allFourServices()},
+        }), 200);
+      }),
+    );
+
+    await api.loadServices();
+
+    expect(
+      request.url.path,
+      '/api/admin/fintech-operations/provider-management',
+    );
+    expect(request.url.scheme, Uri.base.scheme);
+    expect(request.url.host, Uri.base.host);
+    expect(request.url.toString(), isNot(startsWith(endpoint)));
+  });
+
   test('unreturned services are explicit and never fabricated as inactive', () async {
     final ProviderManagementApi api = ProviderManagementApi(
       client: MockClient((http.Request _) async => http.Response(
@@ -171,6 +197,66 @@ void main() {
     expect(services[1].configurationReported, isFalse);
   });
 
+  test('capability parsing preserves reported booleans and missing as unknown', () {
+    final ProviderCapabilities reported = ProviderCapabilities.fromJson(
+      <String, dynamic>{
+        'adapterImplemented': true,
+        'credentialsConfigured': false,
+        'catalogAvailable': true,
+        'purchaseSupported': false,
+        'querySupported': true,
+        'webhookSupported': false,
+        'webhookVerified': true,
+        'financialSafetyVerified': false,
+        'productionReady': false,
+        'readinessReasons': <String>['Webhook verification is not enabled.'],
+      },
+    );
+    expect(reported.adapterImplemented, isTrue);
+    expect(reported.credentialsConfigured, isFalse);
+    expect(reported.catalogAvailable, isTrue);
+    expect(reported.purchaseSupported, isFalse);
+    expect(reported.querySupported, isTrue);
+    expect(reported.webhookSupported, isFalse);
+    expect(reported.webhookVerified, isTrue);
+    expect(reported.financialSafetyVerified, isFalse);
+    expect(reported.productionReady, isFalse);
+    expect(reported.readinessReasons,
+        <String>['Webhook verification is not enabled.']);
+
+    final ProviderCapabilities absent = ProviderCapabilities.fromJson(null);
+    expect(absent.adapterImplemented, isNull);
+    expect(absent.credentialsConfigured, isNull);
+    expect(absent.catalogAvailable, isNull);
+    expect(absent.purchaseSupported, isNull);
+    expect(absent.querySupported, isNull);
+    expect(absent.webhookSupported, isNull);
+    expect(absent.webhookVerified, isNull);
+    expect(absent.financialSafetyVerified, isNull);
+    expect(absent.productionReady, isNull);
+    expect(absent.readinessReasons, isEmpty);
+    expect(
+      ProviderCapabilities.fromJson(<String, dynamic>{
+        'adapterImplemented': 'true',
+      }).adapterImplemented,
+      isNull,
+    );
+
+    final ProviderService service = ProviderService.fromJson(<String, dynamic>{
+      'service': 'ELECTRICITY',
+      'providers': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'provider': 'TELECOM_ABODE',
+          'capabilities': <String, dynamic>{'productionReady': false},
+        },
+      ],
+    });
+    expect(
+      service.capabilitiesFor(service.providers.single).productionReady,
+      isFalse,
+    );
+  });
+
   test('PATCH uses the collection path and includes service in the body',
       () async {
     late http.Request request;
@@ -196,10 +282,41 @@ void main() {
     });
   });
 
+  test('preview relative base keeps PATCH on current-origin /api', () async {
+    late http.Request request;
+    final ProviderManagementApi api = ProviderManagementApi(
+      baseUrl: '/api',
+      client: MockClient((http.Request incoming) async {
+        request = incoming;
+        return http.Response('{"success":true}', 200);
+      }),
+    );
+
+    await api.updateProvider(
+      service: 'ELECTRICITY',
+      action: 'disable',
+      provider: 'NELLOBYTES',
+    );
+
+    expect(request.method, 'PATCH');
+    expect(
+      request.url.path,
+      '/api/admin/fintech-operations/provider-management',
+    );
+    expect(request.url.scheme, Uri.base.scheme);
+    expect(request.url.host, Uri.base.host);
+    expect(request.url.toString(), isNot(startsWith(endpoint)));
+    expect(jsonDecode(request.body), <String, String>{
+      'service': 'ELECTRICITY',
+      'action': 'disable',
+      'provider': 'NELLOBYTES',
+    });
+  });
+
   testWidgets('shows legacy AIRTIME/DATA and locks Telecom Abode', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(390, 4000);
+    tester.view.physicalSize = const Size(390, 12000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -220,19 +337,48 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: ProviderManagementScreen(api: api)));
     await tester.pumpAndSettle();
 
-    for (final String service in <String>[
+    const List<String> serviceKeys = <String>[
+      'AIRTIME',
+      'DATA',
+      'ELECTRICITY',
+      'CABLE',
+    ];
+    const List<String> serviceLabels = <String>[
       'Airtime',
       'Data',
       'Electricity',
       'Cable',
-    ]) {
-      expect(find.text(service), findsOneWidget);
+    ];
+    for (int index = 0; index < serviceKeys.length; index++) {
+      final String key = serviceKeys[index];
+      final Finder card = find.byKey(ValueKey<String>('service-$key'));
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(serviceLabels[index]),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.textContaining('PRIMARY')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.textContaining('FALLBACK')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.textContaining('CURRENT')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.textContaining('Telecom Abode remains locked.'),
+        ),
+        findsOneWidget,
+      );
     }
-    expect(find.textContaining('PRIMARY'), findsNWidgets(4));
-    expect(find.textContaining('FALLBACK'), findsNWidgets(4));
-    expect(find.textContaining('CURRENT'), findsNWidgets(4));
-    expect(find.textContaining('Telecom Abode actions are not supported yet.'),
-        findsNWidgets(4));
 
     final Finder airtime = find.byKey(const ValueKey<String>('service-AIRTIME'));
     final Finder data = find.byKey(const ValueKey<String>('service-DATA'));
@@ -242,13 +388,23 @@ void main() {
         findsOneWidget);
     expect(find.descendant(of: data, matching: find.text('ClubKonnect / Nellobyte')),
         findsOneWidget);
-    expect(find.text('READ ONLY'), findsNWidgets(2));
-    expect(
-      find.text(
-        'Existing purchases continue through ClubKonnect. The backend rejects routing-control changes, so these controls are read-only.',
-      ),
-      findsNWidgets(2),
-    );
+    for (final String service in <String>['AIRTIME', 'DATA']) {
+      final Finder card =
+          find.byKey(ValueKey<String>('service-$service'));
+      expect(
+        find.descendant(of: card, matching: find.text('READ ONLY')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            'Existing purchases continue through ClubKonnect. The backend rejects routing-control changes, so these controls are read-only.',
+          ),
+        ),
+        findsOneWidget,
+      );
+    }
 
     final List<OutlinedButton> airtimeButtons = tester.widgetList<OutlinedButton>(
       find.descendant(
@@ -391,6 +547,93 @@ void main() {
       ),
       findsNothing,
     );
+    expect(
+      find.descendant(
+        of: airtime,
+        matching: find.text('Production readiness: Not reported'),
+      ),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(
+        of: airtime,
+        matching: find.text('Credentials configured: Not reported'),
+      ),
+      findsNWidgets(2),
+    );
+  });
+
+  testWidgets('readiness displays accurately without unlocking Telecom Abode', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 12000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final ProviderManagementApi api = ProviderManagementApi(
+      client: MockClient((http.Request _) async => http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{
+            'items': <Map<String, dynamic>>[
+              _service(
+                name: 'ELECTRICITY',
+                providers: <Map<String, dynamic>>[
+                  _provider(
+                    key: 'TELECOM_ABODE',
+                    enabled: true,
+                    available: true,
+                    capabilities: <String, dynamic>{
+                      'adapterImplemented': true,
+                      'credentialsConfigured': true,
+                      'catalogAvailable': true,
+                      'purchaseSupported': true,
+                      'querySupported': false,
+                      'webhookSupported': false,
+                      'webhookVerified': false,
+                      'financialSafetyVerified': false,
+                      'productionReady': false,
+                      'readinessReasons': <String>[
+                        'Webhook verification is not confirmed.',
+                      ],
+                      'apiKey': 'must-not-be-rendered',
+                    },
+                  ),
+                ],
+              ),
+            ],
+          },
+        }),
+        200,
+      )),
+    );
+
+    await tester.pumpWidget(MaterialApp(home: ProviderManagementScreen(api: api)));
+    await tester.pumpAndSettle();
+
+    final Finder electricity =
+        find.byKey(const ValueKey<String>('service-ELECTRICITY'));
+    expect(find.text('Production readiness: Not ready'), findsOneWidget);
+    expect(find.text('Adapter implemented: Yes'), findsOneWidget);
+    expect(find.text('Credentials configured: Yes'), findsOneWidget);
+    expect(find.text('Query supported: No'), findsOneWidget);
+    expect(find.text('Webhook verified: No'), findsOneWidget);
+    expect(find.text('Webhook verification is not confirmed.'), findsOneWidget);
+    expect(find.text('must-not-be-rendered'), findsNothing);
+    final Finder actionButtons = find.descendant(
+      of: electricity,
+      matching: find.byWidgetPredicate((Widget widget) => widget is OutlinedButton),
+    );
+    expect(
+      actionButtons,
+      findsNWidgets(3),
+    );
+    expect(
+      tester
+          .widgetList<OutlinedButton>(actionButtons)
+          .every((OutlinedButton button) => button.onPressed == null),
+      isTrue,
+    );
   });
 
   test('Provider Management navigation is Head Office-only', () {
@@ -434,6 +677,14 @@ void main() {
         service: 'ELECTRICITY',
         provider: 'TELECOM_ABODE',
         available: false,
+      ),
+      isTrue,
+    );
+    expect(
+      providerManagementActionIsLocked(
+        service: 'ELECTRICITY',
+        provider: 'TELECOM_ABODE',
+        available: true,
       ),
       isTrue,
     );

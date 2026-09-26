@@ -5,12 +5,18 @@ import 'provider_management_api.dart';
 bool providerManagementActionIsLocked({
   required String service,
   required String provider,
+  bool configurationReported = true,
+  bool available = true,
 }) {
   final String normalizedService =
       service.toLowerCase().replaceAll(RegExp(r'[_\-\s]+'), '');
   final String normalizedProvider =
       provider.toLowerCase().replaceAll(RegExp(r'[_\-\s]+'), '');
-  return normalizedService.contains('cable') ||
+  return !configurationReported ||
+      !available ||
+      normalizedService == 'airtime' ||
+      normalizedService == 'data' ||
+      normalizedService.contains('cable') ||
       normalizedProvider == 'ta' ||
       normalizedProvider == 'telecomabode';
 }
@@ -79,23 +85,47 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
   }
 
   bool _lockedService(ProviderService service) {
-    final String name = service.service
-        .toLowerCase()
-        .replaceAll(RegExp(r'[_-]+'), ' ');
-    return name.contains('cable');
+    final String name = _serviceKey(service.service);
+    return !service.configurationReported ||
+        name == 'AIRTIME' ||
+        name == 'DATA' ||
+        name == 'CABLE';
+  }
+
+  String _serviceKey(String service) =>
+      service.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+  String _serviceLabel(String service) {
+    switch (_serviceKey(service)) {
+      case 'AIRTIME':
+        return 'Airtime';
+      case 'DATA':
+        return 'Data';
+      case 'ELECTRICITY':
+        return 'Electricity';
+      case 'CABLE':
+        return 'Cable';
+      default:
+        return service;
+    }
   }
 
   bool _lockedProvider(ProviderService service, Map<String, dynamic> provider) =>
       providerManagementActionIsLocked(
         service: service.service,
         provider: _providerKey(provider),
+        configurationReported: service.configurationReported,
+        available: provider['available'] == true,
       );
 
   String _lockReason(ProviderService service) {
-    final String name = service.service
-        .toLowerCase()
-        .replaceAll(RegExp(r'[_-]+'), ' ');
-    if (name.contains('cable')) {
+    if (!service.configurationReported) {
+      return 'Provider status and routing configuration were not returned by the backend. Controls are locked until confirmed.';
+    }
+    if (<String>{'AIRTIME', 'DATA'}.contains(_serviceKey(service.service))) {
+      return 'Existing purchases continue through ClubKonnect. The backend rejects routing-control changes, so these controls are read-only.';
+    }
+    if (_serviceKey(service.service) == 'CABLE') {
       return 'Provider controls are locked: cable purchases are not available on a live purchase route.';
     }
     return 'Telecom Abode provider actions are not supported yet.';
@@ -108,10 +138,31 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
   ) async {
     final String id = _providerKey(provider);
     if (_lockedProvider(service, provider) || id.isEmpty) return;
-    if (action == 'disable' &&
-        service.service.trim().toLowerCase() == 'electricity' &&
-        _normalized(id) == _normalized(service.currentProvider ?? '')) {
-      final bool confirmed = await _confirmActiveElectricityDisable(id);
+    final bool enabled = provider['enabled'] == true;
+    final bool available = provider['available'] == true;
+    if (action == 'setFallback' && !service.fallbackSupported) return;
+    if ((action == 'setPrimary' || action == 'setFallback') &&
+        (!enabled || !available)) {
+      return;
+    }
+    final bool isCurrent =
+        _normalized(id) == _normalized(service.currentProvider ?? '');
+    if (action == 'disable' && enabled && available) {
+      final bool confirmed = await _confirmDisableProvider(
+        id,
+        _serviceLabel(service.service),
+      );
+      if (!confirmed || !mounted) return;
+    }
+    if (action == 'setPrimary' &&
+        enabled &&
+        available &&
+        service.currentProvider != null &&
+        !isCurrent) {
+      final bool confirmed = await _confirmPrimarySwitch(
+        id,
+        _serviceLabel(service.service),
+      );
       if (!confirmed || !mounted) return;
     }
     final String key = '${service.service}:$id:$action';
@@ -140,14 +191,14 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     }
   }
 
-  Future<bool> _confirmActiveElectricityDisable(String provider) async {
+  Future<bool> _confirmDisableProvider(String provider, String service) async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded, color: Color(0xFF9A5A18)),
-        title: const Text('Disable active provider?'),
+        title: const Text('Disable live provider?'),
         content: Text(
-          '$provider is the current electricity provider. Disabling it will stop new electricity purchases until another provider is active.',
+          '$provider is enabled and available for $service. Disabling it may stop new $service purchases. Transactions already admitted may still finish.',
         ),
         actions: <Widget>[
           TextButton(
@@ -159,7 +210,31 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF9A3028),
             ),
-            child: const Text('Disable provider'),
+            child: const Text('Confirm disable'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<bool> _confirmPrimarySwitch(String provider, String service) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        icon: const Icon(Icons.swap_horiz_rounded, color: Color(0xFF9A5A18)),
+        title: const Text('Switch primary provider?'),
+        content: Text(
+          'New $service purchases will use $provider if the backend accepts this change. Transactions already admitted may still finish.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep current provider'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm switch'),
           ),
         ],
       ),
@@ -361,6 +436,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
   Widget _serviceCard(ProviderService service) {
     final bool locked = _lockedService(service);
     return Container(
+      key: ValueKey<String>('service-${service.service}'),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -378,7 +454,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    service.service,
+                    _serviceLabel(service.service),
                     style: const TextStyle(
                       color: _ink,
                       fontSize: 18,
@@ -387,7 +463,14 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
                   ),
                 ),
                 _pill(
-                  locked ? 'LOCKED' : 'LIVE CONFIG',
+                   !service.configurationReported
+                       ? 'STATUS NOT REPORTED'
+                       : <String>{'AIRTIME', 'DATA'}
+                               .contains(_serviceKey(service.service))
+                           ? 'READ ONLY'
+                           : locked
+                               ? 'LOCKED'
+                               : 'LIVE CONFIG',
                   locked ? const Color(0xFFFFF0DF) : const Color(0xFFE4F3E8),
                   locked ? const Color(0xFF865019) : _green,
                   locked ? Icons.lock_outline : Icons.check_circle_outline,
@@ -490,6 +573,9 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
   ) {
     final String id = _providerKey(provider);
     final String label = _providerDisplayName(provider);
+    final bool statusReported = service.configurationReported &&
+        provider['enabled'] is bool &&
+        provider['available'] is bool;
     final bool enabled = provider['enabled'] == true;
     final bool available = provider['available'] == true;
     final String? reason = provider['reason']?.toString();
@@ -502,23 +588,29 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFECF0EC)),
       ),
-      child: Column(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
+          Text(
+            label,
+            style: const TextStyle(
+              color: _ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: <Widget>[
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: _ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              _status(
+                statusReported ? (enabled ? 'Enabled' : 'Disabled') : 'Not reported',
+                statusReported && enabled,
               ),
-              _status(enabled ? 'Enabled' : 'Disabled', enabled),
-              const SizedBox(width: 6),
-              _status(available ? 'Available' : 'Unavailable', available),
+              _status(
+                statusReported ? (available ? 'Available' : 'Unavailable') : 'Not reported',
+                statusReported && available,
+              ),
             ],
           ),
           if (reason != null && reason.trim().isNotEmpty) ...<Widget>[
@@ -532,7 +624,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
               ),
             ),
           ],
-          if (!serviceLocked && _isTelecomAbodeProvider(provider)) ...<Widget>[
+          if (_isTelecomAbodeProvider(provider)) ...<Widget>[
             const SizedBox(height: 5),
             const Text(
               'Telecom Abode actions are not supported yet.',
@@ -543,37 +635,39 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 9),
-          Wrap(
-            spacing: 7,
-            runSpacing: 6,
-            children: <Widget>[
-              _actionButton(
-                label: enabled ? 'Disable' : 'Enable',
-                icon: enabled ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                action: enabled ? 'disable' : 'enable',
-                service: service,
-                provider: provider,
-                locked: locked,
-              ),
-              _actionButton(
-                label: 'Set primary',
-                icon: Icons.radio_button_checked,
-                action: 'setPrimary',
-                service: service,
-                provider: provider,
-                locked: locked,
-              ),
-              _actionButton(
-                label: 'Set fallback',
-                icon: Icons.alt_route,
-                action: 'setFallback',
-                service: service,
-                provider: provider,
-                locked: locked || !service.fallbackSupported,
-              ),
-            ],
-          ),
+           if (service.configurationReported) ...<Widget>[
+             const SizedBox(height: 9),
+             Wrap(
+               spacing: 7,
+               runSpacing: 6,
+               children: <Widget>[
+                 _actionButton(
+                   label: enabled ? 'Disable' : 'Enable',
+                   icon: enabled ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                   action: enabled ? 'disable' : 'enable',
+                   service: service,
+                   provider: provider,
+                   locked: locked,
+                 ),
+                 _actionButton(
+                   label: 'Set primary',
+                   icon: Icons.radio_button_checked,
+                   action: 'setPrimary',
+                   service: service,
+                   provider: provider,
+                   locked: locked || !enabled || !available,
+                 ),
+                 _actionButton(
+                   label: 'Set fallback',
+                   icon: Icons.alt_route,
+                   action: 'setFallback',
+                   service: service,
+                   provider: provider,
+                   locked: locked || !service.fallbackSupported || !enabled || !available,
+                 ),
+               ],
+             ),
+           ],
         ],
       ),
     );
@@ -581,13 +675,16 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
 
   String _providerDisplayName(Map<String, dynamic> provider) {
     final String key = _providerKey(provider);
-    if (_normalized(key) == 'nellobytes') return 'ClubKonnect / Nellobyte';
+    if (<String>{'nellobytes', 'clubkonnect'}.contains(_normalized(key))) {
+      return 'ClubKonnect / Nellobyte';
+    }
     final String label = (provider['label'] ?? key).toString();
     return label;
   }
 
   String _routeProviderName(String? value) {
-    if (value != null && _normalized(value) == 'nellobytes') {
+    if (value != null &&
+        <String>{'nellobytes', 'clubkonnect'}.contains(_normalized(value))) {
       return 'ClubKonnect / Nellobyte';
     }
     return value ?? '—';

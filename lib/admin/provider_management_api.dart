@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ProviderService {
   const ProviderService({
     required this.service,
+    required this.configurationReported,
     required this.primaryProvider,
     required this.fallbackProvider,
     required this.currentProvider,
@@ -18,6 +19,7 @@ class ProviderService {
   });
 
   final String service;
+  final bool configurationReported;
   final String? primaryProvider;
   final String? fallbackProvider;
   final String? currentProvider;
@@ -30,6 +32,7 @@ class ProviderService {
     final dynamic rawProviders = json['providers'];
     return ProviderService(
       service: (json['service'] ?? '').toString(),
+      configurationReported: true,
       primaryProvider: _nullableString(json['primaryProvider']),
       fallbackProvider: _nullableString(json['fallbackProvider']),
       currentProvider: _nullableString(json['currentProvider']),
@@ -42,6 +45,27 @@ class ProviderService {
       fallbackSupported: json['fallbackSupported'] == true,
       updatedAt: _nullableString(json['updatedAt']),
       updatedBy: _nullableString(json['updatedBy']),
+    );
+  }
+
+  factory ProviderService.notReported(String service) {
+    const String reason = 'The backend did not return this service configuration.';
+    return ProviderService(
+      service: service,
+      configurationReported: false,
+      primaryProvider: null,
+      fallbackProvider: null,
+      currentProvider: null,
+      providers: <Map<String, dynamic>>[
+        <String, dynamic>{'provider': 'NELLOBYTES', 'reason': reason},
+        <String, dynamic>{
+          'provider': 'TELECOM_ABODE',
+          'reason': reason,
+        },
+      ],
+      fallbackSupported: false,
+      updatedAt: null,
+      updatedBy: null,
     );
   }
 
@@ -100,10 +124,31 @@ class ProviderManagementApi {
     if (rawItems is! List) {
       throw Exception('Provider settings response did not include items.');
     }
-    return rawItems
+    final List<ProviderService> returned = rawItems
         .whereType<Map>()
         .map((Map item) => ProviderService.fromJson(Map<String, dynamic>.from(item)))
         .toList(growable: false);
+    const List<String> serviceOrder = <String>[
+      'AIRTIME',
+      'DATA',
+      'ELECTRICITY',
+      'CABLE',
+    ];
+    String serviceKey(String service) =>
+        service.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    final Map<String, ProviderService> byService = <String, ProviderService>{};
+    for (final ProviderService service in returned) {
+      byService.putIfAbsent(serviceKey(service.service), () => service);
+    }
+
+    final List<ProviderService> ordered = serviceOrder
+        .map((String key) => byService.remove(key) ?? ProviderService.notReported(key))
+        .toList(growable: true);
+    final List<ProviderService> additional = byService.values.toList()
+      ..sort((ProviderService a, ProviderService b) =>
+          a.service.compareTo(b.service));
+    return <ProviderService>[...ordered, ...additional];
   }
 
   Future<void> updateProvider({

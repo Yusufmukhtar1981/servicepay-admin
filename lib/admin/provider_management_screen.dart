@@ -7,18 +7,24 @@ bool providerManagementActionIsLocked({
   required String provider,
   bool configurationReported = true,
   bool available = true,
+  bool routingControlSupported = false,
+  bool? productionReady,
 }) {
   final String normalizedService =
       service.toLowerCase().replaceAll(RegExp(r'[_\-\s]+'), '');
   final String normalizedProvider =
       provider.toLowerCase().replaceAll(RegExp(r'[_\-\s]+'), '');
-  return !configurationReported ||
-      !available ||
-      normalizedService == 'airtime' ||
-      normalizedService == 'data' ||
-      normalizedService.contains('cable') ||
-      normalizedProvider == 'ta' ||
-      normalizedProvider == 'telecomabode';
+  if (!configurationReported || !available) return true;
+  if (normalizedService == 'airtime' || normalizedService.contains('cable')) {
+    return true;
+  }
+  final bool isTelecomAbode =
+      normalizedProvider == 'ta' || normalizedProvider == 'telecomabode';
+  if (normalizedService == 'data') {
+    return !routingControlSupported ||
+        (isTelecomAbode && productionReady != true);
+  }
+  return isTelecomAbode;
 }
 
 class ProviderManagementScreen extends StatefulWidget {
@@ -35,8 +41,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
   static const Color _green = Color(0xFF08783E);
   static const Color _ink = Color(0xFF18342A);
   static const Color _canvas = Color(0xFFF4F7F3);
-  late final ProviderManagementApi _api =
-      widget.api ?? ProviderManagementApi();
+  late final ProviderManagementApi _api = widget.api ?? ProviderManagementApi();
 
   List<ProviderService> _services = <ProviderService>[];
   bool _loading = true;
@@ -88,7 +93,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     final String name = _serviceKey(service.service);
     return !service.configurationReported ||
         name == 'AIRTIME' ||
-        name == 'DATA' ||
+        (name == 'DATA' && !service.routingControlSupported) ||
         name == 'CABLE';
   }
 
@@ -110,20 +115,39 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     }
   }
 
-  bool _lockedProvider(ProviderService service, Map<String, dynamic> provider) =>
+  bool _lockedProvider(
+          ProviderService service, Map<String, dynamic> provider) =>
       providerManagementActionIsLocked(
         service: service.service,
         provider: _providerKey(provider),
         configurationReported: service.configurationReported,
         available: provider['available'] == true,
+        routingControlSupported: service.routingControlSupported,
+        productionReady: service.capabilitiesFor(provider).productionReady,
       );
+
+  bool _isPrimaryProvider(
+    ProviderService service,
+    Map<String, dynamic> provider,
+  ) {
+    final String primary = _normalized(service.primaryProvider ?? '');
+    final String candidate = _normalized(_providerKey(provider));
+    if (primary.isEmpty || candidate.isEmpty) return false;
+    const Set<String> clubKonnectKeys = <String>{'clubkonnect', 'nellobytes'};
+    return primary == candidate ||
+        (clubKonnectKeys.contains(primary) &&
+            clubKonnectKeys.contains(candidate));
+  }
 
   String _lockReason(ProviderService service) {
     if (!service.configurationReported) {
       return 'Provider status and routing configuration were not returned by the backend. Controls are locked until confirmed.';
     }
-    if (<String>{'AIRTIME', 'DATA'}.contains(_serviceKey(service.service))) {
+    if (_serviceKey(service.service) == 'AIRTIME') {
       return 'Existing purchases continue through ClubKonnect. The backend rejects routing-control changes, so these controls are read-only.';
+    }
+    if (_serviceKey(service.service) == 'DATA') {
+      return 'Data provider controls are read-only until the backend explicitly confirms that this purchase route supports provider changes.';
     }
     if (_serviceKey(service.service) == 'CABLE') {
       return 'Provider controls are locked: cable purchases are not available on a live purchase route.';
@@ -442,7 +466,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2EAE3)),
         boxShadow: const <BoxShadow>[
-          BoxShadow(color: Color(0x0A163C28), blurRadius: 18, offset: Offset(0, 6)),
+          BoxShadow(
+              color: Color(0x0A163C28), blurRadius: 18, offset: Offset(0, 6)),
         ],
       ),
       child: Padding(
@@ -463,14 +488,15 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
                   ),
                 ),
                 _pill(
-                   !service.configurationReported
-                       ? 'STATUS NOT REPORTED'
-                       : <String>{'AIRTIME', 'DATA'}
-                               .contains(_serviceKey(service.service))
-                           ? 'READ ONLY'
-                           : locked
-                               ? 'LOCKED'
-                               : 'LIVE CONFIG',
+                  !service.configurationReported
+                      ? 'STATUS NOT REPORTED'
+                      : _serviceKey(service.service) == 'AIRTIME' ||
+                              (_serviceKey(service.service) == 'DATA' &&
+                                  !service.routingControlSupported)
+                          ? 'READ ONLY'
+                          : locked
+                              ? 'LOCKED'
+                              : 'LIVE CONFIG',
                   locked ? const Color(0xFFFFF0DF) : const Color(0xFFE4F3E8),
                   locked ? const Color(0xFF865019) : _green,
                   locked ? Icons.lock_outline : Icons.check_circle_outline,
@@ -499,7 +525,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Icon(Icons.lock_outline, size: 18, color: Color(0xFF865019)),
+                    const Icon(Icons.lock_outline,
+                        size: 18, color: Color(0xFF865019)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -579,8 +606,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     final bool enabled = provider['enabled'] == true;
     final bool available = provider['available'] == true;
     final String? reason = provider['reason']?.toString();
-    final ProviderCapabilities capabilities =
-        service.capabilitiesFor(provider);
+    final ProviderCapabilities capabilities = service.capabilitiesFor(provider);
     final bool locked =
         serviceLocked || _lockedProvider(service, provider) || id.isEmpty;
     return Container(
@@ -591,7 +617,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFECF0EC)),
       ),
-        child: Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
@@ -607,11 +633,21 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
             runSpacing: 6,
             children: <Widget>[
               _status(
-                statusReported ? (enabled ? 'Enabled' : 'Disabled') : 'Not reported',
+                _isPrimaryProvider(service, provider)
+                    ? 'Primary'
+                    : 'Not Primary',
+                _isPrimaryProvider(service, provider),
+              ),
+              _status(
+                statusReported
+                    ? (enabled ? 'Enabled' : 'Disabled')
+                    : 'Not reported',
                 statusReported && enabled,
               ),
               _status(
-                statusReported ? (available ? 'Available' : 'Unavailable') : 'Not reported',
+                statusReported
+                    ? (available ? 'Available' : 'Unavailable')
+                    : 'Not reported',
                 statusReported && available,
               ),
             ],
@@ -631,49 +667,56 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
           ],
           if (_isTelecomAbodeProvider(provider)) ...<Widget>[
             const SizedBox(height: 5),
-            const Text(
-              'Telecom Abode remains locked. Reported capabilities do not '
-              'enable routing actions.',
-              style: TextStyle(
-                color: Color(0xFF865019),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+            if (locked)
+              Text(
+                _serviceKey(service.service) == 'DATA'
+                    ? 'Telecom Abode remains locked until Data routing support, provider availability, and production readiness are confirmed.'
+                    : 'Telecom Abode remains locked for this service.',
+                style: const TextStyle(
+                  color: Color(0xFF865019),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
+          ],
+          if (service.configurationReported) ...<Widget>[
+            const SizedBox(height: 9),
+            Wrap(
+              spacing: 7,
+              runSpacing: 6,
+              children: <Widget>[
+                _actionButton(
+                  label: enabled ? 'Disable' : 'Enable',
+                  icon: enabled
+                      ? Icons.pause_circle_outline
+                      : Icons.play_circle_outline,
+                  action: enabled ? 'disable' : 'enable',
+                  service: service,
+                  provider: provider,
+                  locked: locked,
+                ),
+                _actionButton(
+                  label: 'Set primary',
+                  icon: Icons.radio_button_checked,
+                  action: 'setPrimary',
+                  service: service,
+                  provider: provider,
+                  locked: locked || !enabled || !available,
+                ),
+                _actionButton(
+                  label: 'Set fallback',
+                  icon: Icons.alt_route,
+                  action: 'setFallback',
+                  service: service,
+                  provider: provider,
+                  locked: locked ||
+                      !service.fallbackSupported ||
+                      !enabled ||
+                      !available,
+                ),
+              ],
             ),
           ],
-           if (service.configurationReported) ...<Widget>[
-             const SizedBox(height: 9),
-             Wrap(
-               spacing: 7,
-               runSpacing: 6,
-               children: <Widget>[
-                 _actionButton(
-                   label: enabled ? 'Disable' : 'Enable',
-                   icon: enabled ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                   action: enabled ? 'disable' : 'enable',
-                   service: service,
-                   provider: provider,
-                   locked: locked,
-                 ),
-                 _actionButton(
-                   label: 'Set primary',
-                   icon: Icons.radio_button_checked,
-                   action: 'setPrimary',
-                   service: service,
-                   provider: provider,
-                   locked: locked || !enabled || !available,
-                 ),
-                 _actionButton(
-                   label: 'Set fallback',
-                   icon: Icons.alt_route,
-                   action: 'setFallback',
-                   service: service,
-                   provider: provider,
-                   locked: locked || !service.fallbackSupported || !enabled || !available,
-                 ),
-               ],
-             ),
-           ],
         ],
       ),
     );
@@ -707,7 +750,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     final String id = _providerKey(provider);
     final bool saving = _saving.contains('${service.service}:$id:$action');
     return OutlinedButton.icon(
-      onPressed: locked || saving ? null : () => _act(service, provider, action),
+      onPressed:
+          locked || saving ? null : () => _act(service, provider, action),
       icon: saving
           ? const SizedBox(
               width: 14,
@@ -870,7 +914,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
-        color: value == true ? const Color(0xFFE5F2E8) : const Color(0xFFE9ECE9),
+        color:
+            value == true ? const Color(0xFFE5F2E8) : const Color(0xFFE9ECE9),
         borderRadius: BorderRadius.circular(7),
       ),
       child: Text(
@@ -884,7 +929,8 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     );
   }
 
-  Widget _pill(String text, Color background, Color foreground, IconData icon) =>
+  Widget _pill(
+          String text, Color background, Color foreground, IconData icon) =>
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(

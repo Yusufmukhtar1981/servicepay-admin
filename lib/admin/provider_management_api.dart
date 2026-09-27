@@ -12,6 +12,7 @@ class ProviderService {
     required this.primaryProvider,
     required this.fallbackProvider,
     required this.currentProvider,
+    required this.routingControlSupported,
     required this.providers,
     required this.fallbackSupported,
     required this.updatedAt,
@@ -23,6 +24,7 @@ class ProviderService {
   final String? primaryProvider;
   final String? fallbackProvider;
   final String? currentProvider;
+  final bool routingControlSupported;
   final List<Map<String, dynamic>> providers;
   final bool fallbackSupported;
   final String? updatedAt;
@@ -39,6 +41,7 @@ class ProviderService {
       primaryProvider: _nullableString(json['primaryProvider']),
       fallbackProvider: _nullableString(json['fallbackProvider']),
       currentProvider: _nullableString(json['currentProvider']),
+      routingControlSupported: json['routingControlSupported'] == true,
       providers: rawProviders is List
           ? rawProviders
               .whereType<Map>()
@@ -52,13 +55,15 @@ class ProviderService {
   }
 
   factory ProviderService.notReported(String service) {
-    const String reason = 'The backend did not return this service configuration.';
+    const String reason =
+        'The backend did not return this service configuration.';
     return ProviderService(
       service: service,
       configurationReported: false,
       primaryProvider: null,
       fallbackProvider: null,
       currentProvider: null,
+      routingControlSupported: false,
       providers: <Map<String, dynamic>>[
         <String, dynamic>{'provider': 'NELLOBYTES', 'reason': reason},
         <String, dynamic>{
@@ -109,8 +114,7 @@ class ProviderCapabilities {
     final dynamic rawReasons = values?['readinessReasons'];
     return ProviderCapabilities(
       adapterImplemented: _reportedBoolean(values?['adapterImplemented']),
-      credentialsConfigured:
-          _reportedBoolean(values?['credentialsConfigured']),
+      credentialsConfigured: _reportedBoolean(values?['credentialsConfigured']),
       catalogAvailable: _reportedBoolean(values?['catalogAvailable']),
       purchaseSupported: _reportedBoolean(values?['purchaseSupported']),
       querySupported: _reportedBoolean(values?['querySupported']),
@@ -128,8 +132,7 @@ class ProviderCapabilities {
     );
   }
 
-  static bool? _reportedBoolean(dynamic value) =>
-      value is bool ? value : null;
+  static bool? _reportedBoolean(dynamic value) => value is bool ? value : null;
 }
 
 class ProviderManagementApi {
@@ -170,7 +173,9 @@ class ProviderManagementApi {
       if (token.isNotEmpty) break;
     }
     if (token.startsWith('Bearer ')) token = token.substring(7);
-    if (token.isEmpty) throw Exception('Admin session not found. Sign in again.');
+    if (token.isEmpty) {
+      throw Exception('Admin session not found. Sign in again.');
+    }
     return <String, String>{
       'Accept': 'application/json',
       'Content-Type': 'application/json',
@@ -187,8 +192,11 @@ class ProviderManagementApi {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(decoded, 'Unable to load provider settings.'));
     }
-    if (decoded is! Map || decoded['success'] != true || decoded['data'] is! Map) {
-      throw Exception(_message(decoded, 'Provider settings response was invalid.'));
+    if (decoded is! Map ||
+        decoded['success'] != true ||
+        decoded['data'] is! Map) {
+      throw Exception(
+          _message(decoded, 'Provider settings response was invalid.'));
     }
     final dynamic rawItems = (decoded['data'] as Map)['items'];
     if (rawItems is! List) {
@@ -196,7 +204,8 @@ class ProviderManagementApi {
     }
     final List<ProviderService> returned = rawItems
         .whereType<Map>()
-        .map((Map item) => ProviderService.fromJson(Map<String, dynamic>.from(item)))
+        .map((Map item) =>
+            ProviderService.fromJson(Map<String, dynamic>.from(item)))
         .toList(growable: false);
     const List<String> serviceOrder = <String>[
       'AIRTIME',
@@ -213,7 +222,8 @@ class ProviderManagementApi {
     }
 
     final List<ProviderService> ordered = serviceOrder
-        .map((String key) => byService.remove(key) ?? ProviderService.notReported(key))
+        .map((String key) =>
+            byService.remove(key) ?? ProviderService.notReported(key))
         .toList(growable: true);
     final List<ProviderService> additional = byService.values.toList()
       ..sort((ProviderService a, ProviderService b) =>

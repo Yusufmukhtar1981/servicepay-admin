@@ -75,6 +75,43 @@ class Phase1OperationsApi {
         },
       );
 
+  Future<Map<String, dynamic>> roleUsers({
+    required String role,
+    String search = '',
+  }) =>
+      _request(
+        'GET',
+        '/admin/role-users',
+        query: <String, String>{
+          'role': role,
+          if (search.trim().isNotEmpty) 'search': search.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> roleUser(String userId) => _request(
+        'GET',
+        '/admin/role-users/${Uri.encodeComponent(userId)}',
+      );
+
+  Future<Map<String, dynamic>> assignRoleUser({
+    required String userId,
+    required String parentId,
+    required String? expectedParentId,
+    required String reason,
+    required String requestId,
+  }) =>
+      _request(
+        'PATCH',
+        '/admin/role-users/hierarchy-assignments',
+        body: <String, dynamic>{
+          'userId': userId,
+          'parentId': parentId,
+          'expectedParentId': expectedParentId,
+          'reason': reason.trim(),
+          'requestId': requestId,
+        },
+      );
+
   Future<Map<String, dynamic>> assignHierarchy({
     required String userId,
     required String parentId,
@@ -191,6 +228,9 @@ class Phase1OperationsApi {
       ...?headers,
     };
     final response = switch (method) {
+      'PATCH' => await _client
+          .patch(uri, headers: requestHeaders, body: jsonEncode(body ?? {}))
+          .timeout(const Duration(seconds: 30)),
       'POST' => await _client
           .post(uri, headers: requestHeaders, body: jsonEncode(body ?? {}))
           .timeout(const Duration(seconds: 30)),
@@ -211,6 +251,7 @@ class Phase1OperationsApi {
         message?.trim().isNotEmpty == true
             ? message!.trim()
             : 'Unable to complete this operation.',
+        code: decoded is Map ? decoded['code']?.toString() : null,
       );
     }
     return decoded is Map
@@ -243,9 +284,10 @@ class Phase1OperationsApi {
 }
 
 class Phase1OperationsException implements Exception {
-  const Phase1OperationsException(this.statusCode, this.message);
+  const Phase1OperationsException(this.statusCode, this.message, {this.code});
   final int statusCode;
   final String message;
+  final String? code;
   @override
   String toString() => message;
 }

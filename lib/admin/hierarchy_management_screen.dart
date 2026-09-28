@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -36,6 +37,9 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
   String _error = '';
   bool _loading = true;
   bool _saving = false;
+  bool _reviewing = false;
+  String? _pendingAssignmentIntent;
+  String? _pendingAssignmentRequestId;
   List<Map<String, dynamic>> _users = <Map<String, dynamic>>[];
 
   static const List<Map<String, String>> _roleOptions = <Map<String, String>>[
@@ -88,7 +92,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
     });
     try {
       final String query = _search.text.trim();
-      final Map<String, dynamic> users = await _api.hierarchyUsers(
+      final Map<String, dynamic> users = await _api.roleUsers(
         role: _selectedRole,
         search: query,
       );
@@ -120,113 +124,222 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
     _debounce = Timer(const Duration(milliseconds: 450), _load);
   }
 
-  String _parentName(Map<String, dynamic> user) {
-    final dynamic parent = user['currentParent'];
-    if (parent is Map)
-      return _text(Map<String, dynamic>.from(parent), 'fullName');
-    return 'Unassigned';
-  }
-
   Future<void> _assign(Map<String, dynamic> user) async {
-    if (!_canManage || _saving) return;
+    if (!_canManage || _saving || _reviewing) return;
     final String userId = _id(user);
     if (userId.isEmpty) {
       _snack('This user has no assignable ID.', error: true);
       return;
     }
-    final Map<String, dynamic>? parent = await _chooseParent(user);
-    if (parent == null) return;
-    final TextEditingController reason = TextEditingController();
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(_parentName(user) == 'Unassigned'
-            ? 'Confirm assignment'
-            : 'Confirm reassignment'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('${_roleLabel(_selectedRole)}: ${_name(user)}'),
-            const SizedBox(height: 8),
-            Text(
-                '${_parentRoleLabel}: ${_parentName(user)} → ${_name(parent)}'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reason,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Reason',
-                hintText: 'Why is this reporting line changing?',
-                border: OutlineInputBorder(),
+    setState(() => _reviewing = true);
+    try {
+      final Map<String, dynamic> detailResponse = await _api.roleUser(userId);
+      final dynamic rawTarget = detailResponse['user'];
+      if (rawTarget is! Map) {
+        throw Exception('Unable to read this user’s current reporting line.');
+      }
+      final Map<String, dynamic> target = Map<String, dynamic>.from(rawTarget);
+      final String directParentId =
+          _idForRole(target, _parentRoleFor(_selectedRole));
+      target['_currentParentId'] = directParentId;
+      final Map<String, Map<String, dynamic>> lineage =
+          <String, Map<String, dynamic>>{};
+      for (final String field in const <String>[
+        'zonalManagerId',
+        'stateManagerId',
+        'agentId'
+      ]) {
+        final String ancestorId = _text(target, field, '');
+        if (ancestorId.isEmpty || lineage.containsKey(ancestorId)) continue;
+        try {
+          final Map<String, dynamic> response = await _api.roleUser(ancestorId);
+          final dynamic rawAncestor = response['user'];
+          if (rawAncestor is Map) {
+            lineage[ancestorId] = Map<String, dynamic>.from(rawAncestor);
+          }
+        } on Phase1OperationsException catch (error) {
+          // Keep the immutable IDs visible even when a former parent was
+          // deleted or can no longer be loaded.
+          lineage[ancestorId] = <String, dynamic>{
+            '_id': ancestorId,
+            'fullName': 'Unavailable parent',
+            'role': _parentRoleFor(_selectedRole),
+            '_loadError': error.message,
+          };
+        }
+      }
+      target['currentParent'] = lineage[directParentId];
+      target['lineage'] = lineage;
+      final Map<String, dynamic>? parent = await _chooseParent(target);
+      if (parent == null) return;
+
+      final TextEditingController reason = TextEditingController();
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(directParentId.isEmpty
+              ? 'Confirm assignment'
+              : 'Confirm reassignment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('${_roleLabel(_selectedRole)}: ${_name(target)}'),
+              const SizedBox(height: 8),
+              ..._lineageRows(target),
+              const Divider(height: 20),
+              Text(
+                  'New $_parentRoleLabel: ${_name(parent)} (${_text(parent, '_id', '')})'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reason,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Reason',
+                  hintText: 'Why is this reporting line changing?',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Only the current reporting relationship changes. Role, wallet, '
-              'transactions and historical records remain unchanged.',
-              style: TextStyle(fontSize: 12),
+              const SizedBox(height: 8),
+              const Text(
+                'Older transactions without verified creation-time hierarchy '
+                'history may block this change. Existing financial history is '
+                'never reassigned.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (reason.text.trim().length < 10) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                        content:
+                            Text('Enter a reason of at least 10 characters.')),
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Save assignment'),
             ),
           ],
         ),
-        actions: <Widget>[
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (reason.text.trim().length < 5) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                      content:
-                          Text('Enter a reason of at least 5 characters.')),
-                );
-                return;
-              }
-              Navigator.pop(dialogContext, true);
-            },
-            child: const Text('Save assignment'),
-          ),
-        ],
-      ),
-    );
-    final String reasonText = reason.text.trim();
-    // showDialog completes before its reverse transition has removed the
-    // TextField. Disposing its controller immediately can rebuild that field
-    // outside the active dialog's build scope.
-    Future<void>.delayed(const Duration(milliseconds: 350), reason.dispose);
-    if (confirmed != true) return;
-    setState(() => _saving = true);
-    try {
-      final Map<String, dynamic> result = await _api.assignHierarchy(
+      );
+      final String reasonText = reason.text.trim();
+      Future<void>.delayed(const Duration(milliseconds: 350), reason.dispose);
+      if (confirmed != true) return;
+
+      if (mounted) setState(() => _saving = true);
+      final String assignmentIntent =
+          '$userId|${_id(parent)}|$directParentId|$reasonText';
+      if (_pendingAssignmentIntent != assignmentIntent) {
+        _pendingAssignmentIntent = assignmentIntent;
+        _pendingAssignmentRequestId =
+            '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}';
+      }
+      final Map<String, dynamic> result = await _api.assignRoleUser(
         userId: userId,
         parentId: _id(parent),
+        expectedParentId: directParentId.isEmpty ? null : directParentId,
         reason: reasonText,
-        requestId: 'hierarchy-${DateTime.now().microsecondsSinceEpoch}',
+        requestId: _pendingAssignmentRequestId!,
       );
+      _pendingAssignmentIntent = null;
+      _pendingAssignmentRequestId = null;
       if (!mounted) return;
-      _snack(result['duplicate'] == true
-          ? 'Assignment already exists; no change was made.'
-          : 'Assignment saved and recorded in audit history.');
+      final dynamic updated = result['user'];
+      final String assignedName = updated is Map
+          ? _text(Map<String, dynamic>.from(updated), 'fullName', _name(target))
+          : _name(target);
+      _snack(
+          '$assignedName was assigned to ${_name(parent)}. The change was audited.');
       await _load();
     } catch (error) {
-      if (mounted)
-        _snack(error.toString().replaceFirst('Exception: ', ''), error: true);
+      if (mounted) _snack(_assignmentError(error), error: true);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _reviewing = false;
+        });
+      }
     }
+  }
+
+  String _parentRoleFor(String role) => _roleOptions.firstWhere(
+      (Map<String, String> item) => item['role'] == role)['parent']!;
+
+  String _idForRole(Map<String, dynamic> user, String parentRole) {
+    final String field = switch (parentRole) {
+      'ZONAL_MANAGER' => 'zonalManagerId',
+      'STATE_MANAGER' => 'stateManagerId',
+      _ => 'agentId',
+    };
+    return _text(user, field, '');
+  }
+
+  List<Widget> _lineageRows(
+    Map<String, dynamic> target,
+  ) {
+    final Map<String, Map<String, dynamic>> lineage =
+        <String, Map<String, dynamic>>{};
+    final dynamic rawLineage = target['lineage'];
+    if (rawLineage is Map) {
+      for (final MapEntry<dynamic, dynamic> entry in rawLineage.entries) {
+        if (entry.value is Map) {
+          lineage['${entry.key}'] =
+              Map<String, dynamic>.from(entry.value as Map);
+        }
+      }
+    }
+    final List<(String, String)> fields = <(String, String)>[
+      ('Zonal Manager', 'zonalManagerId'),
+      ('State Manager', 'stateManagerId'),
+      ('Aggregator', 'agentId'),
+    ];
+    return <Widget>[
+      const Text('Current reporting line',
+          style: TextStyle(fontWeight: FontWeight.w700)),
+      for (final (String label, String field) in fields)
+        if ((target[field] ?? '').toString().trim().isNotEmpty)
+          Text(
+              '$label: ${_name(lineage['${target[field]}'] ?? <String, dynamic>{})}'
+              ' (${target[field]})')
+        else
+          Text('$label: Not assigned'),
+      if (_text(target, 'zone', '').isNotEmpty)
+        Text('Zone: ${_text(target, 'zone')}'),
+      if (_text(target, 'state', '').isNotEmpty)
+        Text('State: ${_text(target, 'state')}'),
+    ];
+  }
+
+  String _assignmentError(Object error) {
+    if (error is Phase1OperationsException && error.statusCode == 409) {
+      if (error.code == 'HIERARCHY_HISTORY_UNVERIFIED') {
+        return 'Assignment blocked: this account has transactions without '
+            'verified creation-time hierarchy history. Reconcile that history '
+            'before changing the reporting line. No assignment was made.';
+      }
+      return '${error.message} No assignment was made.';
+    }
+    return error.toString().replaceFirst('Exception: ', '');
   }
 
   Future<Map<String, dynamic>?> _chooseParent(Map<String, dynamic> user) async {
     String filter = '';
-    int page = 1;
     Timer? debounce;
-    Future<Map<String, dynamic>> fetch() => _api.hierarchyUsers(
+    final String currentParentId = _text(user, '_currentParentId', '');
+    Future<Map<String, dynamic>> fetch() => _api.roleUsers(
           role: _parentRole,
           search: filter,
-          page: page,
-          limit: 25,
         );
     Future<Map<String, dynamic>> request = fetch();
     return showDialog<Map<String, dynamic>>(
@@ -240,6 +353,8 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
               height: 420,
               child: Column(
                 children: <Widget>[
+                  ..._lineageRows(user),
+                  const Divider(height: 18),
                   TextField(
                     autofocus: true,
                     decoration: const InputDecoration(
@@ -252,7 +367,6 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                         if (context.mounted) {
                           setDialogState(() {
                             filter = value;
-                            page = 1;
                             request = fetch();
                           });
                         }
@@ -267,7 +381,8 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                           (_, AsyncSnapshot<Map<String, dynamic>> snapshot) {
                         if (snapshot.hasError) {
                           return Center(
-                            child: Text('Unable to load managers: ${snapshot.error}'),
+                            child: Text(
+                                'Unable to load managers: ${snapshot.error}'),
                           );
                         }
                         if (!snapshot.hasData) {
@@ -282,34 +397,35 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                                     Map<String, dynamic>.from(value))
                                 .toList()
                             : <Map<String, dynamic>>[];
-                        final dynamic pagination = snapshot.data!['pagination'];
-                        final int totalPages = pagination is Map
-                            ? int.tryParse(
-                                    '${pagination['totalPages'] ?? pagination['pages'] ?? page}') ??
-                                page
-                            : page;
+                        final String targetZone = _text(user, 'zone', '');
+                        final String targetState = _text(user, 'state', '');
+                        final List<Map<String, dynamic>> eligible =
+                            matches.where((Map<String, dynamic> candidate) {
+                          if (_id(candidate) == currentParentId) return false;
+                          if (_text(candidate, 'status', '').toUpperCase() !=
+                              'ACTIVE') {
+                            return false;
+                          }
+                          if (_text(candidate, 'zone', '') != targetZone) {
+                            return false;
+                          }
+                          return _selectedRole == 'STATE_MANAGER' ||
+                              _text(candidate, 'state', '') == targetState;
+                        }).toList();
                         return Column(
                           children: <Widget>[
                             Expanded(
-                              child: matches.isEmpty
+                              child: eligible.isEmpty
                                   ? const Center(
-                                      child:
-                                          Text('No valid active parent found.'))
+                                      child: Text(
+                                          'No active parent with matching location was found.'))
                                   : ListView.separated(
-                                      itemCount: matches.length,
+                                      itemCount: eligible.length,
                                       separatorBuilder: (_, __) =>
                                           const Divider(height: 1),
                                       itemBuilder: (_, int index) {
                                         final Map<String, dynamic> candidate =
-                                            matches[index];
-                                        final dynamic currentParent =
-                                            user['currentParent'];
-                                        final String currentId = currentParent
-                                                is Map
-                                            ? '${currentParent['_id'] ?? ''}'
-                                            : '';
-                                        final bool current =
-                                            _id(candidate) == currentId;
+                                              eligible[index];
                                         return ListTile(
                                           leading: CircleAvatar(
                                               child: Text(_name(candidate)
@@ -318,36 +434,13 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                                           title: Text(_name(candidate)),
                                           subtitle: Text(
                                               '${_text(candidate, 'phone')} · ${_text(candidate, 'email')}\n'
-                                              '${_text(candidate, 'state', _text(candidate, 'zone'))}'
-                                              '${current ? ' · Current parent' : ''}'),
+                                               '${_text(candidate, 'state', _text(candidate, 'zone'))}'),
                                           isThreeLine: true,
                                           onTap: () => Navigator.pop(
                                               dialogContext, candidate),
                                         );
                                       },
                                     ),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                IconButton(
-                                    onPressed: page > 1
-                                        ? () => setDialogState(() {
-                                            page--;
-                                            request = fetch();
-                                          })
-                                        : null,
-                                    icon: const Icon(Icons.chevron_left)),
-                                Text('Page $page of $totalPages'),
-                                IconButton(
-                                    onPressed: page < totalPages
-                                        ? () => setDialogState(() {
-                                            page++;
-                                            request = fetch();
-                                          })
-                                        : null,
-                                    icon: const Icon(Icons.chevron_right)),
-                              ],
                             ),
                           ],
                         );
@@ -374,8 +467,10 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
         return 'Zonal Manager';
       case 'STATE_MANAGER':
         return 'State Manager';
-      default:
+      case 'AGENT':
         return 'Aggregator';
+      default:
+        return 'Manager';
     }
   }
 
@@ -688,7 +783,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
               labelText: 'Search ${_roleLabel(_selectedRole)}s',
-              hintText: 'Name, phone, email or user ID',
+              hintText: 'Name, phone, email, state or zone',
               suffixIcon: IconButton(
                   onPressed: () {
                     _search.clear();
@@ -716,6 +811,13 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                     child: Center(child: Text('No matching users found.'))))
           else
             ..._users.map(_userTile),
+          if (_reviewing && !_saving)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.manage_search),
+                title: Text('Loading verified current reporting line…'),
+              ),
+            ),
           if (_saving)
             const Padding(
                 padding: EdgeInsets.only(top: 16),
@@ -734,13 +836,14 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
         title: Text(_name(user),
             style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text('${_text(user, 'phone')} · ${_text(user, 'email')}\n'
-            'Current $_parentRoleLabel: ${_parentName(user)}'
-            '${_text(user, 'state', '').isEmpty ? '' : ' · ${_text(user, 'state')}'}'),
+            '${_text(user, 'zone', '').isEmpty ? '' : 'Zone: ${_text(user, 'zone')} · ' }'
+            '${_text(user, 'state', '').isEmpty ? '' : 'State: ${_text(user, 'state')} · ' }'
+            'Review to inspect the verified current reporting line'),
         isThreeLine: true,
         trailing: FilledButton.tonal(
-          onPressed: _saving ? null : () => _assign(user),
+          onPressed: _saving || _reviewing ? null : () => _assign(user),
           child:
-              Text(_parentName(user) == 'Unassigned' ? 'Assign' : 'Reassign'),
+              const Text('Review / assign'),
         ),
       ),
     );

@@ -434,6 +434,208 @@ void main() {
     });
   });
 
+  final List<Map<String, dynamic>> locationPickerScenarios =
+      <Map<String, dynamic>>[
+    <String, dynamic>{
+      'role': 'CUSTOMER',
+      'userId': 'customer-location',
+      'userName': 'Customer Location',
+      'parentRole': 'AGENT',
+      'parentLabel': 'Aggregator',
+      'parentId': 'agent-location',
+      'parentName': 'Aggregator Location',
+      'targetZone': ' north ',
+      'targetState': ' KANO ',
+      'parentZone': 'NORTH',
+      'parentState': 'kAnO',
+      'excluded': <Map<String, dynamic>>[
+        <String, dynamic>{
+          '_id': 'agent-wrong-zone',
+          'fullName': 'Wrong Zone Aggregator',
+          'zone': 'South',
+          'state': 'Kano',
+          'status': 'ACTIVE',
+        },
+        <String, dynamic>{
+          '_id': 'agent-wrong-state',
+          'fullName': 'Wrong State Aggregator',
+          'zone': 'North',
+          'state': 'Lagos',
+          'status': 'ACTIVE',
+        },
+      ],
+    },
+    <String, dynamic>{
+      'role': 'AGENT',
+      'userId': 'aggregator-location-unknown',
+      'userName': 'Aggregator Unknown Location',
+      'parentRole': 'STATE_MANAGER',
+      'parentLabel': 'State Manager',
+      'parentId': 'state-location-unknown',
+      'parentName': 'State Manager Unknown Location',
+      'targetZone': null,
+      'targetState': null,
+      'parentZone': 'Different Zone',
+      'parentState': 'Different State',
+      'excluded': <Map<String, dynamic>>[],
+    },
+    <String, dynamic>{
+      'role': 'STATE_MANAGER',
+      'userId': 'state-manager-location-unknown',
+      'userName': 'State Manager Unknown Zone',
+      'parentRole': 'ZONAL_MANAGER',
+      'parentLabel': 'Zonal Manager',
+      'parentId': 'zonal-location-unknown',
+      'parentName': 'Zonal Manager Unknown Zone',
+      'targetZone': null,
+      'targetState': ' Kano ',
+      'parentZone': 'Other Zone',
+      'parentState': null,
+      'excluded': <Map<String, dynamic>>[],
+    },
+  ];
+  for (final Map<String, dynamic> scenario in locationPickerScenarios) {
+    testWidgets(
+        '${scenario['role']} picker normalizes locations and tolerates unknown target locations',
+        (tester) async {
+      tester.view.physicalSize = const Size(1440, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      SharedPreferences.setMockInitialValues({'auth_token': 'token'});
+      final requests = <http.Request>[];
+      var targetListLoads = 0;
+      final api = Phase1OperationsApi(
+        client: MockClient((request) async {
+          requests.add(request);
+          if (request.url.path == '/api/admin/role-users') {
+            final String role = request.url.queryParameters['role'] ?? '';
+            if (role == scenario['role']) {
+              targetListLoads++;
+              return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'users': [
+                    {
+                      '_id': scenario['userId'],
+                      'fullName': scenario['userName'],
+                      'role': scenario['role'],
+                      'status': 'ACTIVE',
+                    }
+                  ],
+                }),
+                200,
+              );
+            }
+            if (role == scenario['parentRole']) {
+              final Map<String, dynamic> candidate = <String, dynamic>{
+                '_id': scenario['parentId'],
+                'fullName': scenario['parentName'],
+                'role': scenario['parentRole'],
+                'zone': scenario['parentZone'],
+                'state': scenario['parentState'],
+                'status': 'ACTIVE',
+              };
+              return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'users': <Map<String, dynamic>>[
+                    candidate,
+                    ...scenario['excluded'] as List<Map<String, dynamic>>,
+                  ],
+                }),
+                200,
+              );
+            }
+          }
+          if (request.url.path.endsWith('/${scenario['userId']}')) {
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'user': {
+                  '_id': scenario['userId'],
+                  'fullName': scenario['userName'],
+                  'role': scenario['role'],
+                  'zone': scenario['targetZone'],
+                  if (scenario['targetState'] != null)
+                    'state': scenario['targetState'],
+                },
+              }),
+              200,
+            );
+          }
+          if (request.method == 'PATCH') {
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'user': {
+                  '_id': scenario['userId'],
+                  'fullName': scenario['userName'],
+                },
+              }),
+              200,
+            );
+          }
+          return http.Response(jsonEncode({'success': true}), 200);
+        }),
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: HierarchyManagementScreen(
+            role: 'HEAD_OFFICE',
+            permissions: const <String>{'hierarchy.manage'},
+            initialRole: scenario['role'] as String,
+            api: api,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review / assign'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select ${scenario['parentLabel']}'), findsOneWidget);
+      expect(find.text(scenario['parentName'] as String), findsOneWidget);
+      for (final Map<String, dynamic> excluded
+          in scenario['excluded'] as List<Map<String, dynamic>>) {
+        expect(find.text(excluded['fullName'] as String), findsNothing);
+      }
+
+      await tester.tap(find.text(scenario['parentName'] as String));
+      await tester.pumpAndSettle();
+      expect(find.text('Confirm assignment'), findsOneWidget);
+      expect(
+        find.text(
+            'New ${scenario['parentLabel']}: ${scenario['parentName']} (${scenario['parentId']})'),
+        findsOneWidget,
+      );
+      await tester.enterText(
+          find.byType(TextField).last, 'Verified reporting line correction');
+      await tester.tap(find.text('Save assignment'));
+      await tester.pumpAndSettle();
+
+      final http.Request assignment = requests.firstWhere(
+        (http.Request request) =>
+            request.method == 'PATCH' &&
+            request.url.path ==
+                '/api/admin/role-users/hierarchy-assignments',
+      );
+      final Map<String, dynamic> payload =
+          Map<String, dynamic>.from(jsonDecode(assignment.body) as Map);
+      expect(payload.remove('requestId'), isNotEmpty);
+      expect(payload, {
+        'userId': scenario['userId'],
+        'parentId': scenario['parentId'],
+        'expectedParentId': null,
+        'reason': 'Verified reporting line correction',
+      });
+      expect(targetListLoads, greaterThanOrEqualTo(2),
+          reason: 'A successful assignment refreshes the selected role list.');
+      expect(find.text(scenario['userName'] as String), findsOneWidget);
+    });
+  }
+
   testWidgets('409 legacy-history response is shown without claiming success',
       (tester) async {
     tester.view.physicalSize = const Size(1440, 1200);

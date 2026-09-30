@@ -285,6 +285,21 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
     return _text(user, field, '');
   }
 
+  String? _normalizedLocation(Map<String, dynamic> user, String field) {
+    final String value = _text(user, field, '').trim();
+    return value.isEmpty ? null : value.toUpperCase();
+  }
+
+  bool _locationMatchesWhenKnown(
+    Map<String, dynamic> target,
+    Map<String, dynamic> candidate,
+    String field,
+  ) {
+    final String? targetLocation = _normalizedLocation(target, field);
+    return targetLocation == null ||
+        targetLocation == _normalizedLocation(candidate, field);
+  }
+
   List<Widget> _lineageRows(
     Map<String, dynamic> target,
   ) {
@@ -397,8 +412,6 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                                     Map<String, dynamic>.from(value))
                                 .toList()
                             : <Map<String, dynamic>>[];
-                        final String targetZone = _text(user, 'zone', '');
-                        final String targetState = _text(user, 'state', '');
                         final List<Map<String, dynamic>> eligible =
                             matches.where((Map<String, dynamic> candidate) {
                           if (_id(candidate) == currentParentId) return false;
@@ -406,11 +419,13 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                               'ACTIVE') {
                             return false;
                           }
-                          if (_text(candidate, 'zone', '') != targetZone) {
+                          if (!_locationMatchesWhenKnown(
+                              user, candidate, 'zone')) {
                             return false;
                           }
                           return _selectedRole == 'STATE_MANAGER' ||
-                              _text(candidate, 'state', '') == targetState;
+                              _locationMatchesWhenKnown(
+                                  user, candidate, 'state');
                         }).toList();
                         return Column(
                           children: <Widget>[

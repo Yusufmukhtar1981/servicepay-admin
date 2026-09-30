@@ -17,6 +17,7 @@ import 'admin_announcements_screen.dart';
 import 'admin_promo_leaderboard_screen.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
+import 'admin_customer_withdrawals_screen.dart';
 import 'admin_riders_screen.dart';
 import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
@@ -110,6 +111,16 @@ bool canAccessProviderManagementNavigation({required String role}) {
   return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE';
 }
 
+@visibleForTesting
+bool canAccessCustomerWithdrawalsNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+  return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE' &&
+      access.has(AdminPermissions.withdrawalsView);
+}
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
 
@@ -129,6 +140,12 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.hasHeadOfficePermission(AdminPermissions.hierarchyManage)) {
       labels.add('Hierarchy Management');
+    }
+    if (canAccessCustomerWithdrawalsNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Customer Withdrawals');
     }
     if (canAccessEduPayNavigation(
       role: access.role,
@@ -510,6 +527,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.payments_outlined,
         activeIcon: Icons.payments_rounded,
         label: 'Withdrawals',
+      );
+    }
+
+    if (canAccessCustomerWithdrawalsNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: AdminCustomerWithdrawalsScreen(
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+        ),
+        icon: Icons.account_balance_outlined,
+        activeIcon: Icons.account_balance_rounded,
+        label: 'Customer Withdrawals',
       );
     }
 

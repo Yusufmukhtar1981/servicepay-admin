@@ -100,6 +100,14 @@ class _AdminDeliveryManagementScreenState
     await _loadDeliveries();
   }
 
+  Future<void> _openDetails(Map<String, dynamic> delivery) {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) =>
+          _DeliveryDetailsDialog(delivery: delivery),
+    );
+  }
+
   Widget _messageState({
     required IconData icon,
     required String title,
@@ -207,6 +215,17 @@ class _AdminDeliveryManagementScreenState
                   fallback: _text(delivery['riderName'], fallback: 'Rider'),
                 ),
               ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: Key(
+                  'delivery-details-${deliveryId.isEmpty ? _text(delivery['trackingNumber'], fallback: 'delivery') : deliveryId}',
+                ),
+                onPressed: () => _openDetails(delivery),
+                icon: const Icon(Icons.info_outline),
+                label: const Text('View details'),
+              ),
+            ),
             if (canAssign || canReassign) ...<Widget>[
               const SizedBox(height: 12),
               SizedBox(
@@ -302,6 +321,159 @@ class _AdminDeliveryManagementScreenState
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DeliveryDetailsDialog extends StatelessWidget {
+  const _DeliveryDetailsDialog({required this.delivery});
+
+  final Map<String, dynamic> delivery;
+
+  String _text(dynamic value, {String fallback = '—'}) {
+    final String result = value?.toString().trim() ?? '';
+    return result.isEmpty ? fallback : result;
+  }
+
+  Map<String, dynamic> _map(dynamic value) => AdminDeliveryApi.mapFrom(value);
+
+  Widget _section(String title, List<Widget> rows) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF0F766E),
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...rows,
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 132,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(child: Text(_text(value))),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, dynamic> customer = _map(delivery['customerId']);
+    final Map<String, dynamic> rider = _map(delivery['assignedRiderId']);
+    final String status = _text(delivery['status'], fallback: 'PENDING');
+    final List<Widget> timestamps = <Widget>[
+      _row('Created', delivery['createdAt']),
+      _row('Updated', delivery['updatedAt']),
+      _row('Assigned', delivery['assignedAt']),
+      _row(
+        'Accepted',
+        delivery['acceptedAt'] ?? delivery['riderAcceptedAt'],
+      ),
+      _row('Picked up', delivery['pickedUpAt']),
+      _row('In transit', delivery['inTransitAt']),
+      _row('Delivered', delivery['deliveredAt']),
+      _row('Cancelled', delivery['cancelledAt']),
+      _row('Failed', delivery['failedAt']),
+    ];
+
+    return AlertDialog(
+      title: Text(
+        _text(delivery['trackingNumber'], fallback: 'Delivery details'),
+        key: const Key('delivery-details-title'),
+      ),
+      content: SizedBox(
+        width: 520,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.68,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _section('Reference', <Widget>[
+                  _row('Tracking number', delivery['trackingNumber']),
+                ]),
+                _section('Pickup', <Widget>[
+                  _row('Address', delivery['pickupAddress']),
+                  _row('State', delivery['pickupState']),
+                ]),
+                _section('Sender', <Widget>[
+                  _row(
+                    'Name',
+                    delivery['senderName'] ??
+                        customer['fullName'] ??
+                        customer['name'],
+                  ),
+                  _row(
+                    'Phone',
+                    delivery['senderPhone'] ?? customer['phone'],
+                  ),
+                ]),
+                _section('Receiver', <Widget>[
+                  _row('Name', delivery['receiverName']),
+                  _row('Phone', delivery['receiverPhone']),
+                  _row('Delivery address', delivery['deliveryAddress']),
+                  _row('Delivery state', delivery['deliveryState']),
+                ]),
+                _section('Package', <Widget>[
+                  _row('Name', delivery['packageName']),
+                  _row('Description', delivery['packageDescription']),
+                  _row('Weight', delivery['packageWeight']),
+                ]),
+                _section('Rider', <Widget>[
+                  _row(
+                    'Name',
+                    rider['fullName'] ?? rider['name'] ?? delivery['riderName'],
+                  ),
+                  _row('Phone', rider['phone'] ?? delivery['riderPhone']),
+                  _row('Rider reference', rider['riderId']),
+                ]),
+                _section('Status', <Widget>[
+                  _row('Delivery status', status.replaceAll('_', ' ')),
+                ]),
+                _section('Fee & payment', <Widget>[
+                  _row('Delivery fee (NGN)', delivery['deliveryFee']),
+                  _row('Payment status', delivery['paymentStatus']),
+                  _row('Paid at', delivery['paidAt']),
+                  _row('Refunded at', delivery['refundedAt']),
+                ]),
+                _section('Timestamps', timestamps),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

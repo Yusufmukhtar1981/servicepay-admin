@@ -28,8 +28,31 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
     'trackingNumber': 'SP-DELIVERY-1',
     'status': 'PENDING',
     'pickupAddress': 'Pickup address',
+    'pickupState': 'LAGOS',
     'deliveryAddress': 'Delivery address',
-    'customerId': <String, dynamic>{'fullName': 'Customer One'},
+    'deliveryState': 'OGUN',
+    'senderName': 'Sender One',
+    'senderPhone': '08010000001',
+    'receiverName': 'Receiver One',
+    'receiverPhone': '08020000002',
+    'packageName': 'Documents',
+    'packageDescription': 'Sealed envelope',
+    'packageWeight': 0.5,
+    'deliveryFee': 2450,
+    'paymentStatus': 'PAID',
+    'paidAt': '2026-01-02T03:04:05.000Z',
+    'createdAt': '2026-01-01T03:04:05.000Z',
+    'assignedAt': '2026-01-01T04:04:05.000Z',
+    'riderName': 'Rider Detail Name',
+    'riderPhone': '08030000003',
+    'customerId': <String, dynamic>{
+      'fullName': 'Customer One',
+      'phone': '08040000004',
+      'email': 'private-customer@example.test',
+    },
+    'idempotencyKey': 'private-idempotency-value',
+    'adminNote': 'private admin note',
+    'riderCommissionAmount': 999,
   };
 
   final Map<String, dynamic> rider = <String, dynamic>{
@@ -42,9 +65,9 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
 
   @override
   Future<List<Map<String, dynamic>>> getDeliveries({
-    String status = 'PENDING',
+    String status = 'ALL',
   }) async {
-    if (assigned && status == 'PENDING') return <Map<String, dynamic>>[];
+    if (assigned && status == 'ALL') return <Map<String, dynamic>>[];
     return <Map<String, dynamic>>[delivery];
   }
 
@@ -106,12 +129,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.dragUntilVisible(
-      find.text('Delivery Management'),
-      find.byType(ListView),
-      const Offset(0, -300),
-    );
-    await tester.tap(find.text('Delivery Management'));
+    await tester.tap(find.text('Fintech Control Center'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Deliveries');
+    await tester.pumpAndSettle();
+    final Finder deliveriesModule = find.text('Deliveries').last;
+    await tester.ensureVisible(deliveriesModule);
+    await tester.tap(deliveriesModule);
     await tester.pumpAndSettle();
     expect(find.byType(AdminDeliveryManagementScreen), findsOneWidget);
     expect(find.text('Delivery Management is coming soon.'), findsNothing);
@@ -169,7 +193,51 @@ void main() {
 
     expect(api.assignmentCount, 1);
     expect(find.text('Rider assigned successfully.'), findsOneWidget);
-    expect(find.text('No pending deliveries'), findsOneWidget);
+    expect(find.text('No deliveries'), findsOneWidget);
+  });
+
+  testWidgets('delivery details show operational fields without private data',
+      (WidgetTester tester) async {
+    final _FakeAdminDeliveryApi api = _FakeAdminDeliveryApi();
+    await tester.pumpWidget(
+      MaterialApp(home: AdminDeliveryManagementScreen(api: api)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('delivery-details-delivery-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('delivery-details-title')), findsOneWidget);
+    for (final String value in <String>[
+      'Pickup address',
+      'LAGOS',
+      'Sender One',
+      '08010000001',
+      'Receiver One',
+      '08020000002',
+      'Documents',
+      'Sealed envelope',
+      'Rider Detail Name',
+      '08030000003',
+      'PENDING',
+      '2450',
+      'PAID',
+      '2026-01-02T03:04:05.000Z',
+      'SP-DELIVERY-1',
+    ]) {
+      expect(
+        find.text(value),
+        findsWidgets,
+        reason: 'Expected details value $value',
+      );
+    }
+    expect(find.text('private-idempotency-value'), findsNothing);
+    expect(find.text('private admin note'), findsNothing);
+    expect(find.text('private-customer@example.test'), findsNothing);
+    expect(find.text('999'), findsNothing);
+    expect(api.assignmentCount, 0);
   });
 
   testWidgets('failed rider loading can be retried inside the modal',

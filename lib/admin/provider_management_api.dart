@@ -18,6 +18,8 @@ class ProviderService {
     required this.updatedAt,
     required this.updatedBy,
     this.airtimeMarkupBps = 0,
+    this.purchaseBlocked = false,
+    this.electricityMarkupBps = 0,
   });
 
   final String service;
@@ -31,6 +33,8 @@ class ProviderService {
   final String? updatedAt;
   final String? updatedBy;
   final int airtimeMarkupBps;
+  final bool purchaseBlocked;
+  final int electricityMarkupBps;
 
   ProviderCapabilities capabilitiesFor(Map<String, dynamic> provider) =>
       ProviderCapabilities.fromJson(provider['capabilities']);
@@ -41,6 +45,8 @@ class ProviderService {
       service: (json['service'] ?? '').toString(),
       configurationReported: true,
       airtimeMarkupBps: int.tryParse(json['airtimeMarkupBps'].toString()) ?? 0,
+      purchaseBlocked: json['purchaseBlocked'] == true,
+      electricityMarkupBps: int.tryParse(json['electricityMarkupBps'].toString()) ?? 0,
       primaryProvider: _nullableString(json['primaryProvider']),
       fallbackProvider: _nullableString(json['fallbackProvider']),
       currentProvider: _nullableString(json['currentProvider']),
@@ -234,10 +240,11 @@ class ProviderManagementApi {
     return <ProviderService>[...ordered, ...additional];
   }
 
-  Future<void> updateAirtimePricing(int markupBps) async {
+  Future<void> updateAirtimePricing(int markupBps, {String service = 'AIRTIME'}) async {
     final response = await _client.patch(_resourceUri, headers: await _headers(),
-      body: jsonEncode({'service': 'AIRTIME', 'provider': 'TELECOM_ABODE',
-        'action': 'setPricing', 'airtimeMarkupBps': markupBps}));
+      body: jsonEncode({'service': service, 'provider': 'TELECOM_ABODE',
+        'action': 'setPricing', if (service == 'ELECTRICITY') 'electricityMarkupBps': markupBps,
+        if (service != 'ELECTRICITY') 'airtimeMarkupBps': markupBps}));
     final decoded = _decode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300 ||
         decoded is! Map || decoded['success'] != true) {

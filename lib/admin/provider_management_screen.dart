@@ -134,11 +134,12 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
       _providerKey(provider) == 'TELECOM_ABODE' && service.capabilitiesFor(provider).catalogAvailable == true;
 
   Future<void> _editAirtimePricing(ProviderService service) async {
-    final field = TextEditingController(text: (service.airtimeMarkupBps / 100).toStringAsFixed(2));
+    final field = TextEditingController(text: ((service.service == 'ELECTRICITY'
+      ? service.electricityMarkupBps : service.airtimeMarkupBps) / 100).toStringAsFixed(2));
     final value = await showDialog<int>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Airtime selling-price markup'),
+      title: Text('${service.service} selling-price markup'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Added to airtime face value. Unconfirmed cost does not create profit or commission.'),
+        const Text('Added to face value. Unconfirmed cost does not create profit or commission.'),
         TextField(controller: field, keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(labelText: 'Markup (%) — 0 to 100')),
       ]),
@@ -151,7 +152,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
         }, child: const Text('Save')),
       ]));
     if (value == null) return;
-    try { await _api.updateAirtimePricing(value); await _load(); }
+    try { await _api.updateAirtimePricing(value, service: service.service); await _load(); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
@@ -541,12 +542,13 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
                 _routeChip('CURRENT', service.currentProvider),
               ],
             ),
-            if (service.service == 'AIRTIME' && service.routingControlSupported)
+            if (['AIRTIME', 'ELECTRICITY'].contains(service.service) && service.routingControlSupported)
               TextButton(onPressed: () => _editAirtimePricing(service),
-                child: Text('Selling-price markup: ${(service.airtimeMarkupBps / 100).toStringAsFixed(2)}% — Edit')),
-            if (service.service == 'ELECTRICITY' && service.primaryProvider == 'TELECOM_ABODE')
+                child: Text('Selling-price markup: ${((service.service == 'ELECTRICITY'
+                  ? service.electricityMarkupBps : service.airtimeMarkupBps) / 100).toStringAsFixed(2)}% — Edit')),
+            if (service.service == 'ELECTRICITY' && service.primaryProvider == 'TELECOM_ABODE' && service.purchaseBlocked)
               const Padding(padding: EdgeInsets.only(top: 12), child: Text(
-                'Catalogue ready. Purchases blocked by provider meter validation. No customer debit is permitted.',
+                'Catalogue ready. Electricity activation awaits provider minimum-amount confirmation and a controlled live proof. Purchases remain blocked.',
                 style: TextStyle(color: Color(0xFF865019)))),
             if (locked) ...<Widget>[
               const SizedBox(height: 14),

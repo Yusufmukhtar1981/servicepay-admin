@@ -15,7 +15,10 @@ bool providerManagementActionIsLocked({
   final String normalizedProvider =
       provider.toLowerCase().replaceAll(RegExp(r'[_\-\s]+'), '');
   if (!configurationReported || !available) return true;
-  if (normalizedService == 'airtime' || normalizedService.contains('cable')) {
+  if (normalizedService == 'airtime' || normalizedService == 'electricity') {
+    return !routingControlSupported;
+  }
+  if (normalizedService.contains('cable')) {
     return true;
   }
   final bool isTelecomAbode =
@@ -121,10 +124,36 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
         service: service.service,
         provider: _providerKey(provider),
         configurationReported: service.configurationReported,
-        available: provider['available'] == true,
+        available: _operationallyConfigurable(service, provider),
         routingControlSupported: service.routingControlSupported,
         productionReady: service.capabilitiesFor(provider).productionReady,
       );
+
+  bool _operationallyConfigurable(ProviderService service, Map<String, dynamic> provider) =>
+    provider['available'] == true || service.service == 'ELECTRICITY' &&
+      _providerKey(provider) == 'TELECOM_ABODE' && service.capabilitiesFor(provider).catalogAvailable == true;
+
+  Future<void> _editAirtimePricing(ProviderService service) async {
+    final field = TextEditingController(text: (service.airtimeMarkupBps / 100).toStringAsFixed(2));
+    final value = await showDialog<int>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Airtime selling-price markup'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Added to airtime face value. Unconfirmed cost does not create profit or commission.'),
+        TextField(controller: field, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Markup (%) — 0 to 100')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () {
+          final percent = double.tryParse(field.text);
+          if (percent != null && percent.isFinite && percent >= 0 && percent <= 100)
+            Navigator.pop(context, (percent * 100).round());
+        }, child: const Text('Save')),
+      ]));
+    if (value == null) return;
+    try { await _api.updateAirtimePricing(value); await _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
 
   bool _isPrimaryProvider(
     ProviderService service,
@@ -163,7 +192,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
     final String id = _providerKey(provider);
     if (_lockedProvider(service, provider) || id.isEmpty) return;
     final bool enabled = provider['enabled'] == true;
-    final bool available = provider['available'] == true;
+    final bool available = _operationallyConfigurable(service, provider);
     if (action == 'setFallback' && !service.fallbackSupported) return;
     if ((action == 'setPrimary' || action == 'setFallback') &&
         (!enabled || !available)) {
@@ -490,8 +519,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
                 _pill(
                   !service.configurationReported
                       ? 'STATUS NOT REPORTED'
-                      : _serviceKey(service.service) == 'AIRTIME' ||
-                              (_serviceKey(service.service) == 'DATA' &&
+                      : (_serviceKey(service.service) == 'DATA' &&
                                   !service.routingControlSupported)
                           ? 'READ ONLY'
                           : locked
@@ -513,6 +541,13 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
                 _routeChip('CURRENT', service.currentProvider),
               ],
             ),
+            if (service.service == 'AIRTIME' && service.routingControlSupported)
+              TextButton(onPressed: () => _editAirtimePricing(service),
+                child: Text('Selling-price markup: ${(service.airtimeMarkupBps / 100).toStringAsFixed(2)}% — Edit')),
+            if (service.service == 'ELECTRICITY' && service.primaryProvider == 'TELECOM_ABODE')
+              const Padding(padding: EdgeInsets.only(top: 12), child: Text(
+                'Catalogue ready. Purchases blocked by provider meter validation. No customer debit is permitted.',
+                style: TextStyle(color: Color(0xFF865019)))),
             if (locked) ...<Widget>[
               const SizedBox(height: 14),
               Container(
@@ -604,7 +639,7 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
         provider['enabled'] is bool &&
         provider['available'] is bool;
     final bool enabled = provider['enabled'] == true;
-    final bool available = provider['available'] == true;
+    final bool available = _operationallyConfigurable(service, provider);
     final String? reason = provider['reason']?.toString();
     final ProviderCapabilities capabilities = service.capabilitiesFor(provider);
     final bool locked =

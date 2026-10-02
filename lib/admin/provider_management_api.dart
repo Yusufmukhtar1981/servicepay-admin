@@ -17,6 +17,7 @@ class ProviderService {
     required this.fallbackSupported,
     required this.updatedAt,
     required this.updatedBy,
+    this.airtimeMarkupBps = 0,
   });
 
   final String service;
@@ -29,6 +30,7 @@ class ProviderService {
   final bool fallbackSupported;
   final String? updatedAt;
   final String? updatedBy;
+  final int airtimeMarkupBps;
 
   ProviderCapabilities capabilitiesFor(Map<String, dynamic> provider) =>
       ProviderCapabilities.fromJson(provider['capabilities']);
@@ -38,6 +40,7 @@ class ProviderService {
     return ProviderService(
       service: (json['service'] ?? '').toString(),
       configurationReported: true,
+      airtimeMarkupBps: int.tryParse(json['airtimeMarkupBps'].toString()) ?? 0,
       primaryProvider: _nullableString(json['primaryProvider']),
       fallbackProvider: _nullableString(json['fallbackProvider']),
       currentProvider: _nullableString(json['currentProvider']),
@@ -229,6 +232,17 @@ class ProviderManagementApi {
       ..sort((ProviderService a, ProviderService b) =>
           a.service.compareTo(b.service));
     return <ProviderService>[...ordered, ...additional];
+  }
+
+  Future<void> updateAirtimePricing(int markupBps) async {
+    final response = await _client.patch(_resourceUri, headers: await _headers(),
+      body: jsonEncode({'service': 'AIRTIME', 'provider': 'TELECOM_ABODE',
+        'action': 'setPricing', 'airtimeMarkupBps': markupBps}));
+    final decoded = _decode(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300 ||
+        decoded is! Map || decoded['success'] != true) {
+      throw Exception(_message(decoded, 'Airtime pricing could not be saved.'));
+    }
   }
 
   Future<void> updateProvider({

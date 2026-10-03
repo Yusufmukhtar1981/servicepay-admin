@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'logistics_api.dart';
 import 'admin_logistics_setup_screen.dart';
+import 'admin_office_shipment_screen.dart';
 
 String logisticsText(dynamic value, [String fallback = '—']) {
   final String text = '${value ?? ''}'.trim();
@@ -253,26 +256,62 @@ class _OperationsListState extends State<_OperationsList> {
           if (rows.isEmpty)
             return RefreshIndicator(
                 onRefresh: () async => setState(_reload),
-                child: ListView(children: const <Widget>[
+                child: ListView(children: <Widget>[
+                  if (widget.tab.resource == 'shipments')
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: FilledButton.icon(
+                        key: const Key('create-office-shipment'),
+                        onPressed: () => _createOfficeShipment(context),
+                        icon: const Icon(Icons.add_box_outlined),
+                        label: Text(widget.scope == 'branch'
+                            ? 'Register office shipment'
+                            : 'Register office shipment'),
+                      ),
+                    ),
                   SizedBox(height: 180),
-                  Center(child: Text('No records in this queue.'))
+                  const Center(child: Text('No records in this queue.'))
                 ]));
           return RefreshIndicator(
               onRefresh: () async => setState(_reload),
-              child: ListView.separated(
+              child: ListView(
                 padding: const EdgeInsets.all(12),
-                itemCount: rows.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, index) => _RecordCard(
-                    row: rows[index],
-                    branchActions: widget.branchActions,
-                    tripControls: widget.tripControls,
-                    api: widget.api,
-                    scope: widget.scope,
-                    onChanged: () => setState(_reload)),
+                children: <Widget>[
+                  if (widget.tab.resource == 'shipments')
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        key: const Key('create-office-shipment'),
+                        onPressed: () => _createOfficeShipment(context),
+                        icon: const Icon(Icons.add_box_outlined),
+                        label: const Text('Register office shipment'),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  ...rows.map((Map<String, dynamic> row) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _RecordCard(
+                            row: row,
+                            branchActions: widget.branchActions,
+                            tripControls: widget.tripControls,
+                            api: widget.api,
+                            scope: widget.scope,
+                            onChanged: () => setState(_reload)),
+                      )),
+                ],
               ));
         },
       );
+
+  Future<void> _createOfficeShipment(BuildContext context) async {
+    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => AdminOfficeShipmentScreen(
+        api: widget.api,
+        scope: widget.scope,
+        onCreated: () => setState(_reload),
+      ),
+    ));
+  }
 }
 
 class _ErrorRetry extends StatelessWidget {
@@ -330,6 +369,17 @@ class _RecordCard extends StatelessWidget {
                       '${logisticsText(row['originState'] ?? row['origin'])}  →  ${logisticsText(row['destinationState'] ?? row['destination'])}'),
                   const SizedBox(height: 8),
                   Chip(label: Text(status.replaceAll('_', ' '))),
+                  if (logisticsText(row['orderType'], '').toUpperCase() ==
+                      'INTERSTATE')
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        key: Key('interstate-details-$_id'),
+                        onPressed: _id.isEmpty ? null : () => _details(context),
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Shipment detail & history'),
+                      ),
+                    ),
                   if (paymentReview)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -366,6 +416,121 @@ class _RecordCard extends StatelessWidget {
                             label: const Text('Update trip'),
                             onPressed: () => _tripStatusDialog(context))),
                 ])));
+  }
+
+  Future<void> _details(BuildContext context) async {
+    try {
+      final Map<String, dynamic> response =
+          await api.shipmentDetail(_id, scope: scope);
+      if (!context.mounted) return;
+      final Map<String, dynamic> shipment =
+          LogisticsApi.map(response['shipment']);
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(logisticsText(shipment['trackingNumber'], 'Interstate shipment')),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                Text('${logisticsText(shipment['originState'] ?? shipment['origin'])} → ${logisticsText(shipment['destinationState'] ?? shipment['destination'])}'),
+                Text('Status: ${logisticsText(shipment['status']).replaceAll('_', ' ')}'),
+                Text('Receiver: ${logisticsText(LogisticsApi.map(shipment['receiver'])['name'])}'),
+                Text('Receiver phone: ${logisticsText(LogisticsApi.map(shipment['receiver'])['phone'])}'),
+                Text('Parcel: ${logisticsText(LogisticsApi.map(shipment['parcel'])['description'])}'),
+                Text('Charge: ₦${LogisticsApi.map(shipment['quote'])['total'] ?? '—'} · ${logisticsText(shipment['paymentStatus'])}'),
+                const Divider(),
+                const Text('Status history', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...LogisticsApi.listOf(response['history']).map((Map<String, dynamic> event) =>
+                  ListTile(dense: true, title: Text(logisticsText(event['status']).replaceAll('_', ' ')), subtitle: Text(logisticsText(event['createdAt'] ?? event['timestamp'])))),
+                const Divider(),
+                const Text('Assignment history', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...LogisticsApi.listOf(response['assignmentHistory']).map((Map<String, dynamic> event) =>
+                  ListTile(dense: true, title: Text('${logisticsText(event['leg'])} · ${logisticsText(event['riderName'] ?? event['riderId'])}'), subtitle: Text(logisticsText(event['createdAt'] ?? event['assignedAt'])))),
+              ]),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => _assignLeg(dialogContext, 'ORIGIN'),
+              child: const Text('Assign origin hub'),
+            ),
+            TextButton(
+              onPressed: () => _assignLeg(dialogContext, 'DESTINATION'),
+              child: const Text('Assign last-mile'),
+            ),
+            TextButton(
+              onPressed: () async {
+                const Map<String, List<String>> transitions = <String, List<String>>{
+                  'RECEIVED_AT_ORIGIN_HUB': <String>['VERIFIED_AT_ORIGIN_HUB'],
+                  'VERIFIED_AT_ORIGIN_HUB': <String>['READY_FOR_INTERSTATE_DISPATCH'],
+                  'READY_FOR_INTERSTATE_DISPATCH': <String>['IN_TRANSIT'],
+                  'IN_TRANSIT': <String>['ARRIVED_AT_DESTINATION_HUB'],
+                  'ARRIVED_AT_DESTINATION_HUB': <String>['DESTINATION_HUB_VERIFIED'],
+                  'DESTINATION_HUB_VERIFIED': <String>['READY_FOR_COLLECTION'],
+                };
+                final String current = logisticsText(shipment['status'], '').toUpperCase();
+                final List<String> options = transitions[current] ?? <String>[];
+                if (options.isEmpty) return;
+                final String? selected = await showDialog<String>(
+                  context: dialogContext,
+                  builder: (BuildContext ctx) => SimpleDialog(
+                    title: const Text('Update shipment status'),
+                    children: options.map((String status) => SimpleDialogOption(
+                      onPressed: () => Navigator.pop(ctx, status),
+                      child: Text(status.replaceAll('_', ' ')),
+                    )).toList(),
+                  ),
+                );
+                if (selected == null) return;
+                await api.updateShipmentStatus(_id, selected, scope: scope);
+                onChanged();
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+              child: const Text('Update status'),
+            ),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+          ],
+        ),
+      );
+    } on LogisticsApiException catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _assignLeg(BuildContext context, String leg) async {
+    try {
+      final List<Map<String, dynamic>> riders =
+          await api.shipmentRiders(_id, leg, scope: scope);
+      if (!context.mounted) return;
+      riders.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
+          (b['online'] == true ? 1 : 0).compareTo(a['online'] == true ? 1 : 0));
+      final String? riderId = await showDialog<String>(
+        context: context,
+        builder: (BuildContext ctx) => SimpleDialog(
+          title: Text(leg == 'ORIGIN' ? 'Origin hub rider' : 'Last-mile rider'),
+          children: riders.map((Map<String, dynamic> rider) {
+            final String id = logisticsText(rider['_id'], '');
+            final bool online = rider['online'] == true ||
+                '${rider['availabilityStatus']}'.toUpperCase() == 'ONLINE';
+            return SimpleDialogOption(
+              key: Key('shipment-rider-$id'),
+              onPressed: () => Navigator.pop(ctx, id),
+              child: ListTile(
+                title: Text(logisticsText(rider['fullName'], 'Rider')),
+                subtitle: Text('${logisticsText(rider['riderId'])} · ${online ? 'ONLINE' : 'OFFLINE'}'),
+              ),
+            );
+          }).toList(),
+        ),
+      );
+      if (riderId == null || riderId.isEmpty) return;
+      await api.assignShipmentRider(_id, riderId, leg, scope: scope);
+      onChanged();
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rider assignment updated.')));
+    } on LogisticsApiException catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Future<void> _actionDialog(BuildContext context) async {
@@ -664,16 +829,41 @@ class _RiderInterstateDeliveriesScreenState
     extends State<RiderInterstateDeliveriesScreen> {
   late final LogisticsApi _api = widget.api ?? LogisticsApi();
   late Future<List<Map<String, dynamic>>> _future;
+  Timer? _refreshTimer;
   @override
   void initState() {
     super.initState();
     _future = _api.list('rider', 'shipments');
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _reload();
+    });
   }
 
-  void _reload() => setState(() => _future = _api.list('rider', 'shipments'));
+  void _reload() {
+    final Future<List<Map<String, dynamic>>> refreshed =
+        _api.list('rider', 'shipments');
+    setState(() {
+      _future = refreshed;
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Interstate deliveries')),
+      appBar: AppBar(
+        title: const Text('Interstate deliveries'),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Refresh interstate assignments',
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
           future: _future,
           builder: (_, snap) {
@@ -683,8 +873,16 @@ class _RiderInterstateDeliveriesScreenState
               return _ErrorRetry(
                   error: snap.error.toString(), onRetry: _reload);
             if (snap.data!.isEmpty)
-              return const Center(
-                  child: Text('No interstate deliveries assigned.'));
+              return RefreshIndicator(
+                onRefresh: () async => _reload(),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const <Widget>[
+                    SizedBox(height: 180),
+                    Center(child: Text('No interstate deliveries assigned.')),
+                  ],
+                ),
+              );
             return RefreshIndicator(
                 onRefresh: () async => _reload(),
                 child: ListView.builder(
@@ -721,8 +919,90 @@ class _RiderShipmentCard extends StatelessWidget {
           onPressed: id.isEmpty ? null : () => _complete(context, id),
           child: const Text('OTP delivery'),
         ),
+        onTap: id.isEmpty ? null : () => _openDetails(context, id),
       ),
     );
+  }
+
+  Future<void> _openDetails(BuildContext context, String id) async {
+    try {
+      final Map<String, dynamic> root = await api.request(
+          'GET',
+          '/rider/logistics/interstate/shipments/'
+              '${Uri.encodeComponent(id)}');
+      final Map<String, dynamic> shipment =
+          LogisticsApi.map(root['shipment']);
+      final List<Map<String, dynamic>> history =
+          LogisticsApi.listOf(root['history']);
+      if (!context.mounted) return;
+      final Map<String, dynamic> sender =
+          LogisticsApi.map(shipment['sender']);
+      final Map<String, dynamic> receiver =
+          LogisticsApi.map(shipment['receiver']);
+      final Map<String, dynamic> parcel =
+          LogisticsApi.map(shipment['parcel']);
+      final String status = logisticsText(shipment['status'], '').toUpperCase();
+      final List<String> statusActions = <String>[
+        if (status == 'ASSIGNED' ||
+            status == 'PICKUP_ASSIGNED' ||
+            status == 'AWAITING_PICKUP')
+          'PICKED_UP',
+        if (status == 'PICKED_UP') 'RECEIVED_AT_ORIGIN_HUB',
+        if (status == 'OUT_FOR_DELIVERY') 'DELIVERY_ATTEMPTED',
+      ];
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: Text(logisticsText(shipment['trackingNumber'], 'Interstate delivery')),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                const Text('INTERSTATE', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                const SizedBox(height: 8),
+                Text('Tracking: ${logisticsText(shipment['trackingNumber'])}'),
+                Text('Origin: ${logisticsText(shipment['originState'] ?? shipment['origin'])}'),
+                Text('Destination: ${logisticsText(shipment['destinationState'] ?? shipment['destination'])}'),
+                Text('Receiver: ${logisticsText(receiver['name'] ?? shipment['receiverName'])}'),
+                Text('Receiver phone: ${logisticsText(receiver['phone'] ?? shipment['receiverPhone'])}'),
+                Text('Parcel: ${logisticsText(parcel['description'] ?? shipment['parcelDescription'])}'),
+                Text('Quantity: ${logisticsText(parcel['quantity'])} · Weight: ${logisticsText(parcel['weightKg'])} kg'),
+                Text('Sender: ${logisticsText(sender['name'])} · ${logisticsText(sender['phone'])}'),
+                Text('Current status: ${status.replaceAll('_', ' ')}'),
+                const Divider(),
+                const Text('Shipment history', style: TextStyle(fontWeight: FontWeight.w700)),
+                ...history.map((Map<String, dynamic> event) => ListTile(
+                  dense: true,
+                  title: Text(logisticsText(event['status']).replaceAll('_', ' ')),
+                  subtitle: Text(logisticsText(event['createdAt'] ?? event['timestamp'])),
+                )),
+              ]),
+            ),
+          ),
+          actions: <Widget>[
+            ...statusActions.map((String next) => TextButton(
+              onPressed: () async {
+                try {
+                  await api.request(
+                    'PATCH',
+                    '/rider/logistics/interstate/shipments/${Uri.encodeComponent(id)}/status',
+                    body: <String, dynamic>{'status': next},
+                  );
+                  onChanged();
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } on LogisticsApiException catch (error) {
+                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(error.message)));
+                }
+              },
+              child: Text(next.replaceAll('_', ' ')),
+            )),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          ],
+        ),
+      );
+    } on LogisticsApiException catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Future<void> _complete(BuildContext context, String id) async {

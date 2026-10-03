@@ -14,11 +14,13 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
     this.failFirstRiderLoad = false,
     this.emptyRiders = false,
     this.assignmentError = '',
+    this.ridersOverride,
   });
 
   final bool failFirstRiderLoad;
   final bool emptyRiders;
   final String assignmentError;
+  final List<Map<String, dynamic>>? ridersOverride;
   int riderLoadCount = 0;
   int assignmentCount = 0;
   bool assigned = false;
@@ -81,7 +83,7 @@ class _FakeAdminDeliveryApi implements AdminDeliveryApiClient {
       throw const AdminDeliveryApiException('Unable to load available riders.');
     }
     if (emptyRiders) return <Map<String, dynamic>>[];
-    return <Map<String, dynamic>>[rider];
+    return ridersOverride ?? <Map<String, dynamic>>[rider];
   }
 
   @override
@@ -273,7 +275,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('No verified online riders are available right now.'),
+      find.text(
+          'No verified active riders are available right now. Refresh or try again later.'),
       findsOneWidget,
     );
     expect(
@@ -284,6 +287,41 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('online riders sort first and eligible offline rider stays selectable',
+      (WidgetTester tester) async {
+    final _FakeAdminDeliveryApi api = _FakeAdminDeliveryApi(
+      ridersOverride: <Map<String, dynamic>>[
+        <String, dynamic>{
+          '_id': 'offline-rider',
+          'fullName': 'Offline Rider',
+          'riderId': 'SP-OFF-1',
+          'availabilityStatus': 'OFFLINE',
+        },
+        <String, dynamic>{
+          '_id': 'online-rider',
+          'fullName': 'Online Rider',
+          'riderId': 'SP-ON-1',
+          'availabilityStatus': 'ONLINE',
+        },
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: AdminDeliveryManagementScreen(api: api)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assign-rider-delivery-1')));
+    await tester.pumpAndSettle();
+
+    final Finder online = find.byKey(const Key('available-rider-online-rider'));
+    final Finder offline =
+        find.byKey(const Key('available-rider-offline-rider'));
+    expect(online, findsOneWidget);
+    expect(offline, findsOneWidget);
+    expect(tester.getTopLeft(online).dy, lessThan(tester.getTopLeft(offline).dy));
+    expect(find.text('ONLINE'), findsOneWidget);
+    expect(find.text('OFFLINE'), findsOneWidget);
   });
 
   testWidgets('assignment error stays visible and permits one safe retry',

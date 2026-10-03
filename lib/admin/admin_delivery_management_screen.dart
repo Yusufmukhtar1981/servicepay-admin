@@ -385,6 +385,13 @@ class _DeliveryDetailsDialog extends StatelessWidget {
     final Map<String, dynamic> customer = _map(delivery['customerId']);
     final Map<String, dynamic> rider = _map(delivery['assignedRiderId']);
     final String status = _text(delivery['status'], fallback: 'PENDING');
+    final dynamic rawAssignments = delivery['assignmentHistory'];
+    final List<Map<String, dynamic>> assignmentHistory = rawAssignments is List
+        ? rawAssignments
+            .whereType<Map>()
+            .map((Map item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
     final List<Widget> timestamps = <Widget>[
       _row('Created', delivery['createdAt']),
       _row('Updated', delivery['updatedAt']),
@@ -463,6 +470,19 @@ class _DeliveryDetailsDialog extends StatelessWidget {
                   _row('Refunded at', delivery['refundedAt']),
                 ]),
                 _section('Timestamps', timestamps),
+                if (assignmentHistory.isNotEmpty)
+                  _section(
+                    'Assignment history',
+                    assignmentHistory.map((Map<String, dynamic> event) {
+                      final Map<String, dynamic> eventRider =
+                          _map(event['rider'] ?? event['assignedRiderId']);
+                      return _row(
+                        _text(event['action'] ?? event['event'],
+                            fallback: 'Assignment'),
+                        '${_text(eventRider['fullName'] ?? event['riderName'] ?? event['riderId'])} · ${_text(event['assignedAt'] ?? event['createdAt'])}',
+                      );
+                    }).toList(),
+                  ),
               ],
             ),
           ),
@@ -506,6 +526,13 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
       (widget.delivery['_id'] ?? widget.delivery['id'])?.toString().trim() ??
       '';
 
+  bool _isOnline(Map<String, dynamic> rider) {
+    final dynamic state = rider['availabilityStatus'] ?? rider['availability'];
+    return rider['online'] == true ||
+        rider['isOnline'] == true ||
+        '$state'.toUpperCase() == 'ONLINE';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -520,6 +547,9 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
     try {
       final List<Map<String, dynamic>> riders = await widget.api
           .getAvailableRiders(_deliveryId);
+      riders.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+        return (_isOnline(b) ? 1 : 0).compareTo(_isOnline(a) ? 1 : 0);
+      });
       if (!mounted) return;
       setState(() {
         _riders = riders;
@@ -620,7 +650,7 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No verified online riders are available right now.',
+                      'No verified active riders are available right now. Refresh or try again later.',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -645,6 +675,7 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
                           rider['riderId']?.toString().trim() ?? '';
                       final String vehicle =
                           rider['vehicleType']?.toString().trim() ?? '';
+                      final bool online = _isOnline(rider);
                       return RadioListTile<String>(
                         key: Key('available-rider-$id'),
                         value: id,
@@ -662,6 +693,10 @@ class _AssignDeliveryRiderDialogState extends State<AssignDeliveryRiderDialog> {
                             riderCode,
                             vehicle,
                           ].where((String item) => item.isNotEmpty).join(' • '),
+                        ),
+                        secondary: Chip(
+                          label: Text(online ? 'ONLINE' : 'OFFLINE'),
+                          visualDensity: VisualDensity.compact,
                         ),
                       );
                     }),

@@ -129,6 +129,9 @@ class AdminMainNavigation extends StatefulWidget {
   /// canonical module name is returned here for permission checks.
   static List<String> visibleDestinationLabels(AdminAccess access) {
     final List<String> labels = <String>[];
+    if (access.has(AdminPermissions.logisticsView)) {
+      labels.add('Interstate Logistics');
+    }
     if (access.hasBusinessPartnerAdmin(AdminPermissions.businessPartnersView)) {
       labels.add('Business Partners');
     }
@@ -306,6 +309,17 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_tree_outlined,
         activeIcon: Icons.account_tree,
         label: 'Branch Management',
+      );
+    }
+
+    if (hasPermission(AdminPermissions.logisticsView)) {
+      addNavigationPage(
+        page: isHeadOffice
+            ? const AdminLogisticsScreen()
+            : const BranchLogisticsScreen(),
+        icon: Icons.route_outlined,
+        activeIcon: Icons.route_rounded,
+        label: 'Interstate Logistics',
       );
     }
 

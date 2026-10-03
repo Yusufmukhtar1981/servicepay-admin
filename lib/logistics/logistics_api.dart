@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../admin/admin_api_configuration.dart';
+
 /// Authenticated client for interstate-operations endpoints.  Branch and rider
 /// identity is deliberately inferred by the server from the access token.
 class LogisticsApi {
   LogisticsApi({
     http.Client? client,
-    this.baseUrl = 'https://api.servicepay.ng/api',
+    this.baseUrl = AdminApiConfiguration.baseUrl,
     this.tokenLoader,
   }) : _client = client ?? http.Client();
 
@@ -42,6 +44,80 @@ class LogisticsApi {
         await request('GET', '/admin/logistics/interstate/branches');
     return listOf(root['branches'] ?? map(root['data'])['branches']);
   }
+
+  String _officeBase(String scope) =>
+      '/${scope == 'branch' ? 'branches' : 'admin'}/logistics/interstate';
+
+  Future<List<Map<String, dynamic>>> officeRoutes(
+      {String scope = 'admin'}) async {
+    final Map<String, dynamic> root =
+        await request('GET', '${_officeBase(scope)}/routes');
+    return listOf(root['routes'] ?? map(root['data'])['routes']);
+  }
+
+  Future<List<Map<String, dynamic>>> searchCustomers(String search,
+      {String scope = 'admin'}) async {
+    final Map<String, dynamic> root = await request(
+      'GET',
+      '${_officeBase(scope)}/customers',
+      query: <String, String>{'search': search.trim()},
+    );
+    return listOf(root['customers'] ?? map(root['data'])['customers']);
+  }
+
+  Future<Map<String, dynamic>> officeQuote(
+          Map<String, dynamic> shipment, {String scope = 'admin'}) =>
+      request('POST', '${_officeBase(scope)}/office-quote',
+          body: shipment);
+
+  Future<Map<String, dynamic>> createOfficeShipment(
+          Map<String, dynamic> shipment, {String scope = 'admin'}) =>
+      request('POST', '${_officeBase(scope)}/shipments',
+          body: shipment);
+
+  Future<Map<String, dynamic>> shipmentDetail(String id,
+      {String scope = 'admin'}) async {
+    final Map<String, dynamic> root = await request(
+        'GET',
+        '${_officeBase(scope)}/shipments/'
+            '${Uri.encodeComponent(id)}');
+    return <String, dynamic>{
+      'shipment': map(root['shipment']),
+      'history': listOf(root['history']),
+      'assignmentHistory': listOf(root['assignmentHistory']),
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> shipmentRiders(
+          String id, String leg,
+          {String scope = 'admin'}) async {
+    final Map<String, dynamic> root = await request(
+      'GET',
+      '${_officeBase(scope)}/shipments/${Uri.encodeComponent(id)}/riders',
+      query: <String, String>{'leg': leg},
+    );
+    return listOf(root['riders'] ?? map(root['data'])['riders']);
+  }
+
+  Future<Map<String, dynamic>> assignShipmentRider(
+          String id, String riderId, String leg,
+          {String scope = 'admin'}) =>
+      request(
+        'POST',
+        '${_officeBase(scope)}/shipments/'
+            '${Uri.encodeComponent(id)}/assign-rider',
+        body: <String, dynamic>{'riderId': riderId, 'leg': leg},
+      );
+
+  Future<Map<String, dynamic>> updateShipmentStatus(
+          String id, String status,
+          {String scope = 'admin'}) =>
+      request(
+        'PATCH',
+        '${_officeBase(scope)}/shipments/'
+            '${Uri.encodeComponent(id)}/status',
+        body: <String, dynamic>{'status': status},
+      );
 
   Future<Map<String, dynamic>> setRouteActive(
           String routeId, bool active) =>

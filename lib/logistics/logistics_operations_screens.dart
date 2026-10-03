@@ -119,15 +119,16 @@ class _LogisticsTabs extends StatelessWidget {
                                 'trips',
                               }.contains(tab.resource)
                           ? AdminLogisticsSetupScreen(
-                              resource: tab.resource, api: api ?? LogisticsApi())
-                      : _OperationsList(
-                          scope: scope,
-                          tab: tab,
-                          api: api ?? LogisticsApi(),
-                          branchActions: actionScope,
-                          tripControls:
-                              scope == 'admin' && tab.resource == 'trips',
-                        ))
+                              resource: tab.resource,
+                              api: api ?? LogisticsApi())
+                          : _OperationsList(
+                              scope: scope,
+                              tab: tab,
+                              api: api ?? LogisticsApi(),
+                              branchActions: actionScope,
+                              tripControls:
+                                  scope == 'admin' && tab.resource == 'trips',
+                            ))
                   .toList()),
         ),
       );
@@ -425,76 +426,196 @@ class _RecordCard extends StatelessWidget {
       if (!context.mounted) return;
       final Map<String, dynamic> shipment =
           LogisticsApi.map(response['shipment']);
+      Map<String, dynamic> currentResponse = response;
+      Map<String, dynamic> currentShipment = shipment;
+      List<Map<String, dynamic>> transitions =
+          LogisticsApi.listOf(currentResponse['allowedStatusTransitions']);
+      bool updating = false;
       await showDialog<void>(
         context: context,
-        builder: (BuildContext dialogContext) => AlertDialog(
-          title: Text(logisticsText(shipment['trackingNumber'], 'Interstate shipment')),
-          content: SizedBox(
-            width: 560,
-            child: SingleChildScrollView(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-                Text('${logisticsText(shipment['originState'] ?? shipment['origin'])} → ${logisticsText(shipment['destinationState'] ?? shipment['destination'])}'),
-                Text('Status: ${logisticsText(shipment['status']).replaceAll('_', ' ')}'),
-                Text('Receiver: ${logisticsText(LogisticsApi.map(shipment['receiver'])['name'])}'),
-                Text('Receiver phone: ${logisticsText(LogisticsApi.map(shipment['receiver'])['phone'])}'),
-                Text('Parcel: ${logisticsText(LogisticsApi.map(shipment['parcel'])['description'])}'),
-                Text('Charge: ₦${LogisticsApi.map(shipment['quote'])['total'] ?? '—'} · ${logisticsText(shipment['paymentStatus'])}'),
-                const Divider(),
-                const Text('Status history', style: TextStyle(fontWeight: FontWeight.bold)),
-                ...LogisticsApi.listOf(response['history']).map((Map<String, dynamic> event) =>
-                  ListTile(dense: true, title: Text(logisticsText(event['status']).replaceAll('_', ' ')), subtitle: Text(logisticsText(event['createdAt'] ?? event['timestamp'])))),
-                const Divider(),
-                const Text('Assignment history', style: TextStyle(fontWeight: FontWeight.bold)),
-                ...LogisticsApi.listOf(response['assignmentHistory']).map((Map<String, dynamic> event) =>
-                  ListTile(dense: true, title: Text('${logisticsText(event['leg'])} · ${logisticsText(event['riderName'] ?? event['riderId'])}'), subtitle: Text(logisticsText(event['createdAt'] ?? event['assignedAt'])))),
-              ]),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => _assignLeg(dialogContext, 'ORIGIN'),
-              child: const Text('Assign origin hub'),
-            ),
-            TextButton(
-              onPressed: () => _assignLeg(dialogContext, 'DESTINATION'),
-              child: const Text('Assign last-mile'),
-            ),
-            TextButton(
-              onPressed: () async {
-                const Map<String, List<String>> transitions = <String, List<String>>{
-                  'RECEIVED_AT_ORIGIN_HUB': <String>['VERIFIED_AT_ORIGIN_HUB'],
-                  'VERIFIED_AT_ORIGIN_HUB': <String>['READY_FOR_INTERSTATE_DISPATCH'],
-                  'READY_FOR_INTERSTATE_DISPATCH': <String>['IN_TRANSIT'],
-                  'IN_TRANSIT': <String>['ARRIVED_AT_DESTINATION_HUB'],
-                  'ARRIVED_AT_DESTINATION_HUB': <String>['DESTINATION_HUB_VERIFIED'],
-                  'DESTINATION_HUB_VERIFIED': <String>['READY_FOR_COLLECTION'],
-                };
-                final String current = logisticsText(shipment['status'], '').toUpperCase();
-                final List<String> options = transitions[current] ?? <String>[];
-                if (options.isEmpty) return;
-                final String? selected = await showDialog<String>(
-                  context: dialogContext,
-                  builder: (BuildContext ctx) => SimpleDialog(
-                    title: const Text('Update shipment status'),
-                    children: options.map((String status) => SimpleDialogOption(
-                      onPressed: () => Navigator.pop(ctx, status),
-                      child: Text(status.replaceAll('_', ' ')),
-                    )).toList(),
+        builder: (BuildContext dialogContext) => StatefulBuilder(
+          builder: (BuildContext dialogContext, StateSetter refreshDialog) {
+            return AlertDialog(
+              title: Text(logisticsText(
+                  currentShipment['trackingNumber'], 'Interstate shipment')),
+              content: SizedBox(
+                width: 560,
+                child: SingleChildScrollView(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                            '${logisticsText(currentShipment['originState'] ?? currentShipment['origin'])} → ${logisticsText(currentShipment['destinationState'] ?? currentShipment['destination'])}'),
+                        Text(
+                            'Status: ${logisticsText(currentShipment['status']).replaceAll('_', ' ')}'),
+                        Text(
+                            'Receiver: ${logisticsText(LogisticsApi.map(currentShipment['receiver'])['name'])}'),
+                        Text(
+                            'Receiver phone: ${logisticsText(LogisticsApi.map(currentShipment['receiver'])['phone'])}'),
+                        Text(
+                            'Parcel: ${logisticsText(LogisticsApi.map(currentShipment['parcel'])['description'])}'),
+                        Text(
+                            'Charge: ₦${LogisticsApi.map(currentShipment['quote'])['total'] ?? '—'} · ${logisticsText(currentShipment['paymentStatus'])}'),
+                        const Divider(),
+                        const Text('Status history',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        ...LogisticsApi.listOf(currentResponse['history'])
+                            .map((Map<String, dynamic> event) {
+                          final String changedBy = logisticsText(
+                              event['changedByName'] ??
+                                  event['actorName'] ??
+                                  event['staffName'] ??
+                                  event['changedBy'],
+                              '');
+                          final String time = logisticsText(
+                              event['createdAt'] ?? event['timestamp']);
+                          return ListTile(
+                            dense: true,
+                            title: Text(logisticsText(event['status'])
+                                .replaceAll('_', ' ')),
+                            subtitle: Text(changedBy.isEmpty
+                                ? time
+                                : '$time · by $changedBy'),
+                          );
+                        }),
+                        const Divider(),
+                        const Text('Assignment history',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        ...LogisticsApi.listOf(
+                                currentResponse['assignmentHistory'])
+                            .map((Map<String, dynamic> event) => ListTile(
+                                dense: true,
+                                title: Text(
+                                    '${logisticsText(event['leg'])} · ${logisticsText(event['riderName'] ?? event['riderId'])}'),
+                                subtitle: Text(logisticsText(
+                                    event['createdAt'] ??
+                                        event['assignedAt'])))),
+                        if (transitions.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                                'This shipment is in a terminal or restricted status. No status actions are available.'),
+                          ),
+                      ]),
+                ),
+              ),
+              actions: <Widget>[
+                if (transitions.isNotEmpty)
+                  TextButton(
+                    onPressed: () => _assignLeg(dialogContext, 'ORIGIN'),
+                    child: const Text('Assign origin hub'),
                   ),
-                );
-                if (selected == null) return;
-                await api.updateShipmentStatus(_id, selected, scope: scope);
-                onChanged();
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              },
-              child: const Text('Update status'),
-            ),
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-          ],
+                if (transitions.isNotEmpty)
+                  TextButton(
+                    onPressed: () => _assignLeg(dialogContext, 'DESTINATION'),
+                    child: const Text('Assign last-mile'),
+                  ),
+                if (transitions.isNotEmpty)
+                  TextButton(
+                    key: const Key('shipment-update-status'),
+                    onPressed: updating
+                        ? null
+                        : () async {
+                            final Map<String, String>? selected =
+                                await showDialog<Map<String, String>>(
+                              context: dialogContext,
+                              builder: (BuildContext ctx) => SimpleDialog(
+                                title: const Text('Update shipment status'),
+                                children: transitions
+                                    .map((Map<String, dynamic> item) {
+                                  final String nextStatus =
+                                      logisticsText(item['status'], '');
+                                  final String label = logisticsText(
+                                      item['label'],
+                                      nextStatus.replaceAll('_', ' '));
+                                  return SimpleDialogOption(
+                                    key: Key('status-option-$nextStatus'),
+                                    onPressed: nextStatus.isEmpty
+                                        ? null
+                                        : () => Navigator.pop(
+                                                ctx, <String, String>{
+                                              'status': nextStatus,
+                                              'label': label
+                                            }),
+                                    child: Text(label),
+                                  );
+                                }).toList(),
+                              ),
+                            );
+                            if (selected == null || selected['status'] == null)
+                              return;
+                            refreshDialog(() => updating = true);
+                            try {
+                              final Map<String, dynamic> saved =
+                                  await api.updateShipmentStatus(
+                                      _id, selected['status']!,
+                                      scope: scope);
+                              final Map<String, dynamic> savedShipment =
+                                  LogisticsApi.map(saved['shipment']);
+                              currentShipment = savedShipment.isNotEmpty
+                                  ? savedShipment
+                                  : <String, dynamic>{
+                                      ...currentShipment,
+                                      'status': selected['status'],
+                                    };
+                              try {
+                                final Map<String, dynamic> refreshed =
+                                    await api.shipmentDetail(_id, scope: scope);
+                                currentResponse = refreshed;
+                                currentShipment =
+                                    LogisticsApi.map(refreshed['shipment']);
+                                transitions = LogisticsApi.listOf(
+                                    refreshed['allowedStatusTransitions']);
+                              } catch (_) {
+                                if (dialogContext.mounted) {
+                                  ScaffoldMessenger.of(dialogContext)
+                                      .showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'Status saved. Shipment history could not be refreshed; use Refresh to retry.')),
+                                  );
+                                }
+                              }
+                              if (dialogContext.mounted) {
+                                refreshDialog(() => updating = false);
+                              }
+                              onChanged();
+                            } catch (error) {
+                              if (dialogContext.mounted) {
+                                refreshDialog(() => updating = false);
+                                ScaffoldMessenger.of(dialogContext)
+                                    .showSnackBar(
+                                  SnackBar(
+                                      content: Text(error
+                                              is LogisticsApiException
+                                          ? error.message
+                                          : 'Status update failed. Please try again.')),
+                                );
+                              }
+                            }
+                          },
+                    child: updating
+                        ? const Text('Updating…')
+                        : const Text('Update status'),
+                  ),
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Close')),
+              ],
+            );
+          },
         ),
       );
     } on LogisticsApiException catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      if (context.mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Shipment details could not be loaded. Please retry.')));
+      }
     }
   }
 
@@ -503,33 +624,54 @@ class _RecordCard extends StatelessWidget {
       final List<Map<String, dynamic>> riders =
           await api.shipmentRiders(_id, leg, scope: scope);
       if (!context.mounted) return;
+      bool isOnline(Map<String, dynamic> rider) =>
+          rider['online'] == true ||
+          logisticsText(rider['availabilityStatus'], '').toUpperCase() ==
+              'ONLINE';
       riders.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
-          (b['online'] == true ? 1 : 0).compareTo(a['online'] == true ? 1 : 0));
+          (isOnline(b) ? 1 : 0).compareTo(isOnline(a) ? 1 : 0));
       final String? riderId = await showDialog<String>(
         context: context,
         builder: (BuildContext ctx) => SimpleDialog(
           title: Text(leg == 'ORIGIN' ? 'Origin hub rider' : 'Last-mile rider'),
-          children: riders.map((Map<String, dynamic> rider) {
-            final String id = logisticsText(rider['_id'], '');
-            final bool online = rider['online'] == true ||
-                '${rider['availabilityStatus']}'.toUpperCase() == 'ONLINE';
-            return SimpleDialogOption(
-              key: Key('shipment-rider-$id'),
-              onPressed: () => Navigator.pop(ctx, id),
-              child: ListTile(
-                title: Text(logisticsText(rider['fullName'], 'Rider')),
-                subtitle: Text('${logisticsText(rider['riderId'])} · ${online ? 'ONLINE' : 'OFFLINE'}'),
+          children: <Widget>[
+            if (riders.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                    'No verified active delivery riders are available for this assignment.'),
               ),
-            );
-          }).toList(),
+            ...riders.map((Map<String, dynamic> rider) {
+              final String id = logisticsText(rider['_id'], '');
+              final bool online = isOnline(rider);
+              return SimpleDialogOption(
+                key: Key('shipment-rider-$id'),
+                onPressed: () => Navigator.pop(ctx, id),
+                child: ListTile(
+                  title: Text(logisticsText(rider['fullName'], 'Rider')),
+                  subtitle: Text(
+                      '${logisticsText(rider['riderId'])} · ${online ? 'ONLINE' : 'OFFLINE'}'),
+                ),
+              );
+            }),
+          ],
         ),
       );
       if (riderId == null || riderId.isEmpty) return;
       await api.assignShipmentRider(_id, riderId, leg, scope: scope);
       onChanged();
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rider assignment updated.')));
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Rider assignment updated.')));
     } on LogisticsApiException catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      if (context.mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Rider assignment failed. Please retry.')));
+      }
     }
   }
 
@@ -564,7 +706,8 @@ class _RecordCard extends StatelessWidget {
                       maxLines: 3,
                       decoration: const InputDecoration(
                           labelText: 'Parcel evidence URLs (optional)',
-                          helperText: 'Separate HTTP(S) URLs with commas or lines')),
+                          helperText:
+                              'Separate HTTP(S) URLs with commas or lines')),
                 ]),
                 actions: <Widget>[
                   TextButton(
@@ -629,13 +772,13 @@ class _RecordCard extends StatelessWidget {
               'status': statuses[action],
               if (action == 'verify')
                 'verifiedWeightKg': num.parse(actualWeight.text.trim()),
-              if (note.text.trim().isNotEmpty) 'note': note.text.trim()
-              ,
+              if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
               if (evidence.text.trim().isNotEmpty)
                 'evidenceUrls': evidence.text
                     .split(RegExp(r'[\s,]+'))
                     .map((value) => value.trim())
-                    .where((value) => value.startsWith('http://') ||
+                    .where((value) =>
+                        value.startsWith('http://') ||
                         value.startsWith('https://'))
                     .take(5)
                     .toList(),
@@ -852,6 +995,7 @@ class _RiderInterstateDeliveriesScreenState
     _refreshTimer?.cancel();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(
@@ -930,17 +1074,14 @@ class _RiderShipmentCard extends StatelessWidget {
           'GET',
           '/rider/logistics/interstate/shipments/'
               '${Uri.encodeComponent(id)}');
-      final Map<String, dynamic> shipment =
-          LogisticsApi.map(root['shipment']);
+      final Map<String, dynamic> shipment = LogisticsApi.map(root['shipment']);
       final List<Map<String, dynamic>> history =
           LogisticsApi.listOf(root['history']);
       if (!context.mounted) return;
-      final Map<String, dynamic> sender =
-          LogisticsApi.map(shipment['sender']);
+      final Map<String, dynamic> sender = LogisticsApi.map(shipment['sender']);
       final Map<String, dynamic> receiver =
           LogisticsApi.map(shipment['receiver']);
-      final Map<String, dynamic> parcel =
-          LogisticsApi.map(shipment['parcel']);
+      final Map<String, dynamic> parcel = LogisticsApi.map(shipment['parcel']);
       final String status = logisticsText(shipment['status'], '').toUpperCase();
       final List<String> statusActions = <String>[
         if (status == 'ASSIGNED' ||
@@ -953,55 +1094,77 @@ class _RiderShipmentCard extends StatelessWidget {
       await showDialog<void>(
         context: context,
         builder: (BuildContext ctx) => AlertDialog(
-          title: Text(logisticsText(shipment['trackingNumber'], 'Interstate delivery')),
+          title: Text(
+              logisticsText(shipment['trackingNumber'], 'Interstate delivery')),
           content: SizedBox(
             width: 500,
             child: SingleChildScrollView(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-                const Text('INTERSTATE', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-                const SizedBox(height: 8),
-                Text('Tracking: ${logisticsText(shipment['trackingNumber'])}'),
-                Text('Origin: ${logisticsText(shipment['originState'] ?? shipment['origin'])}'),
-                Text('Destination: ${logisticsText(shipment['destinationState'] ?? shipment['destination'])}'),
-                Text('Receiver: ${logisticsText(receiver['name'] ?? shipment['receiverName'])}'),
-                Text('Receiver phone: ${logisticsText(receiver['phone'] ?? shipment['receiverPhone'])}'),
-                Text('Parcel: ${logisticsText(parcel['description'] ?? shipment['parcelDescription'])}'),
-                Text('Quantity: ${logisticsText(parcel['quantity'])} · Weight: ${logisticsText(parcel['weightKg'])} kg'),
-                Text('Sender: ${logisticsText(sender['name'])} · ${logisticsText(sender['phone'])}'),
-                Text('Current status: ${status.replaceAll('_', ' ')}'),
-                const Divider(),
-                const Text('Shipment history', style: TextStyle(fontWeight: FontWeight.w700)),
-                ...history.map((Map<String, dynamic> event) => ListTile(
-                  dense: true,
-                  title: Text(logisticsText(event['status']).replaceAll('_', ' ')),
-                  subtitle: Text(logisticsText(event['createdAt'] ?? event['timestamp'])),
-                )),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text('INTERSTATE',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                    const SizedBox(height: 8),
+                    Text(
+                        'Tracking: ${logisticsText(shipment['trackingNumber'])}'),
+                    Text(
+                        'Origin: ${logisticsText(shipment['originState'] ?? shipment['origin'])}'),
+                    Text(
+                        'Destination: ${logisticsText(shipment['destinationState'] ?? shipment['destination'])}'),
+                    Text(
+                        'Receiver: ${logisticsText(receiver['name'] ?? shipment['receiverName'])}'),
+                    Text(
+                        'Receiver phone: ${logisticsText(receiver['phone'] ?? shipment['receiverPhone'])}'),
+                    Text(
+                        'Parcel: ${logisticsText(parcel['description'] ?? shipment['parcelDescription'])}'),
+                    Text(
+                        'Quantity: ${logisticsText(parcel['quantity'])} · Weight: ${logisticsText(parcel['weightKg'])} kg'),
+                    Text(
+                        'Sender: ${logisticsText(sender['name'])} · ${logisticsText(sender['phone'])}'),
+                    Text('Current status: ${status.replaceAll('_', ' ')}'),
+                    const Divider(),
+                    const Text('Shipment history',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    ...history.map((Map<String, dynamic> event) => ListTile(
+                          dense: true,
+                          title: Text(logisticsText(event['status'])
+                              .replaceAll('_', ' ')),
+                          subtitle: Text(logisticsText(
+                              event['createdAt'] ?? event['timestamp'])),
+                        )),
+                  ]),
             ),
           ),
           actions: <Widget>[
             ...statusActions.map((String next) => TextButton(
-              onPressed: () async {
-                try {
-                  await api.request(
-                    'PATCH',
-                    '/rider/logistics/interstate/shipments/${Uri.encodeComponent(id)}/status',
-                    body: <String, dynamic>{'status': next},
-                  );
-                  onChanged();
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } on LogisticsApiException catch (error) {
-                  if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(error.message)));
-                }
-              },
-              child: Text(next.replaceAll('_', ' ')),
-            )),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+                  onPressed: () async {
+                    try {
+                      await api.request(
+                        'PATCH',
+                        '/rider/logistics/interstate/shipments/${Uri.encodeComponent(id)}/status',
+                        body: <String, dynamic>{'status': next},
+                      );
+                      onChanged();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    } on LogisticsApiException catch (error) {
+                      if (ctx.mounted)
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text(error.message)));
+                    }
+                  },
+                  child: Text(next.replaceAll('_', ' ')),
+                )),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close')),
           ],
         ),
       );
     } on LogisticsApiException catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      if (context.mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 

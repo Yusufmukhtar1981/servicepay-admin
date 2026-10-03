@@ -169,9 +169,9 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
     final dynamic raw = body['organizations'] ?? body['items'] ?? body['data'];
     return raw is List
         ? raw
-              .whereType<Map>()
-              .map((Map e) => Map<String, dynamic>.from(e))
-              .toList()
+            .whereType<Map>()
+            .map((Map e) => Map<String, dynamic>.from(e))
+            .toList()
         : <Map<String, dynamic>>[];
   }
 
@@ -320,15 +320,35 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
               _can(AdminPermissions.organizationsSettlementAccountsView) ||
               _can(AdminPermissions.organizationsTreasuryManage)) ...[
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: () => _openTreasury(),
-                icon: const Icon(Icons.account_balance_outlined),
-                label: const Text('Treasury review'),
-              ),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                if (_can(AdminPermissions.organizationsWithdrawalsView))
+                  FilledButton.icon(
+                    onPressed: _openManualWithdrawals,
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Organization withdrawals'),
+                  ),
+                if (_can(
+                        AdminPermissions.organizationsSettlementAccountsView) ||
+                    _can(AdminPermissions.organizationsTreasuryManage))
+                  OutlinedButton.icon(
+                    onPressed: _openTreasury,
+                    icon: const Icon(Icons.account_balance_outlined),
+                    label: const Text('Treasury review'),
+                  ),
+              ],
             ),
           ],
+          const SizedBox(height: 8),
+          if (_can(AdminPermissions.organizationsWithdrawalsView))
+            Text(
+              'Organization withdrawals are transferred manually by ServicePay Admin.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           const SizedBox(height: 20),
           Wrap(
             spacing: 12,
@@ -429,29 +449,30 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
   }
 
   Widget _metric(String label, dynamic value) => Card(
-    child: SizedBox(
-      width: 150,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+        child: SizedBox(
+          width: 150,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _text(value, '0'),
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w900),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              _text(value, '0'),
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
-          ],
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _organizationCard(Map<String, dynamic> item) {
     final status = _text(item['status'], 'DRAFT').toUpperCase();
@@ -489,24 +510,24 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
   }
 
   Widget _badge(String status) => Chip(
-    label: Text(
-      status,
-      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-    ),
-    backgroundColor: status == 'VERIFIED'
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1D5544)
-              : const Color(0xFFE0F2E9))
-        : status == 'SUSPENDED'
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF5A3C27)
-              : const Color(0xFFFFE9D6))
-        : status == 'PENDING_VERIFICATION'
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF5A4A20)
-              : const Color(0xFFFFF0BF))
-        : Theme.of(context).colorScheme.surfaceContainerHighest,
-  );
+        label: Text(
+          status,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: status == 'VERIFIED'
+            ? (Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1D5544)
+                : const Color(0xFFE0F2E9))
+            : status == 'SUSPENDED'
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF5A3C27)
+                    : const Color(0xFFFFE9D6))
+                : status == 'PENDING_VERIFICATION'
+                    ? (Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF5A4A20)
+                        : const Color(0xFFFFF0BF))
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
 
   Future<void> _openTreasury() async {
     if (!mounted) return;
@@ -514,6 +535,20 @@ class _AdminOrganizationsScreenState extends State<AdminOrganizationsScreen> {
       context: context,
       isScrollControlled: true,
       builder: (_) => _TreasuryReviewSheet(api: _api, access: _access!),
+    );
+  }
+
+  Future<void> _openManualWithdrawals() async {
+    if (!_can(AdminPermissions.organizationsWithdrawalsView) || !mounted) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ManualOrganizationWithdrawalsSheet(
+        api: _api,
+        access: _access!,
+      ),
     );
   }
 }
@@ -557,8 +592,8 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
     _tab = canWithdrawalsView
         ? 0
         : canAccountsView
-        ? 1
-        : 2;
+            ? 1
+            : 2;
     _load();
   }
 
@@ -722,188 +757,193 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_error!),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _load,
-                        child: const Text('Retry'),
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error!),
+                          const SizedBox(height: 10),
+                          OutlinedButton(
+                            onPressed: _load,
+                            child: const Text('Retry'),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Expanded(
-                          child: Text(
-                            'Organization treasury',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Organization treasury',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
                             ),
-                          ),
+                            IconButton(
+                              onPressed: _load,
+                              icon: const Icon(Icons.refresh),
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          onPressed: _load,
-                          icon: const Icon(Icons.refresh),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            _metric(
+                              'Pending',
+                              _summary['pending'] ??
+                                  _summary['pendingApproval'],
+                            ),
+                            _metric('Processing', _summary['processing']),
+                            _metric('Successful', _summary['successful']),
+                            _metric('Total value', _summary['totalValue']),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<int>(
+                          segments: <ButtonSegment<int>>[
+                            if (canWithdrawalsView)
+                              const ButtonSegment(
+                                value: 0,
+                                label: Text('Withdrawals'),
+                              ),
+                            if (canAccountsView)
+                              const ButtonSegment(
+                                value: 1,
+                                label: Text('Settlement accounts'),
+                              ),
+                            if (canConfigure)
+                              const ButtonSegment(
+                                value: 2,
+                                label: Text('Limits/config'),
+                              ),
+                          ],
+                          selected: <int>{_tab},
+                          onSelectionChanged: (value) =>
+                              setState(() => _tab = value.first),
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: _tab == 0
+                              ? _withdrawalList()
+                              : _tab == 1
+                                  ? _accountList()
+                                  : _configView(),
                         ),
                       ],
                     ),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        _metric(
-                          'Pending',
-                          _summary['pending'] ?? _summary['pendingApproval'],
-                        ),
-                        _metric('Processing', _summary['processing']),
-                        _metric('Successful', _summary['successful']),
-                        _metric('Total value', _summary['totalValue']),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SegmentedButton<int>(
-                      segments: <ButtonSegment<int>>[
-                        if (canWithdrawalsView)
-                          const ButtonSegment(
-                            value: 0,
-                            label: Text('Withdrawals'),
-                          ),
-                        if (canAccountsView)
-                          const ButtonSegment(
-                            value: 1,
-                            label: Text('Settlement accounts'),
-                          ),
-                        if (canConfigure)
-                          const ButtonSegment(
-                            value: 2,
-                            label: Text('Limits/config'),
-                          ),
-                      ],
-                      selected: <int>{_tab},
-                      onSelectionChanged: (value) =>
-                          setState(() => _tab = value.first),
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: _tab == 0
-                          ? _withdrawalList()
-                          : _tab == 1
-                          ? _accountList()
-                          : _configView(),
-                    ),
-                  ],
-                ),
         ),
       ),
     );
   }
 
   Widget _metric(String label, dynamic value) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                _value(value),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ],
           ),
-          Text(
-            _value(value),
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 
   Widget _withdrawalList() => Column(
-    children: [
-      TextField(
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search),
-          labelText: 'Search reference, organization or account',
-        ),
-        onSubmitted: (value) {
-          _search = value.trim();
-          _load();
-        },
-      ),
-      const SizedBox(height: 8),
-      DropdownButton<String>(
-        value: _status,
-        isExpanded: true,
-        items: const [
-          DropdownMenuItem(value: '', child: Text('All withdrawal statuses')),
-          DropdownMenuItem(
-            value: 'PENDING_APPROVAL',
-            child: Text('Pending approval'),
+        children: [
+          TextField(
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              labelText: 'Search reference, organization or account',
+            ),
+            onSubmitted: (value) {
+              _search = value.trim();
+              _load();
+            },
           ),
-          DropdownMenuItem(value: 'PROCESSING', child: Text('Processing')),
-          DropdownMenuItem(value: 'SUCCESS', child: Text('Successful')),
-          DropdownMenuItem(value: 'FAILED', child: Text('Failed')),
-          DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
-        ],
-        onChanged: (value) {
-          setState(() => _status = value ?? '');
-          _load();
-        },
-      ),
-      Expanded(
-        child: _withdrawals.isEmpty
-            ? const Center(child: Text('No organization withdrawals found.'))
-            : ListView(
-                children: _withdrawals
-                    .map(
-                      (item) => Card(
-                        child: ListTile(
-                          title: Text(_value(item['reference'] ?? item['id'])),
-                          subtitle: Text(
-                            '${_value(item['organizationName'] ?? item['organization'])} • ${_value(item['amount'])} • ${_value(item['status'])}',
-                          ),
-                          trailing:
-                              item['status']?.toString().toUpperCase() ==
-                                      'PENDING_APPROVAL' &&
-                                  canWithdrawalsReview
-                              ? Wrap(
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.check,
-                                        color: Colors.green,
-                                      ),
-                                      onPressed: () =>
-                                          _withdrawalAction(item, true),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.close,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: () =>
-                                          _withdrawalAction(item, false),
-                                    ),
-                                  ],
-                                )
-                              : null,
-                        ),
-                      ),
-                    )
-                    .toList(),
+          const SizedBox(height: 8),
+          DropdownButton<String>(
+            value: _status,
+            isExpanded: true,
+            items: const [
+              DropdownMenuItem(
+                  value: '', child: Text('All withdrawal statuses')),
+              DropdownMenuItem(
+                value: 'PENDING_APPROVAL',
+                child: Text('Pending approval'),
               ),
-      ),
-    ],
-  );
+              DropdownMenuItem(value: 'PROCESSING', child: Text('Processing')),
+              DropdownMenuItem(value: 'SUCCESS', child: Text('Successful')),
+              DropdownMenuItem(value: 'FAILED', child: Text('Failed')),
+              DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+            ],
+            onChanged: (value) {
+              setState(() => _status = value ?? '');
+              _load();
+            },
+          ),
+          Expanded(
+            child: _withdrawals.isEmpty
+                ? const Center(
+                    child: Text('No organization withdrawals found.'))
+                : ListView(
+                    children: _withdrawals
+                        .map(
+                          (item) => Card(
+                            child: ListTile(
+                              title:
+                                  Text(_value(item['reference'] ?? item['id'])),
+                              subtitle: Text(
+                                '${_value(item['organizationName'] ?? item['organization'])} • ${_value(item['amount'])} • ${_value(item['status'])}',
+                              ),
+                              trailing: item['status']
+                                              ?.toString()
+                                              .toUpperCase() ==
+                                          'PENDING_APPROVAL' &&
+                                      canWithdrawalsReview
+                                  ? Wrap(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.check,
+                                            color: Colors.green,
+                                          ),
+                                          onPressed: () =>
+                                              _withdrawalAction(item, true),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.close,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed: () =>
+                                              _withdrawalAction(item, false),
+                                        ),
+                                      ],
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+          ),
+        ],
+      );
 
   Widget _accountList() => _accounts.isEmpty
       ? const Center(child: Text('No pending settlement accounts.'))
@@ -947,8 +987,7 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
         );
 
   String _maskedAccount(Map<String, dynamic> item) {
-    final value =
-        item['accountNumberMasked'] ??
+    final value = item['accountNumberMasked'] ??
         item['maskedAccountNumber'] ??
         item['accountNumberLast4'] ??
         item['last4'];
@@ -958,42 +997,43 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
   }
 
   Widget _configView() => ListView(
-    children: [
-      TextField(
-        decoration: const InputDecoration(
-          labelText: 'Organization ID',
-          helperText: 'Select an organization before loading treasury limits.',
-        ),
-        onChanged: (value) => _configOrganizationId = value.trim(),
-      ),
-      const SizedBox(height: 8),
-      FilledButton.icon(
-        onPressed: _configLoading || _configOrganizationId.isEmpty
-            ? null
-            : _loadConfig,
-        icon: _configLoading
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.download_outlined),
-        label: const Text('Load organization limits'),
-      ),
-      ..._config.entries.map(
-        (entry) => ListTile(
-          title: Text(entry.key),
-          subtitle: Text(_value(entry.value)),
-        ),
-      ),
-      if (canConfigure && _config.isNotEmpty)
-        OutlinedButton.icon(
-          onPressed: _editConfig,
-          icon: const Icon(Icons.edit_outlined),
-          label: const Text('Edit treasury limits'),
-        ),
-    ],
-  );
+        children: [
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Organization ID',
+              helperText:
+                  'Select an organization before loading treasury limits.',
+            ),
+            onChanged: (value) => _configOrganizationId = value.trim(),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _configLoading || _configOrganizationId.isEmpty
+                ? null
+                : _loadConfig,
+            icon: _configLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_outlined),
+            label: const Text('Load organization limits'),
+          ),
+          ..._config.entries.map(
+            (entry) => ListTile(
+              title: Text(entry.key),
+              subtitle: Text(_value(entry.value)),
+            ),
+          ),
+          if (canConfigure && _config.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: _editConfig,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit treasury limits'),
+            ),
+        ],
+      );
 
   Future<void> _loadConfig() async {
     setState(() => _configLoading = true);
@@ -1079,6 +1119,397 @@ class _TreasuryReviewSheetState extends State<_TreasuryReviewSheet> {
       }
     }
   }
+}
+
+class _ManualOrganizationWithdrawalsSheet extends StatefulWidget {
+  const _ManualOrganizationWithdrawalsSheet({
+    required this.api,
+    required this.access,
+  });
+
+  final AdminOrganizationsApiClient api;
+  final AdminAccess access;
+
+  @override
+  State<_ManualOrganizationWithdrawalsSheet> createState() =>
+      _ManualOrganizationWithdrawalsSheetState();
+}
+
+class _ManualOrganizationWithdrawalsSheetState
+    extends State<_ManualOrganizationWithdrawalsSheet> {
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  String _status = 'PENDING';
+  int _page = 1;
+  int _pages = 1;
+  List<Map<String, dynamic>> _withdrawals = <Map<String, dynamic>>[];
+
+  bool get _canReview =>
+      widget.access.has(AdminPermissions.organizationsWithdrawalsReview);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await widget.api.manualWithdrawals(
+        status: _status.isEmpty ? null : _status,
+        page: _page,
+      );
+      final data = response['data'] is Map
+          ? Map<String, dynamic>.from(response['data'] as Map)
+          : response;
+      final raw = data['withdrawals'] ?? response['withdrawals'];
+      final pagination = data['pagination'] ?? response['pagination'];
+      if (!mounted) return;
+      setState(() {
+        _withdrawals = raw is List
+            ? raw
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
+            : <Map<String, dynamic>>[];
+        _pages = pagination is Map
+            ? ((pagination['pages'] ?? pagination['totalPages']) as num?)
+                    ?.toInt() ??
+                1
+            : 1;
+        _loading = false;
+      });
+    } on AdminOrganizationsApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = error.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Unable to load organization withdrawals.';
+        });
+      }
+    }
+  }
+
+  String _text(dynamic value) =>
+      value?.toString().trim().isNotEmpty == true ? value.toString() : '—';
+  String _id(Map<String, dynamic> item) =>
+      (item['_id'] ?? item['id'] ?? '').toString();
+
+  Future<void> _markPaid(Map<String, dynamic> item) async {
+    if (!_canReview || _busy) return;
+    final destination = item['destinationSnapshot'] is Map
+        ? Map<String, dynamic>.from(item['destinationSnapshot'] as Map)
+        : <String, dynamic>{};
+    final amount = item['amount'];
+    final accountName = _text(destination['accountName']);
+    final bankName = _text(destination['bankName']);
+    final accountNumber = _text(destination['accountNumber']);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm manual transfer'),
+        content: Text(
+          'Confirm that ₦$amount has already been manually transferred to $accountName — $bankName — $accountNumber.\n\nOnly continue if the transfer is complete and these destination details match.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Not transferred'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm transfer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _busy = true);
+    try {
+      await widget.api.markManualWithdrawalPaid(
+        _id(item),
+        confirmation: <String, dynamic>{
+          'reference': item['reference'],
+          'amount': item['amount'],
+          'accountName': destination['accountName'],
+          'accountNumber': destination['accountNumber'],
+          'bankName': destination['bankName'],
+        },
+      );
+      await _load();
+    } on AdminOrganizationsApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reject(Map<String, dynamic> item) async {
+    if (!_canReview || _busy) return;
+    final reason = TextEditingController();
+    final route = DialogRoute<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reject withdrawal'),
+        content: TextField(
+          controller: reason,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Reason (optional)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, reason.text.trim()),
+            child: const Text('Reject request'),
+          ),
+        ],
+      ),
+    );
+    final confirmedReason = await Navigator.of(context).push(route);
+    await route.completed;
+    reason.dispose();
+    if (confirmedReason == null) return;
+    setState(() => _busy = true);
+    try {
+      await widget.api.rejectManualWithdrawal(
+        _id(item),
+        reason: confirmedReason,
+      );
+      await _load();
+    } on AdminOrganizationsApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .9,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Organization withdrawals',
+                        style: TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    IconButton(
+                        onPressed: _load, icon: const Icon(Icons.refresh)),
+                  ],
+                ),
+                const Text(
+                  'Review requests, verify the full destination, then record a completed manual transfer.',
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _status,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: const [
+                    DropdownMenuItem(value: '', child: Text('All statuses')),
+                    DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                    DropdownMenuItem(
+                        value: 'COMPLETED', child: Text('Completed')),
+                    DropdownMenuItem(
+                        value: 'REJECTED', child: Text('Rejected')),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _status = value ?? '';
+                      _page = 1;
+                    });
+                    _load();
+                  },
+                ),
+                const SizedBox(height: 10),
+                if (_busy) const LinearProgressIndicator(),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_error!),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton(
+                                    onPressed: _load,
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : _withdrawals.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                      'No organization withdrawal requests.'))
+                              : ListView.builder(
+                                  itemCount: _withdrawals.length,
+                                  itemBuilder: (context, index) {
+                                    final item = _withdrawals[index];
+                                    final destination =
+                                        item['destinationSnapshot'] is Map
+                                            ? Map<String, dynamic>.from(
+                                                item['destinationSnapshot']
+                                                    as Map,
+                                              )
+                                            : <String, dynamic>{};
+                                    final organization =
+                                        item['organization'] is Map
+                                            ? Map<String, dynamic>.from(
+                                                item['organization'] as Map)
+                                            : <String, dynamic>{};
+                                    final requestedBy =
+                                        item['requestedBy'] is Map
+                                            ? Map<String, dynamic>.from(
+                                                item['requestedBy'] as Map)
+                                            : <String, dynamic>{};
+                                    final pending =
+                                        '${item['status']}'.toUpperCase() ==
+                                            'PENDING';
+                                    return Card(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    _text(organization['name']),
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Chip(
+                                                    label: Text(
+                                                        _text(item['status']))),
+                                              ],
+                                            ),
+                                            Text(
+                                              'Owner: ${_text(requestedBy['fullName'])} • ${_text(requestedBy['phone'])}',
+                                            ),
+                                            Text(
+                                              'Organization code: ${_text(organization['code'])}',
+                                            ),
+                                            Text(
+                                                'Reference: ${_text(item['reference'])}'),
+                                            Text(
+                                                'Amount: ₦${_text(amountFor(item))}'),
+                                            Text(
+                                                'Account name: ${_text(destination['accountName'])}'),
+                                            Text(
+                                                'Bank: ${_text(destination['bankName'])}'),
+                                            Text(
+                                                'Account number: ${_text(destination['accountNumber'])}'),
+                                            Text(
+                                                'Requested: ${_text(item['createdAt'])}'),
+                                            if (item['completedAt'] != null)
+                                              Text(
+                                                  'Completed: ${_text(item['completedAt'])}'),
+                                            if (item['rejectionReason'] != null)
+                                              Text(
+                                                  'Rejection reason: ${_text(item['rejectionReason'])}'),
+                                            if (pending && _canReview) ...[
+                                              const SizedBox(height: 8),
+                                              Wrap(
+                                                spacing: 8,
+                                                children: [
+                                                  FilledButton.icon(
+                                                    onPressed: _busy
+                                                        ? null
+                                                        : () => _markPaid(item),
+                                                    icon: const Icon(Icons
+                                                        .check_circle_outline),
+                                                    label: const Text(
+                                                        'Mark as paid'),
+                                                  ),
+                                                  OutlinedButton.icon(
+                                                    onPressed: _busy
+                                                        ? null
+                                                        : () => _reject(item),
+                                                    icon:
+                                                        const Icon(Icons.close),
+                                                    label: const Text('Reject'),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: _page > 1
+                          ? () {
+                              setState(() => _page--);
+                              _load();
+                            }
+                          : null,
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                    Text('Page $_page of ${_pages < 1 ? 1 : _pages}'),
+                    IconButton(
+                      onPressed: _page < _pages
+                          ? () {
+                              setState(() => _page++);
+                              _load();
+                            }
+                          : null,
+                      icon: const Icon(Icons.chevron_right),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  dynamic amountFor(Map<String, dynamic> item) => item['amount'];
 }
 
 class _RequestInformationSelection {
@@ -1207,10 +1638,9 @@ class _DetailsSheetState extends State<_DetailsSheet> {
       final response = tab == 0
           ? await widget.api.members(id)
           : tab == 1
-          ? await widget.api.payments(id)
-          : await widget.api.audit(id);
-      final raw =
-          response['members'] ??
+              ? await widget.api.payments(id)
+              : await widget.api.audit(id);
+      final raw = response['members'] ??
           response['payments'] ??
           response['activity'] ??
           response['audit'] ??
@@ -1220,9 +1650,9 @@ class _DetailsSheetState extends State<_DetailsSheet> {
         setState(() {
           _tabItems = raw is List
               ? raw
-                    .whereType<Map>()
-                    .map((Map e) => Map<String, dynamic>.from(e))
-                    .toList()
+                  .whereType<Map>()
+                  .map((Map e) => Map<String, dynamic>.from(e))
+                  .toList()
               : <Map<String, dynamic>>[];
           _busy = false;
         });
@@ -1454,201 +1884,202 @@ class _DetailsSheetState extends State<_DetailsSheet> {
 
   @override
   Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.details['name']?.toString() ?? 'Organization',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: SingleChildScrollView(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(
+                        widget.details['name']?.toString() ?? 'Organization',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                _badge(
-                  (widget.details['status'] ?? 'DRAFT')
-                      .toString()
-                      .toUpperCase()),
-                ]),
-                const SizedBox(height: 14),
-                _line(
-                    'Type',
-                    widget.details['organizationType'] ??
-                        widget.details['type']),
-                _line('Registration', widget.details['registrationNumber']),
-                _line('Contact', (widget.details['contact'] as Map?)?['name']),
-                _line('Email', (widget.details['contact'] as Map?)?['email']),
-                _line('Phone', (widget.details['contact'] as Map?)?['phone']),
-                if (widget.details['representative'] is Map) ...[
-                  const SizedBox(height: 6),
-                  const Text('Authorized representative',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
+                    _badge((widget.details['status'] ?? 'DRAFT')
+                        .toString()
+                        .toUpperCase()),
+                  ]),
+                  const SizedBox(height: 14),
                   _line(
-                      'Name',
-                      organizationRepresentativeName(Map<String, dynamic>.from(
-                          widget.details['representative'] as Map))),
-                  _line('Email',
-                      (widget.details['representative'] as Map)['email']),
-                  _line('Phone',
-                      (widget.details['representative'] as Map)['phone']),
+                      'Type',
+                      widget.details['organizationType'] ??
+                          widget.details['type']),
+                  _line('Registration', widget.details['registrationNumber']),
                   _line(
-                      'Identity',
-                      (widget.details['representative'] as Map)['ninMasked'] ??
-                          'Identity redacted'),
-                ],
-                _line('Submitted', widget.details['submittedAt']),
-                _line('Reviewed', widget.details['reviewedAt']),
-                _line(
-                    'Deciding admin',
-                    (widget.details['reviewedBy'] is Map
-                        ? (widget.details['reviewedBy'] as Map)['name'] ??
-                            (widget.details['reviewedBy'] as Map)['email']
-                        : widget.details['reviewedBy'])),
-                if (canDocuments && widget.details['documents'] is List) ...[
-                  const SizedBox(height: 10),
-                  const Text('Evidence documents',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
-                  ...(widget.details['documents'] as List)
-                      .whereType<Map>()
-                      .map((raw) {
-                    final document = Map<String, dynamic>.from(raw);
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.description_outlined),
-                      title: Text((document['name'] ??
-                              document['documentType'] ??
-                              'Document')
-                          .toString()),
-                      subtitle: Text(
-                          (document['mimeType'] ?? 'Private evidence')
-                              .toString()),
-                      trailing: Wrap(children: [
-                        IconButton(
-                            tooltip: 'Preview',
-                            onPressed: _busy
-                                ? null
-                                : () => _openDocument(document, 'preview'),
-                            icon: const Icon(Icons.visibility_outlined)),
-                        IconButton(
-                            tooltip: 'Download',
-                            onPressed: _busy
-                                ? null
-                                : () => _openDocument(document, 'download'),
-                            icon: const Icon(Icons.download_outlined)),
-                      ]),
-                    );
-                  }),
-                ],
-                const SizedBox(height: 12),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  _reviewActions(),
-                  if (can(AdminPermissions.organizationsWalletManage))
-                    OutlinedButton.icon(
-                        onPressed: _busy ? null : _freeze,
-                        icon: Icon(
-                            _frozen ? Icons.lock_open : Icons.lock_outline),
-                        label: Text(
-                            _frozen ? 'Unfreeze wallet' : 'Freeze wallet')),
+                      'Contact', (widget.details['contact'] as Map?)?['name']),
+                  _line('Email', (widget.details['contact'] as Map?)?['email']),
+                  _line('Phone', (widget.details['contact'] as Map?)?['phone']),
+                  if (widget.details['representative'] is Map) ...[
+                    const SizedBox(height: 6),
+                    const Text('Authorized representative',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    _line(
+                        'Name',
+                        organizationRepresentativeName(
+                            Map<String, dynamic>.from(
+                                widget.details['representative'] as Map))),
+                    _line('Email',
+                        (widget.details['representative'] as Map)['email']),
+                    _line('Phone',
+                        (widget.details['representative'] as Map)['phone']),
+                    _line(
+                        'Identity',
+                        (widget.details['representative']
+                                as Map)['ninMasked'] ??
+                            'Identity redacted'),
+                  ],
+                  _line('Submitted', widget.details['submittedAt']),
+                  _line('Reviewed', widget.details['reviewedAt']),
+                  _line(
+                      'Deciding admin',
+                      (widget.details['reviewedBy'] is Map
+                          ? (widget.details['reviewedBy'] as Map)['name'] ??
+                              (widget.details['reviewedBy'] as Map)['email']
+                          : widget.details['reviewedBy'])),
+                  if (canDocuments && widget.details['documents'] is List) ...[
+                    const SizedBox(height: 10),
+                    const Text('Evidence documents',
+                        style: TextStyle(fontWeight: FontWeight.w800)),
+                    ...(widget.details['documents'] as List)
+                        .whereType<Map>()
+                        .map((raw) {
+                      final document = Map<String, dynamic>.from(raw);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.description_outlined),
+                        title: Text((document['name'] ??
+                                document['documentType'] ??
+                                'Document')
+                            .toString()),
+                        subtitle: Text(
+                            (document['mimeType'] ?? 'Private evidence')
+                                .toString()),
+                        trailing: Wrap(children: [
+                          IconButton(
+                              tooltip: 'Preview',
+                              onPressed: _busy
+                                  ? null
+                                  : () => _openDocument(document, 'preview'),
+                              icon: const Icon(Icons.visibility_outlined)),
+                          IconButton(
+                              tooltip: 'Download',
+                              onPressed: _busy
+                                  ? null
+                                  : () => _openDocument(document, 'download'),
+                              icon: const Icon(Icons.download_outlined)),
+                        ]),
+                      );
+                    }),
+                  ],
+                  const SizedBox(height: 12),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    _reviewActions(),
+                    if (can(AdminPermissions.organizationsWalletManage))
+                      OutlinedButton.icon(
+                          onPressed: _busy ? null : _freeze,
+                          icon: Icon(
+                              _frozen ? Icons.lock_open : Icons.lock_outline),
+                          label: Text(
+                              _frozen ? 'Unfreeze wallet' : 'Freeze wallet')),
+                  ]),
+                  const Divider(height: 28),
+                  if (can(AdminPermissions.organizationsMembersView) ||
+                      can(AdminPermissions.organizationsPaymentsView) ||
+                      can(AdminPermissions.organizationsAuditView))
+                    DefaultTabController(
+                        length: 3,
+                        child: Column(children: [
+                          TabBar(
+                              onTap: (i) {
+                                if ((i == 0 &&
+                                        !can(AdminPermissions
+                                            .organizationsMembersView)) ||
+                                    (i == 1 &&
+                                        !can(AdminPermissions
+                                            .organizationsPaymentsView)) ||
+                                    (i == 2 &&
+                                        !can(AdminPermissions
+                                            .organizationsAuditView))) {
+                                  return;
+                                }
+                                _loadTab(i);
+                              },
+                              tabs: const [
+                                Tab(text: 'Members'),
+                                Tab(text: 'Payments'),
+                                Tab(text: 'Audit')
+                              ]),
+                          if (_busy)
+                            const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator()),
+                          if (_error.isNotEmpty) Text(_error),
+                          ..._tabItems.map((item) => ListTile(
+                                dense: true,
+                                title: Text((item['name'] ??
+                                        item['fullName'] ??
+                                        item['action'] ??
+                                        item['reference'] ??
+                                        'Record')
+                                    .toString()),
+                                subtitle: Text(
+                                    '${organizationAuditActor(item)} • '
+                                    '${organizationAuditReasonStatus(item)} • '
+                                    '${item['createdAt'] ?? item['timestamp'] ?? '—'}'),
+                              )),
+                        ])),
                 ]),
-                const Divider(height: 28),
-                if (can(AdminPermissions.organizationsMembersView) ||
-                    can(AdminPermissions.organizationsPaymentsView) ||
-                    can(AdminPermissions.organizationsAuditView))
-                  DefaultTabController(
-                      length: 3,
-                      child: Column(children: [
-                        TabBar(
-                            onTap: (i) {
-                              if ((i == 0 &&
-                                      !can(AdminPermissions
-                                          .organizationsMembersView)) ||
-                                  (i == 1 &&
-                                      !can(AdminPermissions
-                                          .organizationsPaymentsView)) ||
-                                  (i == 2 &&
-                                      !can(AdminPermissions
-                                          .organizationsAuditView))) {
-                                return;
-                              }
-                              _loadTab(i);
-                            },
-                            tabs: const [
-                              Tab(text: 'Members'),
-                              Tab(text: 'Payments'),
-                              Tab(text: 'Audit')
-                            ]),
-                        if (_busy)
-                          const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator()),
-                        if (_error.isNotEmpty) Text(_error),
-                        ..._tabItems.map((item) => ListTile(
-                              dense: true,
-                              title: Text((item['name'] ??
-                                      item['fullName'] ??
-                                      item['action'] ??
-                                      item['reference'] ??
-                                      'Record')
-                                  .toString()),
-                              subtitle: Text(
-                                  '${organizationAuditActor(item)} • '
-                                  '${organizationAuditReasonStatus(item)} • '
-                                  '${item['createdAt'] ?? item['timestamp'] ?? '—'}'),
-                            )),
-                      ])),
-              ]),
+          ),
         ),
-      ),
-  );
+      );
 
   Widget _line(String label, dynamic value) => Padding(
-    padding: const EdgeInsets.only(bottom: 7),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
+        padding: const EdgeInsets.only(bottom: 7),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 120,
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
             ),
-          ),
+            Expanded(
+              child: Text(
+                value?.toString() ?? '—',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
         ),
-        Expanded(
-          child: Text(
-            value?.toString() ?? '—',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 
   Widget _badge(String status) => Chip(
-    label: Text(
-      status,
-      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-    ),
-    backgroundColor: status == 'VERIFIED'
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1D5544)
-              : const Color(0xFFE0F2E9))
-        : status == 'SUSPENDED'
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF5A3C27)
-              : const Color(0xFFFFE9D6))
-        : status == 'PENDING_VERIFICATION'
-        ? (Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF5A4A20)
-              : const Color(0xFFFFF0BF))
-        : Theme.of(context).colorScheme.surfaceContainerHighest,
-  );
+        label: Text(
+          status,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: status == 'VERIFIED'
+            ? (Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1D5544)
+                : const Color(0xFFE0F2E9))
+            : status == 'SUSPENDED'
+                ? (Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF5A3C27)
+                    : const Color(0xFFFFE9D6))
+                : status == 'PENDING_VERIFICATION'
+                    ? (Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF5A4A20)
+                        : const Color(0xFFFFF0BF))
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
 }

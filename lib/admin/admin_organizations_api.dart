@@ -30,6 +30,15 @@ abstract class AdminOrganizationsApiClient {
     String? from,
     String? to,
   });
+  Future<Map<String, dynamic>> manualWithdrawals({
+    String? status,
+    int page = 1,
+  });
+  Future<void> markManualWithdrawalPaid(
+    String id, {
+    required Map<String, dynamic> confirmation,
+  });
+  Future<void> rejectManualWithdrawal(String id, {String? reason});
   Future<Map<String, dynamic>> withdrawalDetails(String id);
   Future<void> approveWithdrawal(String id, {String? reason});
   Future<void> rejectWithdrawal(String id, {required String reason});
@@ -48,22 +57,20 @@ abstract class AdminOrganizationsApiClient {
 
 class AdminOrganizationsApi implements AdminOrganizationsApiClient {
   AdminOrganizationsApi({http.Client? client, String? baseUrl, this.authToken})
-    : baseUrl =
-          baseUrl ??
-          const String.fromEnvironment(
-            'SERVICEPAY_API_BASE_URL',
-            defaultValue: 'https://api.servicepay.ng/api',
-          ),
-      _client = client ?? http.Client();
+      : baseUrl = baseUrl ??
+            const String.fromEnvironment(
+              'SERVICEPAY_API_BASE_URL',
+              defaultValue: 'https://api.servicepay.ng/api',
+            ),
+        _client = client ?? http.Client();
 
   final http.Client _client;
   final String baseUrl;
   final String? authToken;
 
   Future<Map<String, String>> _headers() async {
-    final SharedPreferences? prefs = authToken == null
-        ? await SharedPreferences.getInstance()
-        : null;
+    final SharedPreferences? prefs =
+        authToken == null ? await SharedPreferences.getInstance() : null;
     final String token = authToken ?? prefs?.getString('auth_token') ?? '';
     return <String, String>{
       'Accept': 'application/json',
@@ -233,18 +240,59 @@ class AdminOrganizationsApi implements AdminOrganizationsApiClient {
     String? search,
     String? from,
     String? to,
-  }) => _request(
-    'GET',
-    '/withdrawals',
-    query: <String, String>{
-      if (status != null && status.isNotEmpty) 'status': status,
-      if (organizationId != null && organizationId.isNotEmpty)
-        'organizationId': organizationId,
-      if (search != null && search.isNotEmpty) 'search': search,
-      if (from != null && from.isNotEmpty) 'from': from,
-      if (to != null && to.isNotEmpty) 'to': to,
-    },
-  );
+  }) =>
+      _request(
+        'GET',
+        '/withdrawals',
+        query: <String, String>{
+          if (status != null && status.isNotEmpty) 'status': status,
+          if (organizationId != null && organizationId.isNotEmpty)
+            'organizationId': organizationId,
+          if (search != null && search.isNotEmpty) 'search': search,
+          if (from != null && from.isNotEmpty) 'from': from,
+          if (to != null && to.isNotEmpty) 'to': to,
+        },
+      );
+
+  @override
+  Future<Map<String, dynamic>> manualWithdrawals({
+    String? status,
+    int page = 1,
+  }) =>
+      _request(
+        'GET',
+        '/manual-withdrawals',
+        query: <String, String>{
+          if (status != null && status.isNotEmpty) 'status': status,
+          'page': '$page',
+        },
+      );
+
+  @override
+  Future<void> markManualWithdrawalPaid(
+    String id, {
+    required Map<String, dynamic> confirmation,
+  }) async {
+    await _request(
+      'POST',
+      '/withdrawals/$id/mark-paid',
+      body: <String, dynamic>{
+        'confirmed': true,
+        'confirmation': confirmation,
+      },
+    );
+  }
+
+  @override
+  Future<void> rejectManualWithdrawal(String id, {String? reason}) async {
+    await _request(
+      'POST',
+      '/withdrawals/$id/reject',
+      body: <String, dynamic>{
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    );
+  }
 
   @override
   Future<Map<String, dynamic>> withdrawalDetails(String id) =>
@@ -280,15 +328,16 @@ class AdminOrganizationsApi implements AdminOrganizationsApiClient {
   Future<Map<String, dynamic>> settlementAccounts({
     String? status,
     String? organizationId,
-  }) => _request(
-    'GET',
-    '/settlement-accounts',
-    query: <String, String>{
-      if (status != null && status.isNotEmpty) 'status': status,
-      if (organizationId != null && organizationId.isNotEmpty)
-        'organizationId': organizationId,
-    },
-  );
+  }) =>
+      _request(
+        'GET',
+        '/settlement-accounts',
+        query: <String, String>{
+          if (status != null && status.isNotEmpty) 'status': status,
+          if (organizationId != null && organizationId.isNotEmpty)
+            'organizationId': organizationId,
+        },
+      );
 
   @override
   Future<void> approveSettlementAccount(String id, {String? reason}) async {

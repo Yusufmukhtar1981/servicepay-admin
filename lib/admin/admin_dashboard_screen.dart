@@ -9,6 +9,7 @@ import 'admin_bulk_email_screen.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_delivery_management_screen.dart';
+import 'admin_delivery_pricing_screen.dart';
 import 'admin_kyc_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_transactions_screen.dart';
@@ -530,10 +531,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final crossAxisCount = width >= 1500
             ? 4
             : width >= 1050
-            ? 3
-            : width >= 650
-            ? 2
-            : 1;
+                ? 3
+                : width >= 650
+                    ? 2
+                    : 1;
 
         return ListView(
           padding: const EdgeInsets.all(18),
@@ -784,6 +785,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _moduleInfo(String title) {
     // SERVICEPAY_VERIFIED_FINTECH_NAVIGATION
+    if (title == 'Delivery Pricing') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/admin/delivery-pricing'),
+          builder: (_) => const AdminDeliveryPricingScreen(),
+        ),
+      );
+      return;
+    }
+
     if (title == 'Phone Financing') {
       Navigator.of(context).pushNamed('/phone-financing');
       return;

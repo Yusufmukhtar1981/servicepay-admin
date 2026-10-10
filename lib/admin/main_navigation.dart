@@ -832,7 +832,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       page: const AdminDataPricingScreen(),
       icon: Icons.sell_outlined,
       activeIcon: Icons.sell_rounded,
-      label: 'Data Pricing',
+      label: 'Manage Plans',
     );
 
     if (currentIndex >= pages.length) {

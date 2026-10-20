@@ -5,6 +5,22 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:servicepay_app/admin/admin_executive_dashboard_screen.dart';
 import 'package:servicepay_app/admin/admin_permissions.dart';
+import 'package:servicepay_app/admin/admin_announcements_api.dart';
+
+class _EmptyPromoApi extends AdminAnnouncementsApi {
+  @override
+  Future<Map<String, dynamic>> promoLeaderboard({
+    String? campaignId,
+    String range = 'campaign',
+    String? from,
+    String? to,
+    String? status,
+    int page = 1,
+    int limit = 25,
+    String? search,
+  }) async =>
+      <String, dynamic>{'topParticipants': <dynamic>[]};
+}
 
 Map<String, dynamic> metric(dynamic value, {bool available = true}) => {
       'available': available,
@@ -117,6 +133,7 @@ Widget harness({
 }) {
   return MaterialApp(
     home: AdminExecutiveDashboardScreen(
+      promoApi: _EmptyPromoApi(),
       dashboardLoader: loader,
       initialAccess: access,
       onOpenModule: onOpenModule,

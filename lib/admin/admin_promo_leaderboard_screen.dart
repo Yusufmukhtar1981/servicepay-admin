@@ -606,14 +606,14 @@ class AdminPromoLeaderboardTop5 extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const Expanded(
-                    child: Text(
+                  const Text(
                       'Top Promo Participants',
                       style:
                           TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                    ),
                   ),
                   TextButton(
                     onPressed: onViewFullLeaderboard,

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/admin/admin_control_center_screen.dart';
+import 'package:servicepay_app/admin/admin_privacy_requests_screen.dart';
 import 'package:servicepay_app/admin/fintech_screen_registry.dart';
 
 void main() {
@@ -22,6 +23,10 @@ void main() {
       for (final entry in expected.entries) {
         expect(controlCenterModuleIdForTitle(entry.key), entry.value);
         final screen = fintechScreenForTitle(entry.key);
+        if (entry.key == 'Privacy Controls') {
+          expect(screen, isA<AdminPrivacyRequestsScreen>());
+          continue;
+        }
         expect(screen, isA<AdminControlCenterScreen>());
         expect(
           (screen! as AdminControlCenterScreen).initialModuleId,

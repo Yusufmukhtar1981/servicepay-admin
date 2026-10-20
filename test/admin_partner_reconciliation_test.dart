@@ -25,6 +25,16 @@ void main() {
     await tester.tap(find.textContaining('SPP-AIRTIME-UNCERTAIN'));
     await tester.pumpAndSettle();
     expect(find.text('Already debited'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Partner wallet debit'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(Dialog),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.textContaining('Partner wallet debit'), findsOneWidget);
     expect(find.text('MARK SUCCESSFUL'), findsOneWidget);
     expect(find.text('MARK FAILED / REFUND'), findsOneWidget);
@@ -42,7 +52,10 @@ void main() {
     await tester.tap(find.text('MARK SUCCESSFUL'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)).first,
+      find
+          .descendant(
+              of: find.byType(AlertDialog), matching: find.byType(TextField))
+          .first,
       'Provider confirmed service delivery.',
     );
     await tester.tap(find.text('Confirm successful'));
@@ -63,7 +76,10 @@ void main() {
     await tester.tap(find.text('MARK FAILED / REFUND'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)).first,
+      find
+          .descendant(
+              of: find.byType(AlertDialog), matching: find.byType(TextField))
+          .first,
       'Provider confirmed no purchase was delivered.',
     );
     await tester.tap(find.text('Confirm refund'));
@@ -74,16 +90,21 @@ void main() {
   testWidgets('blocks duplicate resolution and unauthorized responses visibly',
       (tester) async {
     await pump(tester, reconciliationClient(onPost: (_) {
-      return http.Response(jsonEncode(<String, dynamic>{
-        'message': 'This transaction already has a final outcome.',
-      }), 409);
+      return http.Response(
+          jsonEncode(<String, dynamic>{
+            'message': 'This transaction already has a final outcome.',
+          }),
+          409);
     }));
     await tester.tap(find.textContaining('SPP-AIRTIME-UNCERTAIN'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('MARK FAILED / REFUND'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)).first,
+      find
+          .descendant(
+              of: find.byType(AlertDialog), matching: find.byType(TextField))
+          .first,
       'Provider confirmed no purchase was delivered.',
     );
     await tester.tap(find.text('Confirm refund'));
@@ -91,7 +112,8 @@ void main() {
     expect(find.textContaining('already has a final outcome'), findsOneWidget);
   });
 
-  testWidgets('does not expose resolution actions for already successful records',
+  testWidgets(
+      'does not expose resolution actions for already successful records',
       (tester) async {
     await pump(tester, reconciliationClient());
     await tester.tap(find.textContaining('SPP-DATA-SUCCESSFUL'));
@@ -113,7 +135,8 @@ void main() {
     });
     await pump(tester, client);
     expect(
-      find.text('Head Office access is required for Partner API reconciliation.'),
+      find.text(
+          'Head Office access is required for Partner API reconciliation.'),
       findsOneWidget,
     );
     expect(requestCount, 0);
@@ -131,37 +154,53 @@ http.Client reconciliationClient({
   http.Response Function(http.Request request)? onPost,
 }) {
   return MockClient((request) async {
-    if (request.method == 'GET' && request.url.path.endsWith('/admin/partners')) {
-      return http.Response(jsonEncode(<String, dynamic>{
-        'partners': <Map<String, dynamic>>[
-          <String, dynamic>{'id': 'partner-1', 'businessName': 'Acme Telecom', 'apiKey': 'sp_live_masked'},
-        ],
-      }), 200);
+    if (request.method == 'GET' &&
+        request.url.path.endsWith('/admin/partners')) {
+      return http.Response(
+          jsonEncode(<String, dynamic>{
+            'partners': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'id': 'partner-1',
+                'businessName': 'Acme Telecom',
+                'apiKey': 'sp_live_masked'
+              },
+            ],
+          }),
+          200);
     }
-    if (request.method == 'GET' && request.url.path.endsWith('/partner-1/usage')) {
-      return http.Response(jsonEncode(<String, dynamic>{
-        'transactions': <Map<String, dynamic>>[
-          transaction('SPP-AIRTIME-UNCERTAIN', 'REQUERY_REQUIRED'),
-          transaction('SPP-DATA-SUCCESSFUL', 'SUCCESSFUL'),
-        ],
-        'auditEvents': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'action': 'API_REQUERY_ATTEMPTED',
-            'createdAt': '2026-08-25T10:00:00.000Z',
-            'metadata': <String, dynamic>{'reference': 'SPP-AIRTIME-UNCERTAIN'},
-          },
-        ],
-      }), 200);
+    if (request.method == 'GET' &&
+        request.url.path.endsWith('/partner-1/usage')) {
+      return http.Response(
+          jsonEncode(<String, dynamic>{
+            'transactions': <Map<String, dynamic>>[
+              transaction('SPP-AIRTIME-UNCERTAIN', 'REQUERY_REQUIRED'),
+              transaction('SPP-DATA-SUCCESSFUL', 'SUCCESSFUL'),
+            ],
+            'auditEvents': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'action': 'API_REQUERY_ATTEMPTED',
+                'createdAt': '2026-08-25T10:00:00.000Z',
+                'metadata': <String, dynamic>{
+                  'reference': 'SPP-AIRTIME-UNCERTAIN'
+                },
+              },
+            ],
+          }),
+          200);
     }
-    if (request.method == 'GET' && request.url.path.endsWith('/reconciliation')) {
-      return http.Response(jsonEncode(<String, dynamic>{
-        'message': 'Verify outcomes with the provider before resolving.',
-        'transactions': <Map<String, dynamic>>[
-          transaction('SPP-AIRTIME-UNCERTAIN', 'REQUERY_REQUIRED'),
-        ],
-      }), 200);
+    if (request.method == 'GET' &&
+        request.url.path.endsWith('/reconciliation')) {
+      return http.Response(
+          jsonEncode(<String, dynamic>{
+            'message': 'Verify outcomes with the provider before resolving.',
+            'transactions': <Map<String, dynamic>>[
+              transaction('SPP-AIRTIME-UNCERTAIN', 'REQUERY_REQUIRED'),
+            ],
+          }),
+          200);
     }
-    if (request.method == 'POST' && request.url.path.contains('/reconciliation/')) {
+    if (request.method == 'POST' &&
+        request.url.path.contains('/reconciliation/')) {
       return onPost?.call(request) ??
           http.Response(jsonEncode(<String, dynamic>{'success': true}), 200);
     }

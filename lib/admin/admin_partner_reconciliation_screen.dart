@@ -226,7 +226,7 @@ class _AdminPartnerReconciliationViewState
     }
     final note = TextEditingController();
     final providerReference = TextEditingController(text: _text(transaction['providerReference'], ''));
-    final confirmed = await showDialog<bool>(
+    final dialog = DialogRoute<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(outcome == 'SUCCESSFUL' ? 'Mark successful' : 'Mark failed and refund'),
@@ -278,17 +278,20 @@ class _AdminPartnerReconciliationViewState
         ],
       ),
     );
-    if (confirmed != true) {
-      note.dispose();
-      providerReference.dispose();
-      return;
-    }
+    final confirmed = await Navigator.of(context).push(dialog);
+    final verificationNote = note.text.trim();
+    final reference = providerReference.text.trim();
+    // A dialog result resolves before its reverse transition unmounts fields.
+    await dialog.completed;
+    note.dispose();
+    providerReference.dispose();
+    if (confirmed != true || !mounted) return;
     try {
       await _post('/admin/partners/reconciliation/${_reference(transaction)}/resolve', <String, dynamic>{
         'outcome': outcome,
-        'verificationNote': note.text.trim(),
-        if (outcome == 'SUCCESSFUL' && providerReference.text.trim().isNotEmpty)
-          'providerReference': providerReference.text.trim(),
+        'verificationNote': verificationNote,
+        if (outcome == 'SUCCESSFUL' && reference.isNotEmpty)
+          'providerReference': reference,
       });
       _notice(outcome == 'SUCCESSFUL'
           ? 'Transaction marked successful without another debit or provider purchase.'
@@ -296,9 +299,6 @@ class _AdminPartnerReconciliationViewState
       await _load();
     } catch (error) {
       _notice(error.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      note.dispose();
-      providerReference.dispose();
     }
   }
 
@@ -516,9 +516,9 @@ class _AdminPartnerReconciliationViewState
             title: Text('${_text(item['partnerName'])} · ${_money(item['amount'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text('${_reference(item)}\n${_text(item['service'])} · ${_text(item['network'])} · ${_text(item['phone'])}'),
             isThreeLine: true,
-            trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
+            minTileHeight: 100,
+            trailing: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
               _chip(_statusOf(item), color: _isUncertain(item) ? const Color(0xFFFFF2CC) : null),
-              const SizedBox(height: 3),
               Text(_text(item['providerReference'], 'No provider ref'), style: const TextStyle(fontSize: 10)),
             ]),
           ),

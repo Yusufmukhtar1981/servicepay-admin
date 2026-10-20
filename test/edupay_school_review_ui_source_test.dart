@@ -105,7 +105,7 @@ void main() {
     expect(source, contains("'audience': audience"));
     expect(source, contains("'CLASS'"));
     expect(source, contains("'STUDENT'"));
-    expect(source, contains("['DRAFT', 'RETURNED']"));
+    expect(source, matches(RegExp(r"\[\s*'DRAFT'\s*,\s*'RETURNED'\s*,?\s*\]")));
   });
 
   test('live hierarchy controls remain discoverable for production roles', () {
@@ -139,8 +139,8 @@ void main() {
     ]) {
       expect(portal, contains("'$label'"), reason: label);
     }
-    expect(portal, contains("initialSection: 'Parents/Guardians'"));
-    expect(portal, contains("initialSection: 'Announcements'"));
+    expect(portal, matches(RegExp(r"initialSection:\s*'Parents/Guardians'")));
+    expect(portal, matches(RegExp(r"initialSection:\s*'Announcements'")));
     expect(portal, contains("await p.remove('school_role');"));
     expect(academic, contains("'Add Teacher'"));
   });

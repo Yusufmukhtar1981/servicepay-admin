@@ -47,6 +47,23 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     super.dispose();
   }
 
+  Future<T?> _showControllerDialog<T>({
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    final route = DialogRoute<T>(
+      context: context,
+      builder: builder,
+      barrierDismissible: barrierDismissible,
+    );
+    try {
+      return await Navigator.of(context).push(route);
+    } finally {
+      // Text fields remain mounted during the outgoing dialog animation.
+      await route.completed;
+    }
+  }
+
   Future<String> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -2315,8 +2332,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     final noteController = TextEditingController();
 
     try {
-      final funding = await showDialog<Map<String, String>>(
-        context: context,
+      final funding = await _showControllerDialog<Map<String, String>>(
         barrierDismissible: false,
         builder: (dialogContext) {
           String? validationMessage;
@@ -3090,7 +3106,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
     required dynamic amountPerBeneficiary,
   }) {
     return _hasPayableBeneficiaryState(beneficiary) &&
-        programStatus == 'APPROVED' &&
+        _isPayoutEligibleProgramStatus(programStatus) &&
         _hasSufficientProgramFunding(
           remainingBalance: remainingBalance,
           amountPerBeneficiary: amountPerBeneficiary,
@@ -3747,7 +3763,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
               content: SizedBox(
                 width: 720,
                 height: 540,
-                child: Column(
+                child: SingleChildScrollView(
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
@@ -3808,7 +3825,8 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                       contentPadding: EdgeInsets.zero,
                     ),
                     const Divider(height: 1),
-                    Expanded(
+                    SizedBox(
+                      height: 240,
                       child: ListView.separated(
                         itemCount: eligible.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
@@ -3849,6 +3867,7 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                       ),
                     ),
                   ],
+                  ),
                 ),
               ),
               actions: [
@@ -4337,36 +4356,48 @@ class _AdminEmpowermentScreenState extends State<AdminEmpowermentScreen> {
                           final insufficientFunding =
                               canAttemptPayment && !canDisburse;
 
+                          return LayoutBuilder(builder: (context, constraints) {
+                          final narrow = constraints.maxWidth < 600;
+                          final payoutButton =
+                              (canDisburse || insufficientFunding) && id.isNotEmpty
+                                  ? FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(0xFF08783E),
+                                      ),
+                                      onPressed: isDisbursing
+                                          ? null
+                                          : () => Navigator.of(dialogContext)
+                                              .pop('disburse:$id'),
+                                      icon: const Icon(Icons.payments_rounded),
+                                      label: const Text('Pay Beneficiary'),
+                                    )
+                                  : null;
                           return ListTile(
                             leading: const CircleAvatar(
                               child: Icon(Icons.person_outline_rounded),
                             ),
                             title: Text(name),
-                            subtitle: Text(
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                              Text(
                               'Application: $applicationStatus • '
                               'Verification: $verificationStatus • '
                               'Payment: $paymentStatus'
                               '${insufficientFunding ? ' • Funding insufficient' : ''}',
+                              ),
+                              if (narrow && payoutButton != null) payoutButton,
+                              ],
                             ),
-                            trailing: (canDisburse || insufficientFunding) &&
-                                    id.isNotEmpty
-                                ? FilledButton.icon(
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF08783E),
-                                    ),
-                                    onPressed: isDisbursing
-                                        ? null
-                                        : () => Navigator.of(dialogContext)
-                                            .pop('disburse:$id'),
-                                    icon: const Icon(Icons.payments_rounded),
-                                    label: const Text('Pay Beneficiary'),
-                                  )
+                            trailing: !narrow && payoutButton != null
+                                ? payoutButton
                                 : const Icon(Icons.chevron_right_rounded),
                             onTap: id.isEmpty
                                 ? null
                                 : () => Navigator.of(dialogContext)
                                     .pop('view:$id'),
                           );
+                          });
                         },
                       ),
               ),

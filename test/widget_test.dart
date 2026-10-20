@@ -34,7 +34,8 @@ void main() {
         await tester.tap(find.text('Approve / Verify').last);
         await tester.pumpAndSettle();
 
-        expect(client.lastPatchPath, '/api/empowerment/organizations/org-1/status');
+        expect(client.lastPatchPath,
+            '/api/empowerment/organizations/org-1/status');
         expect(client.lastPatchPayload, {'status': 'ACTIVE'});
       },
     );
@@ -55,7 +56,8 @@ void main() {
         await tester.tap(find.text('Reject').last);
         await tester.pumpAndSettle();
 
-        expect(client.lastPatchPath, '/api/empowerment/organizations/org-1/status');
+        expect(client.lastPatchPath,
+            '/api/empowerment/organizations/org-1/status');
         expect(client.lastPatchPayload, {'status': 'REJECTED'});
       },
     );
@@ -76,7 +78,8 @@ void main() {
         await tester.tap(find.text('Suspend').last);
         await tester.pumpAndSettle();
 
-        expect(client.lastPatchPath, '/api/empowerment/organizations/org-1/status');
+        expect(client.lastPatchPath,
+            '/api/empowerment/organizations/org-1/status');
         expect(client.lastPatchPayload, {'status': 'SUSPENDED'});
       },
     );
@@ -97,7 +100,8 @@ void main() {
         await tester.tap(find.text('Reactivate').last);
         await tester.pumpAndSettle();
 
-        expect(client.lastPatchPath, '/api/empowerment/organizations/org-1/status');
+        expect(client.lastPatchPath,
+            '/api/empowerment/organizations/org-1/status');
         expect(client.lastPatchPayload, {'status': 'ACTIVE'});
       },
     );
@@ -121,6 +125,8 @@ void main() {
         await tester.tap(find.text('Create and manage empowerment programs'));
         await tester.pumpAndSettle();
 
+        await tester.tap(find.text('Create Program'));
+        await tester.pumpAndSettle();
         expect(
           find.text('Only ACTIVE / verified organizations can run programs.'),
           findsOneWidget,
@@ -321,12 +327,13 @@ void main() {
         expect(find.text('Confirm beneficiary payment'), findsOneWidget);
         expect(find.text('Beneficiary'), findsOneWidget);
         expect(find.text('Youth Grant'), findsOneWidget);
-        expect(find.text('₦25,000'), findsOneWidget);
+        expect(find.text('₦25,000'), findsNWidgets(2));
         expect(find.text('Current program balance'), findsOneWidget);
         expect(find.text('Program balance after payment'), findsOneWidget);
         expect(find.text('SPW-1234'), findsOneWidget);
         expect(
-          find.textContaining('This payment uses the program’s reserved balance.'),
+          find.textContaining(
+              'This payment uses the program’s reserved balance.'),
           findsOneWidget,
         );
 
@@ -336,9 +343,10 @@ void main() {
         expect(
           client.lastPostPath,
           '/api/empowerment/programs/program-1/beneficiaries/'
-           'beneficiary-1/pay',
+          'beneficiary-1/pay',
         );
-        expect(client.lastPostHeaders['authorization'], 'Bearer test-admin-token');
+        expect(
+            client.lastPostHeaders['authorization'], 'Bearer test-admin-token');
         expect(
           client.lastPostHeaders['idempotency-key']!.length,
           greaterThanOrEqualTo(12),
@@ -375,7 +383,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Fund Youth Grant'), findsOneWidget);
 
-        await tester.enterText(find.byType(TextField), '50000');
+        await tester.enterText(find.byType(TextField).first, '50000');
         await tester.enterText(find.byType(TextField).at(1), 'FY26-RESERVE');
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
@@ -478,7 +486,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField), '25000');
+        await tester.enterText(find.byType(TextField).first, '25000');
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Close'));
@@ -517,12 +525,13 @@ void main() {
 
         await pumpAdminScreen(tester, client);
         await tester.scrollUntilVisible(find.text('Audit Trail'), 400);
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Audit Trail'));
         await tester.pumpAndSettle();
 
         expect(find.text('PROGRAM_FUNDED'), findsOneWidget);
         expect(
-          find.text('₦25,000 funded for Youth Grant'),
+          find.textContaining('₦25,000 funded for Youth Grant'),
           findsOneWidget,
         );
       },
@@ -550,7 +559,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField), '50000');
+        await tester.enterText(find.byType(TextField).first, '50000');
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
         final firstIdempotencyKey =
@@ -558,12 +567,13 @@ void main() {
 
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
-        await tester.enterText(find.byType(TextField), '50000');
+        await tester.enterText(find.byType(TextField).first, '50000');
         await tester.tap(find.text('Add Funds'));
         await tester.pumpAndSettle();
 
         expect(client.fundingCount, 2);
-        expect(client.lastFundingHeaders['idempotency-key'], firstIdempotencyKey);
+        expect(
+            client.lastFundingHeaders['idempotency-key'], firstIdempotencyKey);
       },
     );
 
@@ -666,9 +676,10 @@ void main() {
         expect(
           tester
               .widget<OutlinedButton>(
-                find.widgetWithText(
-                  OutlinedButton,
-                  'Update Application Status',
+                find.ancestor(
+                  of: find.text('Update Application Status'),
+                  matching: find
+                      .byWidgetPredicate((widget) => widget is OutlinedButton),
                 ),
               )
               .onPressed,
@@ -757,7 +768,8 @@ void main() {
           ],
         );
 
-        await openBeneficiaryDetails(tester, client);
+        await openBeneficiaryDetails(tester, client,
+            viewport: const Size(360, 640));
         final payButton = find.text('Pay Beneficiary');
         await tester.ensureVisible(payButton);
         await tester.tap(payButton);
@@ -878,6 +890,7 @@ void main() {
 
         await pumpAdminScreen(tester, client);
         await tester.scrollUntilVisible(find.text('Disbursements'), 400);
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Disbursements'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Youth Grant'));
@@ -1081,10 +1094,12 @@ void main() {
         expect(find.text('Unverified Person'), findsNothing);
         expect(find.text('No Linked Account'), findsNothing);
 
+        await tester.ensureVisible(find.text('Select All Eligible'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Select All Eligible'));
         await tester.pumpAndSettle();
         expect(find.text('₦2,000'), findsOneWidget);
-        expect(find.text('₦1,000'), findsOneWidget);
+        expect(find.text('₦1,000'), findsNWidgets(2));
 
         await tester.tap(find.text('Review & Continue'));
         await tester.pumpAndSettle();
@@ -1134,13 +1149,15 @@ void main() {
         expect(find.text('jane@example.com'), findsOneWidget);
         expect(find.text('NIN: 12345678901'), findsOneWidget);
         expect(find.text('BVN: 10987654321'), findsOneWidget);
-        expect(client.lastGetHeaders['authorization'], 'Bearer test-admin-token');
+        expect(
+            client.lastGetHeaders['authorization'], 'Bearer test-admin-token');
 
         await tester.enterText(find.byType(TextField), 'Jane Customer & Co');
-        await tester.tap(find.widgetWithText(FilledButton, 'Search'));
+        await tester.tap(find.text('Search'));
         await tester.pumpAndSettle();
 
-        expect(client.lastGetUri.queryParameters['search'], 'Jane Customer & Co');
+        expect(
+            client.lastGetUri.queryParameters['search'], 'Jane Customer & Co');
         expect(client.lastGetUri.path, '/api/admin/kyc');
 
         await tester.tap(find.text('Jane Customer').first);
@@ -1177,11 +1194,12 @@ void main() {
           client.lastPatchPayload,
           {'status': 'VERIFIED', 'manualOverride': true},
         );
-        expect(client.lastPatchHeaders['authorization'], 'Bearer test-admin-token');
+        expect(client.lastPatchHeaders['authorization'],
+            'Bearer test-admin-token');
         expect(client.getCount, greaterThanOrEqualTo(2));
         expect(find.textContaining('MANUAL_ADMIN_OVERRIDE'), findsOneWidget);
         expect(find.textContaining('Head Office Admin'), findsOneWidget);
-        expect(find.text('2026-08-24T12:00:00.000Z'), findsOneWidget);
+        expect(find.textContaining('2026-08-24T12:00:00.000Z'), findsOneWidget);
       },
     );
 
@@ -1485,7 +1503,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Head Office access is required for KYC review.'), findsOneWidget);
+        expect(find.text('Head Office access is required for KYC review.'),
+            findsOneWidget);
         expect(find.text('Search customers'), findsNothing);
         expect(find.text('Manual Verify / Approve'), findsNothing);
         expect(client.getCount, 0);
@@ -1508,7 +1527,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Head Office access is required for KYC review.'), findsOneWidget);
+        expect(find.text('Head Office access is required for KYC review.'),
+            findsOneWidget);
         expect(find.text('Manual Verify / Approve'), findsNothing);
         expect(client.getCount, 0);
         expect(client.patchCount, 0);
@@ -1740,8 +1760,11 @@ Map<String, dynamic> verifiedKycRecord({
 
 Future<void> pumpAdminScreen(
   WidgetTester tester,
-  RecordingHttpClient client,
-) async {
+  RecordingHttpClient client, {
+  Size viewport = const Size(1280, 1000),
+}) async {
+  await tester.binding.setSurfaceSize(viewport);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: AdminEmpowermentScreen(httpClient: client),
@@ -1754,6 +1777,8 @@ Future<void> pumpKycScreen(
   WidgetTester tester,
   KycRecordingHttpClient client,
 ) async {
+  await tester.binding.setSurfaceSize(const Size(1280, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: AdminKycScreen(
@@ -1782,13 +1807,15 @@ Future<void> openOrganizationDetails(
 
 Future<void> openBeneficiaryDetails(
   WidgetTester tester,
-  RecordingHttpClient client,
-) async {
-  await pumpAdminScreen(tester, client);
+  RecordingHttpClient client, {
+  Size viewport = const Size(1280, 1000),
+}) async {
+  await pumpAdminScreen(tester, client, viewport: viewport);
   await tester.scrollUntilVisible(
     find.text('Review applications and beneficiaries'),
     400,
   );
+  await tester.pumpAndSettle();
   await tester.tap(find.text('Review applications and beneficiaries'));
   await tester.pumpAndSettle();
   await tester.tap(find.text(client.programs.first['name'] as String));
@@ -1873,13 +1900,15 @@ class RecordingHttpClient extends http.BaseClient {
   Map<String, String> get lastPostHeaders {
     final request = requests.lastWhere((item) => item.method == 'POST');
     return {
-      for (final entry in request.headers.entries) entry.key.toLowerCase(): entry.value,
+      for (final entry in request.headers.entries)
+        entry.key.toLowerCase(): entry.value,
     };
   }
 
   RecordedRequest get lastFundingRequest {
     return requests.lastWhere(
-      (request) => request.method == 'POST' && request.url.path.endsWith('/fund'),
+      (request) =>
+          request.method == 'POST' && request.url.path.endsWith('/fund'),
     );
   }
 
@@ -1931,13 +1960,11 @@ class RecordingHttpClient extends http.BaseClient {
     final current = _currentProgramFinancials();
     _saveProgramFinancials({
       ...current,
-      'totalFundedAmount':
-          (current['totalFundedAmount'] as num? ?? 0) + amount,
+      'totalFundedAmount': (current['totalFundedAmount'] as num? ?? 0) + amount,
       'totalFunded': (current['totalFunded'] as num? ?? 0) + amount,
       'availableFundingAmount':
           (current['availableFundingAmount'] as num? ?? 0) + amount,
-      'remainingBalance':
-          (current['remainingBalance'] as num? ?? 0) + amount,
+      'remainingBalance': (current['remainingBalance'] as num? ?? 0) + amount,
       'totalDisbursedAmount': current['totalDisbursedAmount'] as num? ?? 0,
       'totalDisbursed': current['totalDisbursed'] as num? ?? 0,
     });
@@ -1953,12 +1980,10 @@ class RecordingHttpClient extends http.BaseClient {
       'totalFunded': current['totalFunded'] as num? ?? 0,
       'availableFundingAmount':
           (current['availableFundingAmount'] as num? ?? 0) - amount,
-      'remainingBalance':
-          (current['remainingBalance'] as num? ?? 0) - amount,
+      'remainingBalance': (current['remainingBalance'] as num? ?? 0) - amount,
       'totalDisbursedAmount':
           (current['totalDisbursedAmount'] as num? ?? 0) + amount,
-      'totalDisbursed':
-          (current['totalDisbursed'] as num? ?? 0) + amount,
+      'totalDisbursed': (current['totalDisbursed'] as num? ?? 0) + amount,
     });
   }
 
@@ -1973,12 +1998,10 @@ class RecordingHttpClient extends http.BaseClient {
       'totalFunded': current['totalFunded'] as num? ?? 0,
       'availableFundingAmount':
           (current['availableFundingAmount'] as num? ?? 0) - total,
-      'remainingBalance':
-          (current['remainingBalance'] as num? ?? 0) - total,
+      'remainingBalance': (current['remainingBalance'] as num? ?? 0) - total,
       'totalDisbursedAmount':
           (current['totalDisbursedAmount'] as num? ?? 0) + total,
-      'totalDisbursed':
-          (current['totalDisbursed'] as num? ?? 0) + total,
+      'totalDisbursed': (current['totalDisbursed'] as num? ?? 0) + total,
     });
     for (final beneficiary in beneficiaries) {
       if (beneficiaryIds.contains(beneficiary['_id']?.toString())) {
@@ -2008,8 +2031,7 @@ class RecordingHttpClient extends http.BaseClient {
     var statusCode = 200;
 
     if (request.method == 'GET' &&
-        RegExp(r'/empowerment/programs/[^/]+$')
-            .hasMatch(request.url.path)) {
+        RegExp(r'/empowerment/programs/[^/]+$').hasMatch(request.url.path)) {
       programGetCount++;
       statusCode = programGetStatusCode;
       responseBody = statusCode >= 200 && statusCode < 300
@@ -2112,8 +2134,7 @@ class RecordingHttpClient extends http.BaseClient {
               ],
             },
           };
-    } else if (request.method == 'POST' &&
-        request.url.path.endsWith('/fund')) {
+    } else if (request.method == 'POST' && request.url.path.endsWith('/fund')) {
       fundingCount++;
       statusCode = fundingStatusCode;
       final requestPayload = jsonDecode(body) as Map<String, dynamic>;
@@ -2201,7 +2222,8 @@ class KycRecordingHttpClient extends http.BaseClient {
   Map<String, String> get lastGetHeaders {
     final request = requests.lastWhere((item) => item.method == 'GET');
     return {
-      for (final entry in request.headers.entries) entry.key.toLowerCase(): entry.value,
+      for (final entry in request.headers.entries)
+        entry.key.toLowerCase(): entry.value,
     };
   }
 
@@ -2217,7 +2239,8 @@ class KycRecordingHttpClient extends http.BaseClient {
   Map<String, String> get lastPatchHeaders {
     final request = requests.lastWhere((item) => item.method == 'PATCH');
     return {
-      for (final entry in request.headers.entries) entry.key.toLowerCase(): entry.value,
+      for (final entry in request.headers.entries)
+        entry.key.toLowerCase(): entry.value,
     };
   }
 

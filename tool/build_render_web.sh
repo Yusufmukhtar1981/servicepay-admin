@@ -2,7 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 component="${1:?Usage: build_render_web.sh customer|admin}"
-case "$component" in customer|admin) ;; *) exit 2 ;; esac
+case "$component" in
+  customer) target="lib/main.dart" ;;
+  admin) target="lib/admin/main.dart" ;;
+  *) exit 2 ;;
+esac
 export CI=true FLUTTER_SUPPRESS_ANALYTICS=true
 if [[ -z "${FLUTTER_BIN:-}" ]]; then
   sdk="${TMPDIR:-/tmp}/servicepay-flutter-3.32.0"
@@ -13,7 +17,7 @@ if [[ -z "${FLUTTER_BIN:-}" ]]; then
 fi
 "$FLUTTER_BIN" config --enable-web
 "$FLUTTER_BIN" pub get --enforce-lockfile
-"$FLUTTER_BIN" build web --release --no-pub --target lib/main.dart \
+"$FLUTTER_BIN" build web --release --no-pub --target "$target" \
   --pwa-strategy=none \
   --dart-define=SERVICEPAY_API_BASE_URL=https://api.servicepay.ng/api
 python3 tool/stamp_render_web.py build/web "$component" \

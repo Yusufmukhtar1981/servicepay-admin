@@ -13,7 +13,8 @@ String _mime(String format) => switch (format) {
     };
 
 List<int> _fixture(String format) => switch (format) {
-      'csv' => utf8.encode('\uFEFFFull Name,Phone Number,Email Address\n'),
+      'csv' => utf8.encode(
+          '\uFEFF"Full Name","Phone Number","Email Address"\r\n'),
       'xlsx' => <int>[0x50, 0x4B, 0x03, 0x04, 0x00],
       _ => utf8.encode('%PDF-1.7\n'),
     };

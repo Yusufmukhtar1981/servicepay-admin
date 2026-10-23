@@ -166,10 +166,16 @@ class CustomerExportApi {
 
   bool _hasCsvHeader(List<int> bytes) {
     try {
-      String csv = utf8.decode(bytes, allowMalformed: false);
+      final int newline = bytes.indexOf(10);
+      final int headerEnd = newline < 0 ? bytes.length : newline;
+      if (headerEnd > 256) return false;
+      // Inspect just the header, not thousands of contact rows on the UI thread.
+      String csv =
+          utf8.decode(bytes.sublist(0, headerEnd), allowMalformed: false);
       if (csv.startsWith('\uFEFF')) csv = csv.substring(1);
       final String header = csv.split(RegExp(r'\r?\n')).first.trimRight();
-      return header == 'Full Name,Phone Number,Email Address';
+      return header == 'Full Name,Phone Number,Email Address' ||
+          header == '"Full Name","Phone Number","Email Address"';
     } on FormatException {
       return false;
     }

@@ -45,7 +45,7 @@ void main() {
       client: MockClient((http.Request request) async {
         requests.add(request);
         return http.Response.bytes(
-          utf8.encode('Full Name,Phone Number,Email Address\n'),
+          utf8.encode('"Full Name","Phone Number","Email Address"\r\n'),
           200,
           headers: <String, String>{'content-type': 'text/csv'},
         );

@@ -17,6 +17,7 @@ abstract final class AdminPermissions {
   static const rolesAssignPermissions = 'roles.assign_permissions';
   static const rolesEnable = 'roles.enable';
   static const usersView = 'users.view';
+  static const customersExport = 'customers.export';
   static const privacyView = 'privacy.view';
   static const privacyManage = 'privacy.manage';
   static const customer360View = 'customer360.view';
@@ -207,6 +208,11 @@ class AdminAccess {
   /// participant permission. Scoped staff must not gain access through '*'.
   bool hasHeadOfficePermission(String permission) =>
       isHeadOffice && (_hasExplicit(permission) || permissions.contains('*'));
+
+  /// Customer exports are available to Head Office and to staff explicitly
+  /// granted the dedicated export permission.
+  bool get canExportCustomers =>
+      isHeadOffice || _hasExplicit(AdminPermissions.customersExport);
 
   static const Set<String> _featureControlMasterRoles = <String>{
     'HEAD_OFFICE',

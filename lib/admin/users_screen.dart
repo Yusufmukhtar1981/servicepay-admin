@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'phase1_operations_api.dart';
 import 'hierarchy_management_screen.dart';
 import 'admin_permissions.dart';
+import 'customer_export_api.dart';
+import 'customer_export_panel.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({
@@ -72,6 +74,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   late final Phase1OperationsApi _operationsApi =
       widget.api ?? Phase1OperationsApi();
+  late final CustomerExportApi _customerExportApi = CustomerExportApi();
+
+  AdminAccess get _access =>
+      AdminAccess(role: widget.adminRole, permissions: widget.permissions);
+
+  bool get _canViewUsers => _access.has(AdminPermissions.usersView);
+
+  bool get _canExportCustomers => _access.canExportCustomers;
 
   bool get _canAdjustWallet =>
       widget.adminRole.trim().toUpperCase() == 'HEAD_OFFICE' &&
@@ -1627,6 +1637,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          if (_selectedRole == 'CUSTOMER' &&
+              _canViewUsers &&
+              _canExportCustomers)
+            CustomerExportPanel(
+              api: _customerExportApi,
+              searchQuery: _searchController.text,
+            ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadUsers,

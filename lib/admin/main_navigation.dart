@@ -53,6 +53,7 @@ import 'edupay_control_center_screen.dart';
 import 'phase1_operations_screen.dart';
 import 'hierarchy_management_screen.dart';
 import 'provider_management_screen.dart';
+import 'revenue_account_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -112,6 +113,18 @@ bool canAccessProviderManagementNavigation({required String role}) {
 }
 
 @visibleForTesting
+bool canAccessRevenueAccountNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+  if (!access.isHeadOffice) return false;
+  // Head Office has established broad module access. Scoped STAFF/BRANCH
+  // accounts never inherit access here, including via a wildcard.
+  return access.has(AdminPermissions.transactionsView) || access.isHeadOffice;
+}
+
+@visibleForTesting
 bool canAccessCustomerWithdrawalsNavigation({
   required String role,
   required Set<String> permissions,
@@ -137,6 +150,12 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.isHeadOffice) {
       labels.add('Promo Leaderboard');
+    }
+    if (canAccessRevenueAccountNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Revenue Account');
     }
     if (access.has(AdminPermissions.referralsView)) {
       labels.add('Referral Monitoring');
@@ -342,6 +361,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.receipt_long_outlined,
         activeIcon: Icons.receipt_long_rounded,
         label: 'Transactions',
+      );
+    }
+
+    if (canAccessRevenueAccountNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: const RevenueAccountScreen(),
+        icon: Icons.account_balance_wallet_outlined,
+        activeIcon: Icons.account_balance_wallet_rounded,
+        label: 'Revenue Account',
       );
     }
 

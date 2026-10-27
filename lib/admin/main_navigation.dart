@@ -15,6 +15,7 @@ import 'admin_manual_funding_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_announcements_screen.dart';
 import 'admin_promo_leaderboard_screen.dart';
+import 'admin_customer_leaderboard_screen.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_rider_withdrawals_screen.dart';
 import 'admin_customer_withdrawals_screen.dart';
@@ -134,6 +135,15 @@ bool canAccessCustomerWithdrawalsNavigation({
       access.has(AdminPermissions.withdrawalsView);
 }
 
+@visibleForTesting
+bool canAccessCustomerLeaderboardNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final access = AdminAccess(role: role, permissions: permissions);
+  return access.isHeadOffice && access.has(AdminPermissions.settingsView);
+}
+
 class AdminMainNavigation extends StatefulWidget {
   const AdminMainNavigation({super.key});
 
@@ -150,6 +160,10 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.isHeadOffice) {
       labels.add('Promo Leaderboard');
+    }
+    if (canAccessCustomerLeaderboardNavigation(
+        role: access.role, permissions: access.permissions)) {
+      labels.add('Customer Leaderboard');
     }
     if (canAccessRevenueAccountNavigation(
       role: access.role,
@@ -513,6 +527,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.emoji_events_outlined,
         activeIcon: Icons.emoji_events_rounded,
         label: 'Promo Leaderboard',
+      );
+    }
+
+    if (canAccessCustomerLeaderboardNavigation(
+        role: adminRole, permissions: permissions)) {
+      addNavigationPage(
+        page: AdminCustomerLeaderboardScreen(
+          canUpdate: hasPermission(AdminPermissions.settingsUpdate),
+        ),
+        icon: Icons.emoji_events_outlined,
+        activeIcon: Icons.emoji_events_rounded,
+        label: 'Customer Leaderboard',
       );
     }
 

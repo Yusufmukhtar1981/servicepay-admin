@@ -3,17 +3,20 @@ import 'package:flutter/material.dart';
 import 'admin_customer_360_api.dart';
 import 'admin_permissions.dart';
 import 'customer_profile_admin.dart';
+import 'customer_virtual_account_admin.dart';
 
 class AdminCustomer360Screen extends StatefulWidget {
   const AdminCustomer360Screen({
     super.key,
     this.api,
     this.profileApi,
+    this.virtualAccountApi,
     this.access,
   });
 
   final AdminCustomer360Api? api;
   final AdminCustomerProfileApi? profileApi;
+  final AdminCustomerVirtualAccountApi? virtualAccountApi;
   final AdminAccess? access;
 
   @override
@@ -28,6 +31,8 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
   late final AdminCustomer360Api _api = widget.api ?? AdminCustomer360Api();
   late final AdminCustomerProfileApi _profileApi =
       widget.profileApi ?? AdminCustomerProfileApi();
+  late final AdminCustomerVirtualAccountApi _virtualAccountApi =
+      widget.virtualAccountApi ?? AdminCustomerVirtualAccountApi();
   AdminAccess? _access;
   final _search = TextEditingController();
   final _transactionSearch = TextEditingController();
@@ -62,6 +67,7 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
     _to.dispose();
     if (widget.api == null) _api.close();
     if (widget.profileApi == null) _profileApi.dispose();
+    if (widget.virtualAccountApi == null) _virtualAccountApi.dispose();
     super.dispose();
   }
 
@@ -469,6 +475,13 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
                 icon: const Icon(Icons.history_rounded),
                 label: const Text('Edit History'),
               ),
+            if (_hasProfilePermission())
+              OutlinedButton.icon(
+                key: const Key('customer360-virtual-account'),
+                onPressed: () => _showVirtualAccount(profile),
+                icon: const Icon(Icons.account_balance_outlined),
+                label: const Text('Virtual Account'),
+              ),
           ],
         ),
       ),
@@ -514,6 +527,21 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
       builder: (_) => AdminCustomerProfileHistory(
         customer: customer,
         api: _profileApi,
+      ),
+    );
+  }
+
+  Future<void> _showVirtualAccount(Map<String, dynamic> profile) async {
+    if (!_hasProfilePermission()) return;
+    final customerId = _profileCustomerId(profile);
+    if (customerId.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog.fullscreen(
+        child: AdminCustomerVirtualAccountAdmin(
+          customerId: customerId,
+          api: _virtualAccountApi,
+        ),
       ),
     );
   }

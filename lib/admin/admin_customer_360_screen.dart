@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 
 import 'admin_customer_360_api.dart';
+import 'admin_permissions.dart';
+import 'customer_profile_admin.dart';
 
 class AdminCustomer360Screen extends StatefulWidget {
-  const AdminCustomer360Screen({super.key, this.api});
+  const AdminCustomer360Screen({
+    super.key,
+    this.api,
+    this.profileApi,
+    this.access,
+  });
 
   final AdminCustomer360Api? api;
+  final AdminCustomerProfileApi? profileApi;
+  final AdminAccess? access;
 
   @override
   State<AdminCustomer360Screen> createState() => _AdminCustomer360ScreenState();
@@ -17,6 +26,9 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
   static const _mint = Color(0xffe7f4ef);
   static const _canvas = Color(0xfff3f7f5);
   late final AdminCustomer360Api _api = widget.api ?? AdminCustomer360Api();
+  late final AdminCustomerProfileApi _profileApi =
+      widget.profileApi ?? AdminCustomerProfileApi();
+  AdminAccess? _access;
   final _search = TextEditingController();
   final _transactionSearch = TextEditingController();
   final _from = TextEditingController();
@@ -37,13 +49,39 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
   Map<String, dynamic> _transactionPagination = {};
 
   @override
+  void initState() {
+    super.initState();
+    _loadAccess();
+  }
+
+  @override
   void dispose() {
     _search.dispose();
     _transactionSearch.dispose();
     _from.dispose();
     _to.dispose();
     if (widget.api == null) _api.close();
+    if (widget.profileApi == null) _profileApi.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAccess() async {
+    try {
+      final access = widget.access ?? await AdminSessionStore.loadAccess();
+      if (mounted) setState(() => _access = access);
+    } catch (_) {
+      if (mounted) setState(() => _access = null);
+    }
+  }
+
+  bool _hasProfilePermission() {
+    final access = _access;
+    // Ordinary profile support is authorized by canonical Head Office
+    // identity on the server, independent of its narrower permission list.
+    // Keep this role-only rule local; protected financial controls still use
+    // their dedicated capability/permission checks.
+    return access != null &&
+        AdminAccess.normalizeRole(access.role) == 'HEAD_OFFICE';
   }
 
   Future<void> _find() async {
@@ -221,12 +259,23 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
                 color: _mint, borderRadius: BorderRadius.circular(20)),
-            child: const Row(children: [
-              Icon(Icons.lock_outline, size: 14, color: _teal),
-              SizedBox(width: 6),
-              Text('READ ONLY',
-                  style: TextStyle(
-                      color: _teal, fontSize: 11, fontWeight: FontWeight.w800))
+            child: Row(children: [
+              Icon(
+                _hasProfilePermission()
+                    ? Icons.shield_outlined
+                    : Icons.lock_outline,
+                size: 14,
+                color: _teal,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _hasProfilePermission() ? 'EDIT AUDITED' : 'READ ONLY',
+                style: const TextStyle(
+                  color: _teal,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ]),
           ),
         ],
@@ -282,15 +331,19 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
                   'A live, permission-aware view across identity, money, usage and support.',
                   style: TextStyle(color: Color(0xffc0d8d3), height: 1.4)),
               SizedBox(height: 16),
-              Row(children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.visibility_outlined,
                     color: Color(0xff8fd2c5), size: 17),
                 SizedBox(width: 8),
-                Text('Viewing only · no changes can be made here',
+                Expanded(
+                  child: Text(
+                    'Financial, identity and service details remain read-only.',
                     style: TextStyle(
                         color: Color(0xffdcebe7),
                         fontSize: 12,
-                        fontWeight: FontWeight.w600))
+                        fontWeight: FontWeight.w600),
+                  ),
+                )
               ]),
             ]),
       );
@@ -350,6 +403,7 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SizedBox(height: 18),
       _profileHeader(profile),
+      if (_isCustomer(profile)) _profileActions(profile),
       const SizedBox(height: 14),
       if (_cap('financial'))
         _financial(_map(_customer!['financial']))
@@ -375,6 +429,93 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
         _limited(
             'Transactions are not included for your current financial access.'),
     ]);
+  }
+
+  bool _isCustomer(Map<String, dynamic> profile) {
+    final role = _text(
+      profile['role'] ?? _customer?['role'],
+      'CUSTOMER',
+    ).trim().toUpperCase();
+    return role == 'CUSTOMER';
+  }
+
+  Widget _profileActions(Map<String, dynamic> profile) {
+    final canEdit = _hasProfilePermission();
+    final canViewHistory = _hasProfilePermission();
+    if (!canEdit && !canViewHistory) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: _Card(
+        title: 'Customer profile',
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            if (canEdit)
+              FilledButton.icon(
+                key: const Key('customer360-edit-profile'),
+                onPressed: () => _editCustomerProfile(profile),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit Profile'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _teal,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            if (canViewHistory)
+              OutlinedButton.icon(
+                key: const Key('customer360-profile-history'),
+                onPressed: () => _showProfileHistory(profile),
+                icon: const Icon(Icons.history_rounded),
+                label: const Text('Edit History'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _profileCustomerId(Map<String, dynamic> profile) {
+    final fromProfile = _text(
+      profile['id'] ?? profile['_id'] ?? profile['customerId'],
+      '',
+    );
+    return fromProfile.isNotEmpty ? fromProfile : (_selectedId ?? '');
+  }
+
+  Map<String, dynamic> _profileCustomer(Map<String, dynamic> profile) => {
+        ...profile,
+        'id': _profileCustomerId(profile),
+        'role': 'CUSTOMER',
+      };
+
+  Future<void> _editCustomerProfile(Map<String, dynamic> profile) async {
+    if (!_hasProfilePermission()) return;
+    final customer = _profileCustomer(profile);
+    if ((customer['id'] as String).isEmpty) return;
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => AdminCustomerProfileEditor(
+        customer: customer,
+        api: _profileApi,
+      ),
+    );
+    if (updated == true && mounted) {
+      await _select({'id': customer['id']});
+    }
+  }
+
+  Future<void> _showProfileHistory(Map<String, dynamic> profile) async {
+    if (!_hasProfilePermission()) return;
+    final customer = _profileCustomer(profile);
+    if ((customer['id'] as String).isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AdminCustomerProfileHistory(
+        customer: customer,
+        api: _profileApi,
+      ),
+    );
   }
 
   Widget _profileHeader(Map<String, dynamic> p) => Container(
@@ -404,6 +545,14 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
                 const SizedBox(height: 5),
                 Text('${_text(p['servicePayId'])}  ·  ${_text(p['phone'])}',
                     style: const TextStyle(color: Color(0xff607773))),
+                const SizedBox(height: 4),
+                Text(
+                  '${_text(p['email'])}  ·  ${_text(p['address'])}',
+                  style: const TextStyle(
+                    color: Color(0xff607773),
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Wrap(spacing: 7, runSpacing: 6, children: [
                   _Pill(_label(_text(p['status']))),
@@ -688,25 +837,46 @@ class _Card extends StatelessWidget {
   final Widget? trailing;
   @override
   Widget build(BuildContext context) => Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xffdce9e5))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text(title,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(17),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xffdce9e5))),
+        child: LayoutBuilder(builder: (context, constraints) {
+          final compact = constraints.maxWidth < 420;
+          final heading = Text(title,
               style: const TextStyle(
                   color: _AdminCustomer360ScreenState._ink,
                   fontWeight: FontWeight.w800,
-                  fontSize: 15)),
-          const Spacer(),
-          if (trailing != null) trailing!
-        ]),
-        const SizedBox(height: 13),
-        child
-      ]));
+                  fontSize: 15));
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (compact)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    heading,
+                    if (trailing != null)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: trailing!,
+                      ),
+                  ],
+                )
+              else
+                Row(children: [
+                  heading,
+                  const Spacer(),
+                  if (trailing != null) trailing!,
+                ]),
+              const SizedBox(height: 13),
+              child,
+            ],
+          );
+        }),
+      );
 }
 
 class _Metric extends StatelessWidget {

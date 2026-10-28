@@ -174,14 +174,12 @@ void main() {
       find.widgetWithText(TextField, 'Audit reason (required)'),
       'Customer requested correction',
     );
-    await tester.tap(find.text('Save profile'));
+    await tester.tap(find.text('Save Changes'));
     await tester.pumpAndSettle();
     expect(saved!['fullName'], 'Ada O. Okafor');
     expect(saved!['address'], '18 Palm Avenue');
-    expect(saved!['phone'], customer['phone']);
-    expect(saved!['email'], customer['email']);
-    expect(saved!['state'], customer['state']);
     expect(saved!['reason'], 'Customer requested correction');
+    expect(saved!.keys.toSet(), {'fullName', 'address', 'reason'});
     api.dispose();
   });
 }

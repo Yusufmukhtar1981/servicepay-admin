@@ -86,11 +86,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   bool get _canViewUsers => _access.has(AdminPermissions.usersView);
   bool get _canEditCustomerProfile =>
-      AdminAccess.normalizeRole(widget.adminRole) == 'HEAD_OFFICE' &&
-      _access.hasHeadOfficePermission(AdminPermissions.usersUpdate);
+      AdminAccess.normalizeRole(widget.adminRole) == 'HEAD_OFFICE';
   bool get _canViewCustomerProfileHistory =>
-      AdminAccess.normalizeRole(widget.adminRole) == 'HEAD_OFFICE' &&
-      _access.hasHeadOfficePermission(AdminPermissions.usersView);
+      AdminAccess.normalizeRole(widget.adminRole) == 'HEAD_OFFICE';
 
   bool get _canExportCustomers => _access.canExportCustomers;
 

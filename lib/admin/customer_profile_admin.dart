@@ -338,8 +338,12 @@ class _AdminCustomerProfileEditorState
       await widget.api.updateProfile(
         customerId: "${widget.customer['_id'] ?? widget.customer['id']}",
         profile: {
-          for (final entry in _fields.entries)
-            entry.key: entry.value.text.trim()
+          'fullName': _fields['fullName']!.text.trim(),
+          'address': _fields['address']!.text.trim(),
+          if (widget.contactsEnabled && _changed('phone'))
+            'phone': _fields['phone']!.text.trim(),
+          if (widget.contactsEnabled && _changed('email'))
+            'email': _fields['email']!.text.trim(),
         },
         reason: _reason.text.trim(),
         contactVerifications: verifications,
@@ -492,7 +496,7 @@ class _AdminCustomerProfileEditorState
                     height: 18,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
-                : const Text('Save profile'),
+                : const Text('Save Changes'),
           ),
         ],
       );

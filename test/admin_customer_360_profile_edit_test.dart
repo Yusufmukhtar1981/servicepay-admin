@@ -64,6 +64,9 @@ void main() {
                   'phone': updated['phone']!,
                   'email': updated['email']!,
                   'address': updated['address']!,
+                  'state': updated['state'] ?? 'Lagos',
+                  'lga': updated['lga'] ?? 'Ikeja',
+                  'zone': updated['zone'] ?? 'South West',
                   'role': updated['role'] ?? 'CUSTOMER',
                   'status': 'ACTIVE',
                   'kycStatus': 'VERIFIED',
@@ -111,12 +114,18 @@ void main() {
             200,
           );
         }
+        if (path.endsWith(
+                '/admin/users/$_customerId/profile/contact-proposal') &&
+            request.method == 'GET') {
+          return http.Response(
+              '{"success":true,"data":{"proposal":null}}', 200);
+        }
         if (path.endsWith('/admin/users/$_customerId/profile') &&
             request.method == 'PUT') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           expect(
             body.keys.toSet(),
-            {'fullName', 'address', 'reason'},
+            {'fullName', 'address', 'state', 'lga', 'zone', 'reason'},
           );
           for (final entry in body.entries) {
             if (entry.key != 'reason') {
@@ -175,12 +184,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Edit Customer Profile'), findsOneWidget);
     expect(
-      find.text(
-        'Phone and email changes are temporarily unavailable while secure verification is configured.',
-      ),
-      findsOneWidget,
-    );
-    expect(
       tester
           .widget<TextField>(
             find.widgetWithText(TextField, 'Phone Number'),
@@ -197,9 +200,17 @@ void main() {
       '18 Palm Avenue',
     );
     await tester.enterText(
-      find.widgetWithText(TextField, 'Audit reason (required)'),
+      find.widgetWithText(
+        TextField,
+        'Audit reason (required, at least 5 characters)',
+      ),
       'Customer requested address correction',
     );
+    await tester.enterText(find.widgetWithText(TextField, 'State'), 'Oyo');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'LGA'), 'Ibadan North');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Zone'), 'South West');
     await tester.tap(find.text('Save Changes'));
     await tester.pumpAndSettle();
     expect(
@@ -210,8 +221,8 @@ void main() {
     );
     expect(find.text('Ada Okafor Adeyemi'), findsOneWidget);
     expect(find.textContaining('18 Palm Avenue'), findsOneWidget);
-    expect(updated['state'], 'Lagos');
-    expect(updated['lga'], 'Ikeja');
+    expect(updated['state'], 'Oyo');
+    expect(updated['lga'], 'Ibadan North');
     expect(updated['zone'], 'South West');
     expect(
       requests.where((request) =>

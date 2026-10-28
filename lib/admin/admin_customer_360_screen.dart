@@ -553,6 +553,14 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
                     fontSize: 12,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_text(p['state'])} · ${_text(p['lga'])} · ${_text(p['zone'])}',
+                  style: const TextStyle(
+                    color: Color(0xff607773),
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Wrap(spacing: 7, runSpacing: 6, children: [
                   _Pill(_label(_text(p['status']))),

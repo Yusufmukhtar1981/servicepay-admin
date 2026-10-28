@@ -115,17 +115,27 @@ void main() {
           );
         }
         if (path.endsWith(
-                '/admin/users/$_customerId/profile/contact-proposal') &&
+                '/admin/users/$_customerId/profile/contact-correction') &&
             request.method == 'GET') {
           return http.Response(
-              '{"success":true,"data":{"proposal":null}}', 200);
+              '{"success":true,"data":{"canCorrect":true,"phoneVerified":true,"emailVerified":true}}',
+              200);
         }
         if (path.endsWith('/admin/users/$_customerId/profile') &&
             request.method == 'PUT') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           expect(
             body.keys.toSet(),
-            {'fullName', 'address', 'state', 'lga', 'zone', 'reason'},
+            {
+              'fullName',
+              'phone',
+              'email',
+              'address',
+              'state',
+              'lga',
+              'zone',
+              'reason'
+            },
           );
           for (final entry in body.entries) {
             if (entry.key != 'reason') {
@@ -189,7 +199,7 @@ void main() {
             find.widgetWithText(TextField, 'Phone Number'),
           )
           .readOnly,
-      isTrue,
+      isFalse,
     );
     await tester.enterText(
       find.widgetWithText(TextField, 'Full Name'),

@@ -10,6 +10,7 @@ import 'hierarchy_management_screen.dart';
 import 'admin_permissions.dart';
 import 'customer_export_api.dart';
 import 'customer_export_panel.dart';
+import 'customer_profile_admin.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({
@@ -17,6 +18,7 @@ class AdminUsersScreen extends StatefulWidget {
     this.adminRole = '',
     this.permissions = const <String>{},
     this.api,
+    this.profileApi,
   });
 
   /// These values are supplied by the authenticated parent. They are only
@@ -24,6 +26,7 @@ class AdminUsersScreen extends StatefulWidget {
   final String adminRole;
   final Set<String> permissions;
   final Phase1OperationsApi? api;
+  final AdminCustomerProfileApi? profileApi;
 
   @override
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
@@ -75,11 +78,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   late final Phase1OperationsApi _operationsApi =
       widget.api ?? Phase1OperationsApi();
   late final CustomerExportApi _customerExportApi = CustomerExportApi();
+  late final AdminCustomerProfileApi _profileApi =
+      widget.profileApi ?? AdminCustomerProfileApi();
 
   AdminAccess get _access =>
       AdminAccess(role: widget.adminRole, permissions: widget.permissions);
 
   bool get _canViewUsers => _access.has(AdminPermissions.usersView);
+  bool get _canEditCustomerProfile =>
+      AdminAccess.normalizeRole(widget.adminRole) == 'HEAD_OFFICE' &&
+      _access.hasHeadOfficePermission(AdminPermissions.usersUpdate);
+  bool get _canViewCustomerProfileHistory =>
+      AdminAccess.normalizeRole(widget.adminRole) == 'HEAD_OFFICE' &&
+      _access.hasHeadOfficePermission(AdminPermissions.usersView);
 
   bool get _canExportCustomers => _access.canExportCustomers;
 
@@ -107,6 +118,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
+    if (widget.profileApi == null) _profileApi.dispose();
     super.dispose();
   }
 
@@ -1053,6 +1065,59 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                           ],
                         ),
                         const SizedBox(height: 20),
+                        if (_userRole(user) == 'CUSTOMER' &&
+                            (_canEditCustomerProfile ||
+                                _canViewCustomerProfileHistory)) ...[
+                          const Text(
+                            'Customer Profile',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF101828),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: <Widget>[
+                              if (_canEditCustomerProfile)
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  label: const Text('Edit Customer Profile'),
+                                  onPressed: () async {
+                                    final detailsNavigator =
+                                        Navigator.of(context);
+                                    final updated = await showDialog<bool>(
+                                      context: context,
+                                      builder: (_) =>
+                                          AdminCustomerProfileEditor(
+                                        customer: user,
+                                        api: _profileApi,
+                                      ),
+                                    );
+                                    if (updated == true && mounted) {
+                                      detailsNavigator.pop();
+                                      await _loadUsers();
+                                    }
+                                  },
+                                ),
+                              if (_canViewCustomerProfileHistory)
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.history_rounded),
+                                  label: const Text('Profile History'),
+                                  onPressed: () => showDialog<void>(
+                                    context: context,
+                                    builder: (_) => AdminCustomerProfileHistory(
+                                      customer: user,
+                                      api: _profileApi,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                        ],
                         const Text(
                           'Account Actions',
                           style: TextStyle(

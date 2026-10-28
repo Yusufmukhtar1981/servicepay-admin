@@ -17,6 +17,7 @@ abstract final class AdminPermissions {
   static const rolesAssignPermissions = 'roles.assign_permissions';
   static const rolesEnable = 'roles.enable';
   static const usersView = 'users.view';
+  static const usersUpdate = 'users.update';
   static const customersExport = 'customers.export';
   static const privacyView = 'privacy.view';
   static const privacyManage = 'privacy.manage';

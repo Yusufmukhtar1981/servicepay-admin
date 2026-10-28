@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -107,6 +108,80 @@ void main() {
       throwsA(isA<StateError>()),
     );
     expect(calls, 0);
+    api.dispose();
+  });
+
+  testWidgets('phase-one admin editor exposes only name and address changes',
+      (tester) async {
+    Map<String, dynamic>? saved;
+    final client = MockClient((request) async {
+      saved = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response('{"success":true,"data":{"id":"cust-5"}}', 200);
+    });
+    final api = AdminCustomerProfileApi(
+      client: client,
+      baseUrl: 'https://admin.test/api',
+    );
+    const customer = <String, dynamic>{
+      '_id': 'cust-5',
+      'fullName': 'Ada Okafor',
+      'phone': '08030000000',
+      'email': 'ada@example.test',
+      'address': '12 Palm Avenue',
+      'state': 'Lagos',
+      'lga': 'Ikeja',
+      'zone': 'South West',
+    };
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AdminCustomerProfileEditor(customer: customer, api: api),
+      ),
+    ));
+    expect(
+      find.text(
+        'Phone and email changes are temporarily unavailable while secure verification is configured.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Phone Number'))
+          .readOnly,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'State'))
+          .readOnly,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Email Address'))
+          .controller!
+          .text,
+      'ada@example.test',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Full Name'),
+      'Ada O. Okafor',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Residential Address'),
+      '18 Palm Avenue',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Audit reason (required)'),
+      'Customer requested correction',
+    );
+    await tester.tap(find.text('Save profile'));
+    await tester.pumpAndSettle();
+    expect(saved!['fullName'], 'Ada O. Okafor');
+    expect(saved!['address'], '18 Palm Avenue');
+    expect(saved!['phone'], customer['phone']);
+    expect(saved!['email'], customer['email']);
+    expect(saved!['state'], customer['state']);
+    expect(saved!['reason'], 'Customer requested correction');
     api.dispose();
   });
 }

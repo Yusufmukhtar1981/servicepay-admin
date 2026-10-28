@@ -139,10 +139,22 @@ class AdminCustomerProfileEditor extends StatefulWidget {
     super.key,
     required this.customer,
     required this.api,
+    this.contactChangesEnabled,
   });
+
+  static const bool _releaseContactChangesEnabled = bool.fromEnvironment(
+    'SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED',
+    defaultValue: false,
+  );
 
   final Map<String, dynamic> customer;
   final AdminCustomerProfileApi api;
+
+  /// Optional test seam; release behavior is controlled by the compile-time flag.
+  final bool? contactChangesEnabled;
+
+  bool get contactsEnabled =>
+      contactChangesEnabled ?? _releaseContactChangesEnabled;
 
   @override
   State<AdminCustomerProfileEditor> createState() =>
@@ -222,6 +234,11 @@ class _AdminCustomerProfileEditorState
       '${widget.customer[field] ?? ''}'.trim().toLowerCase();
 
   Future<void> _request(String field) async {
+    if (!widget.contactsEnabled) {
+      setState(() => _error =
+          'Phone and email changes are temporarily unavailable while secure verification is configured.');
+      return;
+    }
     final other = field == 'email' ? 'phone' : 'email';
     if (_changed(other)) {
       setState(() => _error =
@@ -280,6 +297,11 @@ class _AdminCustomerProfileEditorState
   }
 
   Future<void> _save() async {
+    if (!widget.contactsEnabled && (_changed('email') || _changed('phone'))) {
+      setState(() => _error =
+          'Phone and email changes are temporarily unavailable while secure verification is configured.');
+      return;
+    }
     if (_changed('email') && _changed('phone')) {
       setState(() => _error =
           'Change and save one contact method at a time. Save phone or email first, then edit the other.');
@@ -334,19 +356,23 @@ class _AdminCustomerProfileEditorState
   }
 
   Widget _field(String key, String label,
-          {TextInputType keyboard = TextInputType.text}) =>
+          {TextInputType keyboard = TextInputType.text,
+          bool readOnly = false}) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: TextField(
           controller: _fields[key],
           keyboardType: keyboard,
+          readOnly: readOnly,
           decoration: InputDecoration(
               labelText: label, border: const OutlineInputBorder()),
         ),
       );
 
   Widget _verification(String field) {
-    if (!_changed(field)) return const SizedBox.shrink();
+    if (!widget.contactsEnabled || !_changed(field)) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
@@ -392,7 +418,21 @@ class _AdminCustomerProfileEditorState
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               _field('fullName', 'Full Name'),
-              if (_changed('email') && _changed('phone'))
+              if (!widget.contactsEnabled)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Phone and email changes are temporarily unavailable while secure verification is configured.',
+                    key: Key('admin-profile-contact-changes-disabled'),
+                    style: TextStyle(
+                      color: Color(0xFF8A5A00),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              if (widget.contactsEnabled &&
+                  _changed('email') &&
+                  _changed('phone'))
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
                   child: Text(
@@ -400,16 +440,20 @@ class _AdminCustomerProfileEditorState
                     style: TextStyle(color: Color(0xFF8A5A00)),
                   ),
                 ),
-              _field('phone', 'Phone Number', keyboard: TextInputType.phone),
+              _field('phone', 'Phone Number',
+                  keyboard: TextInputType.phone,
+                  readOnly: !widget.contactsEnabled),
               _verification('phone'),
               _field('email', 'Email Address',
-                  keyboard: TextInputType.emailAddress),
+                  keyboard: TextInputType.emailAddress,
+                  readOnly: !widget.contactsEnabled),
               _verification('email'),
               _field('address', 'Residential Address'),
-              _field('state', 'State'),
-              _field('lga', 'LGA'),
-              _field('zone', 'Zone'),
-              if (_changed('email') || _changed('phone'))
+              _field('state', 'State', readOnly: true),
+              _field('lga', 'LGA', readOnly: true),
+              _field('zone', 'Zone', readOnly: true),
+              if (widget.contactsEnabled &&
+                  (_changed('email') || _changed('phone')))
                 TextField(
                     controller: _password,
                     obscureText: true,

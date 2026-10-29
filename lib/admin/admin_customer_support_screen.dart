@@ -76,7 +76,8 @@ class _AdminCustomerSupportScreenState
       case 'IN_REVIEW':
         return 'In Review';
       case 'WAITING_ON_CUSTOMER':
-        return 'Awaiting Customer';
+      case 'WAITING_FOR_CUSTOMER':
+        return 'Waiting for customer';
       case 'REJECTED':
         return 'Closed';
       default:
@@ -308,8 +309,9 @@ class _AdminCustomerSupportScreenState
                   ? 'All'
                   : x == 'IN_PROGRESS' || x == 'IN_REVIEW'
                   ? 'In Review'
-                  : x == 'WAITING_ON_CUSTOMER'
-                  ? 'Awaiting Customer'
+                  : x == 'WAITING_ON_CUSTOMER' ||
+                    x == 'WAITING_FOR_CUSTOMER'
+                  ? 'Waiting for customer'
                   : x == 'OPEN'
                   ? 'Open'
                   : x[0] + x.substring(1).toLowerCase(),
@@ -434,7 +436,8 @@ class _DetailState extends State<_Detail> {
       case 'IN_REVIEW':
         return 'IN REVIEW';
       case 'WAITING_ON_CUSTOMER':
-        return 'AWAITING CUSTOMER';
+      case 'WAITING_FOR_CUSTOMER':
+        return 'WAITING FOR CUSTOMER';
       case 'REJECTED':
         return 'CLOSED';
       default:

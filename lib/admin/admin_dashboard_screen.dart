@@ -7,6 +7,7 @@ import 'admin_executive_dashboard_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_bulk_email_screen.dart';
 import 'admin_customer_support_screen.dart';
+import 'admin_ai_support_center_screen.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_delivery_management_screen.dart';
 import 'admin_delivery_pricing_screen.dart';
@@ -235,6 +236,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('SMS', Icons.sms_outlined),
         _FintechItem('Push Notifications', Icons.notifications_active_outlined),
         _FintechItem('Announcements', Icons.campaign_outlined),
+        _FintechItem('AI Support Center', Icons.forum_outlined),
         _FintechItem('Support / Tickets', Icons.headset_mic_outlined),
       ],
     ),
@@ -339,6 +341,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       'withdrawals' => const AdminRiderWithdrawalsScreen(),
       'delivery' => const AdminDeliveryManagementScreen(),
       'support' => const AdminCustomerSupportScreen(),
+      'ai-support' => AdminAiSupportCenterScreen(
+          initialAccess: widget.initialAccess,
+        ),
       'email' => const AdminBulkEmailScreen(),
       _ => null,
     };
@@ -785,6 +790,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _moduleInfo(String title) {
     // SERVICEPAY_VERIFIED_FINTECH_NAVIGATION
+    if (title == 'AI Support Center') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/admin/ai-support'),
+          builder: (_) => AdminAiSupportCenterScreen(
+            initialAccess: widget.initialAccess,
+          ),
+        ),
+      );
+      return;
+    }
+
     if (title == 'Delivery Pricing') {
       Navigator.of(context).push(
         MaterialPageRoute<void>(

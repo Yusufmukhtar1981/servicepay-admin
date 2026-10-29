@@ -4,14 +4,66 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminSupportApi {
-  AdminSupportApi({http.Client? client})
+  AdminSupportApi({http.Client? client, String? aiBaseUrlOverride})
     : _client = client ?? http.Client(),
-      _ownsClient = client == null;
+      _ownsClient = client == null,
+      aiApiBaseUrl = aiBaseUrlOverride ?? configuredAiApiBaseUrl;
   static const baseUrl = 'https://api.servicepay.ng/api/admin/support';
+  static const configuredAiApiBaseUrl = String.fromEnvironment(
+    'SERVICEPAY_API_BASE_URL',
+    defaultValue: '',
+  );
   final http.Client _client;
   final bool _ownsClient;
+  final String aiApiBaseUrl;
 
   Future<Map<String, dynamic>> metrics() => _request('GET', 'metrics');
+  Future<Map<String, dynamic>> aiMetrics() => _aiRequest('GET', 'ai-metrics');
+  Future<Map<String, dynamic>> aiSettings() =>
+      _aiRequest('GET', 'ai-settings');
+  Future<Map<String, dynamic>> saveAiSettings(
+    Map<String, dynamic> payload,
+  ) =>
+      _aiRequest('PUT', 'ai-settings', payload: payload);
+  Future<Map<String, dynamic>> aiConversations({
+    int page = 1,
+    int limit = 20,
+  }) =>
+      _aiRequest(
+        'GET',
+        'ai-conversations',
+        query: {'page': '$page', 'limit': '$limit'},
+      );
+  Future<Map<String, dynamic>> aiConversation(String id) =>
+      _aiRequest('GET', 'ai-conversations/${Uri.encodeComponent(id)}');
+  Future<Map<String, dynamic>> aiKnowledge() =>
+      _aiRequest('GET', 'ai-knowledge');
+  Future<Map<String, dynamic>> saveAiKnowledge(
+    Map<String, dynamic> payload,
+  ) =>
+      _aiRequest('PUT', 'ai-knowledge', payload: payload);
+
+  Future<Map<String, dynamic>> _aiRequest(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Map<String, dynamic>? payload,
+  }) {
+    if (aiApiBaseUrl.trim().isEmpty) {
+      throw StateError(
+        'Set SERVICEPAY_API_BASE_URL to the staging or local API before using AI Support administration.',
+      );
+    }
+    final root = aiApiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final apiRoot = root.endsWith('/api') ? root : '$root/api';
+    return _request(
+      method,
+      path,
+      query: query,
+      payload: payload,
+      baseOverride: '$apiRoot/admin/support',
+    );
+  }
   Future<Map<String, dynamic>> tickets({
     String search = '',
     String status = '',
@@ -78,6 +130,7 @@ class AdminSupportApi {
     String path, {
     Map<String, String>? query,
     Map<String, dynamic>? payload,
+    String? baseOverride,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     String token =
@@ -95,8 +148,13 @@ class AdminSupportApi {
       'Authorization': 'Bearer $token',
       if (payload != null) 'Content-Type': 'application/json',
     };
-    final uri = Uri.parse('$baseUrl/$path').replace(queryParameters: query);
+    final uri = Uri.parse('${baseOverride ?? baseUrl}/$path')
+        .replace(queryParameters: query);
     final r = switch (method) {
+      'PUT' =>
+        await _client
+            .put(uri, headers: headers, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 30)),
       'PATCH' =>
         await _client
             .patch(uri, headers: headers, body: jsonEncode(payload))

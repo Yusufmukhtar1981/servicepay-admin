@@ -32,6 +32,11 @@ class _WorkspaceApi extends AdminStaffWorkspaceApi {
 }
 
 void main() {
+  test('Head Office sees ordinary staff workspaces with an empty permission fixture', () {
+    final labels = AdminMainNavigation.visibleDestinationLabels(const AdminAccess(role: 'HEAD_OFFICE', permissions: <String>{}));
+    expect(labels, contains('Operations overview'));
+    expect(labels, contains('Customer support desk'));
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('workspace navigation is permission-visible and role-defaulted', () {

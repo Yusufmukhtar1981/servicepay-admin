@@ -154,10 +154,10 @@ class AdminMainNavigation extends StatefulWidget {
   /// canonical module name is returned here for permission checks.
   static List<String> visibleDestinationLabels(AdminAccess access) {
     final List<String> labels = <String>[];
-    if (access.permissions.contains(AdminPermissions.operationsWorkspaceView)) {
+    if (access.isHeadOffice || access.permissions.contains(AdminPermissions.operationsWorkspaceView)) {
       labels.add('Operations overview');
     }
-    if (access.permissions.contains(AdminPermissions.supportWorkspaceView)) {
+    if (access.isHeadOffice || access.permissions.contains(AdminPermissions.supportWorkspaceView)) {
       labels.add('Customer support desk');
     }
     if (access.has(AdminPermissions.logisticsView)) {
@@ -334,7 +334,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (permissions.contains(AdminPermissions.operationsWorkspaceView)) {
+    if (isHeadOffice || permissions.contains(AdminPermissions.operationsWorkspaceView)) {
       addNavigationPage(
         page: const OperationsManagerDashboard(),
         icon: Icons.monitor_heart_outlined,
@@ -343,7 +343,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (permissions.contains(AdminPermissions.supportWorkspaceView)) {
+    if (isHeadOffice || permissions.contains(AdminPermissions.supportWorkspaceView)) {
       addNavigationPage(
         page: const CustomerSupportDashboard(),
         icon: Icons.manage_search_outlined,

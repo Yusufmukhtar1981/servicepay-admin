@@ -10,6 +10,7 @@ import 'svp_management_screen.dart';
 import 'admin_theme.dart';
 import 'edupay_control_center_screen.dart';
 import '../school/school_session_gate.dart';
+import 'staff_management_screen.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -35,6 +36,7 @@ class ServicepayAdminApp extends StatelessWidget {
         '/school': (_) => const SchoolSessionGate(),
         '/edupay': (_) => const _EduPayRouteGate(),
         '/svp': (_) => const _SvpRouteGate(),
+        '/staff-management': (_) => const _StaffManagementRouteGate(),
         '/phone-financing': (_) => const _PhoneFinancingRouteGate(),
         '/control-center/audit-logs': (_) =>
             const _ControlCenterRouteGate(moduleId: 'audit-logs'),
@@ -59,6 +61,83 @@ class ServicepayAdminApp extends StatelessWidget {
       },
     );
   }
+}
+
+@visibleForTesting
+bool canAccessStaffManagementRoute({
+  required String token,
+  required String role,
+}) {
+  final String normalized = AdminAccess.normalizeRole(role);
+  return token.trim().isNotEmpty &&
+      const <String>{
+        'HEAD_OFFICE',
+        'ADMIN',
+        'SUPER_ADMIN',
+        'HEAD_OFFICE_ADMIN',
+        'SERVICEPAY_SUPER_ADMIN',
+      }.contains(normalized);
+}
+
+class _StaffManagementRouteGate extends StatefulWidget {
+  const _StaffManagementRouteGate();
+  @override
+  State<_StaffManagementRouteGate> createState() =>
+      _StaffManagementRouteGateState();
+}
+
+class _StaffManagementRouteGateState extends State<_StaffManagementRouteGate> {
+  late final Future<String> _access = _check();
+  String _authorizedRole = '';
+
+  Future<String> _check() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String token = (prefs.getString('auth_token') ??
+            prefs.getString('token') ??
+            prefs.getString('access_token') ??
+            '')
+        .trim();
+    final AdminAccess access = await AdminSessionStore.loadAccess();
+    final String role = access.role.isNotEmpty
+        ? access.role
+        : prefs.getString('admin_role') ?? prefs.getString('role') ?? '';
+    _authorizedRole = role;
+    return canAccessStaffManagementRoute(token: token, role: role)
+        ? 'AUTHORIZED'
+        : token.isEmpty
+            ? 'UNAUTHENTICATED'
+            : 'FORBIDDEN';
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String>(
+        future: _access,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.data == 'AUTHORIZED') {
+            return StaffManagementScreen(role: _authorizedRole);
+          }
+          if (snapshot.data == 'UNAUTHENTICATED') {
+            return const AdminLoginScreen();
+          }
+          return Scaffold(
+            appBar: AppBar(title: const Text('Access denied')),
+            body: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  '403 — Staff Management requires a Head Office session.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        },
+      );
 }
 
 class _EduPayRouteGate extends StatefulWidget {

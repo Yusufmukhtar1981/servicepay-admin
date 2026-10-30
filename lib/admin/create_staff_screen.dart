@@ -4,38 +4,31 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin_api_configuration.dart';
+
 class CreateStaffScreen extends StatefulWidget {
   const CreateStaffScreen({
     super.key,
   });
 
   @override
-  State<CreateStaffScreen> createState() =>
-      _CreateStaffScreenState();
+  State<CreateStaffScreen> createState() => _CreateStaffScreenState();
 }
 
-class _CreateStaffScreenState
-    extends State<CreateStaffScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+class _CreateStaffScreenState extends State<CreateStaffScreen> {
+  static const String baseUrl = AdminApiConfiguration.baseUrl;
 
-  static const Color primaryGreen =
-      Color(0xFF149B8F);
+  static const Color primaryGreen = Color(0xFF149B8F);
 
-  final GlobalKey<FormState> formKey =
-      GlobalKey<FormState>();
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-  final TextEditingController fullNameController =
-      TextEditingController();
+  final TextEditingController fullNameController = TextEditingController();
 
-  final TextEditingController phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
-  final TextEditingController emailController =
-      TextEditingController();
+  final TextEditingController emailController = TextEditingController();
 
-  final TextEditingController passwordController =
-      TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
   bool isLoadingRoles = true;
   bool isCreating = false;
@@ -62,8 +55,7 @@ class _CreateStaffScreenState
   }
 
   Future<String?> getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     const List<String> keys = [
       'auth_token',
@@ -75,22 +67,16 @@ class _CreateStaffScreenState
     ];
 
     for (final String key in keys) {
-      final String? value =
-          prefs.getString(key);
+      final String? value = prefs.getString(key);
 
-      if (value == null ||
-          value.trim().isEmpty) {
+      if (value == null || value.trim().isEmpty) {
         continue;
       }
 
       String token = value.trim();
 
-      if (token
-          .toLowerCase()
-          .startsWith('bearer ')) {
-        token = token
-            .substring(7)
-            .trim();
+      if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.substring(7).trim();
       }
 
       if (token.isNotEmpty) {
@@ -105,8 +91,7 @@ class _CreateStaffScreenState
     http.Response response,
   ) {
     try {
-      final dynamic decoded =
-          jsonDecode(response.body);
+      final dynamic decoded = jsonDecode(response.body);
 
       if (decoded is Map) {
         return Map<String, dynamic>.from(
@@ -117,8 +102,7 @@ class _CreateStaffScreenState
 
     return {
       'success': false,
-      'message':
-          'The server returned an invalid response.',
+      'message': 'The server returned an invalid response.',
     };
   }
 
@@ -134,11 +118,9 @@ class _CreateStaffScreenState
         continue;
       }
 
-      final String text =
-          value.toString().trim();
+      final String text = value.toString().trim();
 
-      if (text.isNotEmpty &&
-          text.toLowerCase() != 'null') {
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
         return text;
       }
     }
@@ -153,18 +135,15 @@ class _CreateStaffScreenState
     });
 
     try {
-      final String? token =
-          await getToken();
+      final String? token = await getToken();
 
-      if (token == null ||
-          token.isEmpty) {
+      if (token == null || token.isEmpty) {
         throw Exception(
           'Login session has expired.',
         );
       }
 
-      final http.Response response =
-          await http.get(
+      final http.Response response = await http.get(
         Uri.parse(
           '$baseUrl/staff-management/roles',
         ),
@@ -174,47 +153,39 @@ class _CreateStaffScreenState
         },
       );
 
-      final Map<String, dynamic> result =
-          decodeResponse(response);
+      final Map<String, dynamic> result = decodeResponse(response);
 
       if (response.statusCode < 200 ||
           response.statusCode >= 300 ||
           result['success'] != true) {
         throw Exception(
-          result['message']?.toString() ??
-              'Unable to load staff roles.',
+          result['message']?.toString() ?? 'Unable to load staff roles.',
         );
       }
 
       final dynamic rawRoles =
-          result['roles'] ??
-          result['data'] ??
-          result['results'];
+          result['roles'] ?? result['data'] ?? result['results'];
 
-      final List<Map<String, dynamic>> list =
-          rawRoles is List
-              ? rawRoles
-                  .whereType<Map>()
-                  .map(
-                    (Map item) =>
-                        Map<String, dynamic>.from(
-                      item,
-                    ),
-                  )
-                  .where(
-                    (Map<String, dynamic> role) {
-                      final String status =
-                          textValue(
-                        role,
-                        const ['status'],
-                        fallback: 'ACTIVE',
-                      ).toUpperCase();
+      final List<Map<String, dynamic>> list = rawRoles is List
+          ? rawRoles
+              .whereType<Map>()
+              .map(
+                (Map item) => Map<String, dynamic>.from(
+                  item,
+                ),
+              )
+              .where(
+              (Map<String, dynamic> role) {
+                final String status = textValue(
+                  role,
+                  const ['status'],
+                  fallback: 'ACTIVE',
+                ).toUpperCase();
 
-                      return status == 'ACTIVE';
-                    },
-                  )
-                  .toList()
-              : <Map<String, dynamic>>[];
+                return status == 'ACTIVE';
+              },
+            ).toList()
+          : <Map<String, dynamic>>[];
 
       if (!mounted) {
         return;
@@ -239,9 +210,7 @@ class _CreateStaffScreenState
       }
 
       setState(() {
-        errorMessage = error
-            .toString()
-            .replaceFirst(
+        errorMessage = error.toString().replaceFirst(
               'Exception: ',
               '',
             );
@@ -258,8 +227,7 @@ class _CreateStaffScreenState
   String? validateFullName(
     String? value,
   ) {
-    final String text =
-        value?.trim() ?? '';
+    final String text = value?.trim() ?? '';
 
     if (text.isEmpty) {
       return 'Enter staff full name';
@@ -275,8 +243,7 @@ class _CreateStaffScreenState
   String? validatePhone(
     String? value,
   ) {
-    final String text =
-        value?.trim() ?? '';
+    final String text = value?.trim() ?? '';
 
     if (text.isEmpty) {
       return 'Enter staff phone number';
@@ -296,8 +263,7 @@ class _CreateStaffScreenState
   String? validateEmail(
     String? value,
   ) {
-    final String text =
-        value?.trim().toLowerCase() ?? '';
+    final String text = value?.trim().toLowerCase() ?? '';
 
     if (text.isEmpty) {
       return 'Enter staff email address';
@@ -333,9 +299,7 @@ class _CreateStaffScreenState
   Future<void> createStaff() async {
     FocusScope.of(context).unfocus();
 
-    final bool valid =
-        formKey.currentState?.validate() ??
-            false;
+    final bool valid = formKey.currentState?.validate() ?? false;
 
     if (!valid) {
       return;
@@ -358,18 +322,15 @@ class _CreateStaffScreenState
     });
 
     try {
-      final String? token =
-          await getToken();
+      final String? token = await getToken();
 
-      if (token == null ||
-          token.isEmpty) {
+      if (token == null || token.isEmpty) {
         throw Exception(
           'Login session has expired.',
         );
       }
 
-      final http.Response response =
-          await http.post(
+      final http.Response response = await http.post(
         Uri.parse(
           '$baseUrl/staff-management/staff',
         ),
@@ -379,37 +340,29 @@ class _CreateStaffScreenState
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'fullName':
-              fullNameController.text.trim(),
-          'phone':
-              phoneController.text.trim(),
-          'email': emailController.text
-              .trim()
-              .toLowerCase(),
-          'password':
-              passwordController.text,
+          'fullName': fullNameController.text.trim(),
+          'phone': phoneController.text.trim(),
+          'email': emailController.text.trim().toLowerCase(),
+          'password': passwordController.text,
           'roleId': selectedRoleId,
         }),
       );
 
-      final Map<String, dynamic> result =
-          decodeResponse(response);
+      final Map<String, dynamic> result = decodeResponse(response);
 
       if (response.statusCode < 200 ||
           response.statusCode >= 300 ||
           result['success'] != true) {
         throw Exception(
-          result['message']?.toString() ??
-              'Unable to create staff account.',
+          result['message']?.toString() ?? 'Unable to create staff account.',
         );
       }
 
-      final Map<String, dynamic> staff =
-          result['staff'] is Map
-              ? Map<String, dynamic>.from(
-                  result['staff'],
-                )
-              : <String, dynamic>{};
+      final Map<String, dynamic> staff = result['staff'] is Map
+          ? Map<String, dynamic>.from(
+              result['staff'],
+            )
+          : <String, dynamic>{};
 
       final String staffId = textValue(
         staff,
@@ -430,9 +383,7 @@ class _CreateStaffScreenState
       Navigator.of(context).pop(true);
     } catch (error) {
       showMessage(
-        error
-            .toString()
-            .replaceFirst(
+        error.toString().replaceFirst(
               'Exception: ',
               '',
             ),
@@ -460,11 +411,8 @@ class _CreateStaffScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : primaryGreen,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError ? Colors.red.shade700 : primaryGreen,
         ),
       );
   }
@@ -472,8 +420,7 @@ class _CreateStaffScreenState
   String roleLabel(
     Map<String, dynamic> role,
   ) {
-    final String displayName =
-        textValue(
+    final String displayName = textValue(
       role,
       const [
         'displayName',
@@ -482,8 +429,7 @@ class _CreateStaffScreenState
       fallback: 'Staff Role',
     );
 
-    final String department =
-        textValue(
+    final String department = textValue(
       role,
       const ['department'],
     );
@@ -501,44 +447,37 @@ class _CreateStaffScreenState
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF7F9F8),
+      backgroundColor: const Color(0xFFF7F9F8),
       appBar: AppBar(
         title: const Text(
           'Create Staff',
           style: TextStyle(
-            fontWeight:
-                FontWeight.w900,
+            fontWeight: FontWeight.w900,
           ),
         ),
       ),
       body: isLoadingRoles
           ? const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             )
           : Form(
               key: formKey,
               child: ListView(
-                padding:
-                    const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(20),
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.all(
+                    padding: const EdgeInsets.all(
                       18,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius:
-                          BorderRadius.circular(
+                      borderRadius: BorderRadius.circular(
                         20,
                       ),
                       border: Border.all(
-                        color:
-                            const Color(
-                              0xFFE5E7EB,
-                            ),
+                        color: const Color(
+                          0xFFE5E7EB,
+                        ),
                       ),
                     ),
                     child: const Column(
@@ -551,24 +490,20 @@ class _CreateStaffScreenState
                         SizedBox(height: 10),
                         Text(
                           'Create a ServicePay staff account',
-                          textAlign:
-                              TextAlign.center,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 19,
-                            fontWeight:
-                                FontWeight.w900,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                         SizedBox(height: 5),
                         Text(
                           'The staff member will be required to change the temporary password after login.',
-                          textAlign:
-                              TextAlign.center,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            color:
-                                Color(
-                                  0xFF6B7280,
-                                ),
+                            color: Color(
+                              0xFF6B7280,
+                            ),
                             height: 1.4,
                           ),
                         ),
@@ -578,22 +513,17 @@ class _CreateStaffScreenState
                   const SizedBox(height: 18),
                   if (errorMessage.isNotEmpty)
                     Container(
-                      margin:
-                          const EdgeInsets.only(
+                      margin: const EdgeInsets.only(
                         bottom: 16,
                       ),
-                      padding:
-                          const EdgeInsets.all(
+                      padding: const EdgeInsets.all(
                         14,
                       ),
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            const Color(
-                              0xFFFEE2E2,
-                            ),
-                        borderRadius:
-                            BorderRadius.circular(
+                      decoration: BoxDecoration(
+                        color: const Color(
+                          0xFFFEE2E2,
+                        ),
+                        borderRadius: BorderRadius.circular(
                           14,
                         ),
                       ),
@@ -601,24 +531,19 @@ class _CreateStaffScreenState
                         children: [
                           Text(
                             errorMessage,
-                            textAlign:
-                                TextAlign.center,
-                            style:
-                                const TextStyle(
-                              color:
-                                  Color(
-                                    0xFF991B1B,
-                                  ),
-                              fontWeight:
-                                  FontWeight.w700,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(
+                                0xFF991B1B,
+                              ),
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(
                             height: 10,
                           ),
                           TextButton(
-                            onPressed:
-                                loadRoles,
+                            onPressed: loadRoles,
                             child: const Text(
                               'Reload Roles',
                             ),
@@ -627,88 +552,60 @@ class _CreateStaffScreenState
                       ),
                     ),
                   TextFormField(
-                    controller:
-                        fullNameController,
-                    validator:
-                        validateFullName,
-                    textInputAction:
-                        TextInputAction.next,
-                    decoration:
-                        const InputDecoration(
-                      labelText:
-                          'Full name',
+                    controller: fullNameController,
+                    validator: validateFullName,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Full name',
                       prefixIcon: Icon(
                         Icons.person_outline,
                       ),
-                      border:
-                          OutlineInputBorder(),
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
-                    controller:
-                        phoneController,
-                    validator:
-                        validatePhone,
-                    keyboardType:
-                        TextInputType.phone,
-                    textInputAction:
-                        TextInputAction.next,
-                    decoration:
-                        const InputDecoration(
-                      labelText:
-                          'Phone number',
+                    controller: phoneController,
+                    validator: validatePhone,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Phone number',
                       prefixIcon: Icon(
                         Icons.phone_outlined,
                       ),
-                      border:
-                          OutlineInputBorder(),
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
-                    controller:
-                        emailController,
-                    validator:
-                        validateEmail,
-                    keyboardType:
-                        TextInputType.emailAddress,
-                    textInputAction:
-                        TextInputAction.next,
-                    decoration:
-                        const InputDecoration(
-                      labelText:
-                          'Email address',
+                    controller: emailController,
+                    validator: validateEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Email address',
                       prefixIcon: Icon(
                         Icons.email_outlined,
                       ),
-                      border:
-                          OutlineInputBorder(),
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value:
-                        selectedRoleId.isEmpty
-                            ? null
-                            : selectedRoleId,
-                    decoration:
-                        const InputDecoration(
-                      labelText:
-                          'Staff role',
+                    value: selectedRoleId.isEmpty ? null : selectedRoleId,
+                    decoration: const InputDecoration(
+                      labelText: 'Staff role',
                       prefixIcon: Icon(
                         Icons.badge_outlined,
                       ),
-                      border:
-                          OutlineInputBorder(),
+                      border: OutlineInputBorder(),
                     ),
                     items: roles.map(
                       (
-                        Map<String, dynamic>
-                            role,
+                        Map<String, dynamic> role,
                       ) {
-                        final String id =
-                            textValue(
+                        final String id = textValue(
                           role,
                           const [
                             '_id',
@@ -716,14 +613,11 @@ class _CreateStaffScreenState
                           ],
                         );
 
-                        return DropdownMenuItem<
-                            String>(
+                        return DropdownMenuItem<String>(
                           value: id,
                           child: Text(
                             roleLabel(role),
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         );
                       },
@@ -734,15 +628,13 @@ class _CreateStaffScreenState
                             String? value,
                           ) {
                             setState(() {
-                              selectedRoleId =
-                                  value ?? '';
+                              selectedRoleId = value ?? '';
                             });
                           },
                     validator: (
                       String? value,
                     ) {
-                      if (value == null ||
-                          value.isEmpty) {
+                      if (value == null || value.isEmpty) {
                         return 'Select a staff role';
                       }
 
@@ -751,99 +643,74 @@ class _CreateStaffScreenState
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
-                    controller:
-                        passwordController,
-                    validator:
-                        validatePassword,
-                    obscureText:
-                        hidePassword,
-                    textInputAction:
-                        TextInputAction.done,
+                    controller: passwordController,
+                    validator: validatePassword,
+                    obscureText: hidePassword,
+                    textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) {
                       if (!isCreating) {
                         createStaff();
                       }
                     },
-                    decoration:
-                        InputDecoration(
-                      labelText:
-                          'Temporary password',
-                      prefixIcon:
-                          const Icon(
+                    decoration: InputDecoration(
+                      labelText: 'Temporary password',
+                      prefixIcon: const Icon(
                         Icons.lock_outline,
                       ),
-                      suffixIcon:
-                          IconButton(
-                        onPressed:
-                            isCreating
-                                ? null
-                                : () {
-                                    setState(
-                                      () {
-                                        hidePassword =
-                                            !hidePassword;
-                                      },
-                                    );
+                      suffixIcon: IconButton(
+                        onPressed: isCreating
+                            ? null
+                            : () {
+                                setState(
+                                  () {
+                                    hidePassword = !hidePassword;
                                   },
+                                );
+                              },
                         icon: Icon(
                           hidePassword
-                              ? Icons
-                                  .visibility_off_outlined
-                              : Icons
-                                  .visibility_outlined,
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                         ),
                       ),
-                      border:
-                          const OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 10),
                   const Text(
                     'Use at least 6 characters. The staff member must change this password after the first login.',
                     style: TextStyle(
-                      color:
-                          Color(0xFF6B7280),
+                      color: Color(0xFF6B7280),
                       height: 1.4,
                     ),
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
                     height: 56,
-                    child:
-                        FilledButton.icon(
-                      onPressed: isCreating
-                          ? null
-                          : createStaff,
-                      style:
-                          FilledButton.styleFrom(
-                        backgroundColor:
-                            primaryGreen,
+                    child: FilledButton.icon(
+                      onPressed: isCreating ? null : createStaff,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: primaryGreen,
                       ),
                       icon: isCreating
                           ? const SizedBox(
                               width: 22,
                               height: 22,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth:
-                                    2.5,
-                                color:
-                                    Colors.white,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
                               ),
                             )
                           : const Icon(
-                              Icons
-                                  .person_add_alt_1_rounded,
+                              Icons.person_add_alt_1_rounded,
                             ),
                       label: Text(
                         isCreating
                             ? 'Creating Staff...'
                             : 'Create Staff Account',
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
-                          fontWeight:
-                              FontWeight.w800,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),

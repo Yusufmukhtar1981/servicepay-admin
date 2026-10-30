@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin_api_configuration.dart';
+
 /// Read-only operational intelligence plus carefully scoped support actions.
 /// Financial mutations are deliberately not exposed by this client.
 class AdminStaffWorkspaceApi {
@@ -12,7 +14,7 @@ class AdminStaffWorkspaceApi {
         _baseUrl = baseUrl ?? defaultBaseUrl;
 
   static const String defaultBaseUrl =
-      'https://api.servicepay.ng/api/admin/staff-workspace';
+      '${AdminApiConfiguration.baseUrl}/admin/staff-workspace';
   final http.Client _client;
   final bool _ownsClient;
   final String _baseUrl;
@@ -90,13 +92,16 @@ class AdminStaffWorkspaceApi {
     Map<String, dynamic>? payload,
   }) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    String token = (prefs.getString('auth_token') ?? prefs.getString('token') ?? '')
-        .trim()
-        .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
+    String token =
+        (prefs.getString('auth_token') ?? prefs.getString('token') ?? '')
+            .trim()
+            .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
     if (token.isEmpty) {
-      throw Exception('Your login session was not found. Please sign in again.');
+      throw Exception(
+          'Your login session was not found. Please sign in again.');
     }
-    final Uri uri = Uri.parse('$_baseUrl/$path').replace(queryParameters: query);
+    final Uri uri =
+        Uri.parse('$_baseUrl/$path').replace(queryParameters: query);
     final Map<String, String> headers = {
       'Accept': 'application/json',
       'Authorization': 'Bearer $token',

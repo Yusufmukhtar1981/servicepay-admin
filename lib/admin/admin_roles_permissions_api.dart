@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin_api_configuration.dart';
+
 class AdminRolesPermissionsApi {
   AdminRolesPermissionsApi({
     http.Client? client,
-    this.baseUrl = 'https://api.servicepay.ng/api',
+    this.baseUrl = AdminApiConfiguration.baseUrl,
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
@@ -80,9 +82,12 @@ class AdminRolesPermissionsApi {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> loadStaff() async {
+  Future<List<Map<String, dynamic>>> loadStaff({String search = ''}) async {
+    final String query = search.trim().isEmpty
+        ? '?status=ALL'
+        : '?status=ALL&search=${Uri.encodeQueryComponent(search.trim())}';
     final Map<String, dynamic> result =
-        await _request('GET', '/staff-management/staff?status=ALL');
+        await _request('GET', '/staff-management/staff$query');
     return (result['staff'] as List? ?? const <dynamic>[])
         .whereType<Map>()
         .map((Map value) => Map<String, dynamic>.from(value))
@@ -119,6 +124,38 @@ class AdminRolesPermissionsApi {
         '/staff-management/staff/$staffId/role',
         body: <String, dynamic>{'roleId': roleId},
       );
+
+  Future<void> revokeStaffRole(
+    String staffId, {
+    required String reason,
+  }) =>
+      _request(
+        'PUT',
+        '/staff-management/staff/$staffId/role',
+        body: <String, dynamic>{'revoke': true, 'reason': reason},
+      );
+
+  Future<void> updateStaff(String staffId, Map<String, dynamic> body) =>
+      _request('PUT', '/staff-management/staff/$staffId', body: body);
+
+  Future<void> updateStaffStatus(String staffId, String status) => _request(
+        'PUT',
+        '/staff-management/staff/$staffId/status',
+        body: <String, dynamic>{'status': status},
+      );
+
+  Future<void> resetStaffPassword(
+    String staffId, {
+    required String temporaryPassword,
+  }) =>
+      _request(
+        'PUT',
+        '/staff-management/staff/$staffId/password',
+        body: <String, dynamic>{'temporaryPassword': temporaryPassword},
+      );
+
+  Future<void> createStaff(Map<String, dynamic> body) =>
+      _request('POST', '/staff-management/staff', body: body);
 }
 
 class AdminRolesApiException implements Exception {

@@ -154,11 +154,16 @@ class AdminMainNavigation extends StatefulWidget {
   /// canonical module name is returned here for permission checks.
   static List<String> visibleDestinationLabels(AdminAccess access) {
     final List<String> labels = <String>[];
-    if (access.isHeadOffice || access.permissions.contains(AdminPermissions.operationsWorkspaceView)) {
+    if (access.isHeadOffice ||
+        access.permissions.contains(AdminPermissions.operationsWorkspaceView)) {
       labels.add('Operations overview');
     }
-    if (access.isHeadOffice || access.permissions.contains(AdminPermissions.supportWorkspaceView)) {
+    if (access.isHeadOffice ||
+        access.permissions.contains(AdminPermissions.supportWorkspaceView)) {
       labels.add('Customer support desk');
+    }
+    if (access.isHeadOffice) {
+      labels.add('Staff Management');
     }
     if (access.has(AdminPermissions.logisticsView)) {
       labels.add('Interstate Logistics');
@@ -206,13 +211,15 @@ class AdminMainNavigation extends StatefulWidget {
     required String role,
     required Set<String> permissions,
   }) {
-    final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+    final AdminAccess access =
+        AdminAccess(role: role, permissions: permissions);
     if (access.isHeadOffice) return 0;
-    final String? preferred = access.permissions.contains(AdminPermissions.operationsWorkspaceView)
-        ? 'Operations overview'
-        : access.permissions.contains(AdminPermissions.supportWorkspaceView)
-            ? 'Customer support desk'
-            : null;
+    final String? preferred =
+        access.permissions.contains(AdminPermissions.operationsWorkspaceView)
+            ? 'Operations overview'
+            : access.permissions.contains(AdminPermissions.supportWorkspaceView)
+                ? 'Customer support desk'
+                : null;
     if (preferred == null) return 0;
     final int index = labels.indexOf(preferred);
     return index < 0 ? 0 : index;
@@ -334,7 +341,8 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice || permissions.contains(AdminPermissions.operationsWorkspaceView)) {
+    if (isHeadOffice ||
+        permissions.contains(AdminPermissions.operationsWorkspaceView)) {
       addNavigationPage(
         page: const OperationsManagerDashboard(),
         icon: Icons.monitor_heart_outlined,
@@ -343,12 +351,22 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (isHeadOffice || permissions.contains(AdminPermissions.supportWorkspaceView)) {
+    if (isHeadOffice ||
+        permissions.contains(AdminPermissions.supportWorkspaceView)) {
       addNavigationPage(
         page: const CustomerSupportDashboard(),
         icon: Icons.manage_search_outlined,
         activeIcon: Icons.manage_search_rounded,
         label: 'Customer support desk',
+      );
+    }
+
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: StaffManagementScreen(role: adminRole),
+        icon: Icons.groups_outlined,
+        activeIcon: Icons.groups_rounded,
+        label: 'Staff Management',
       );
     }
 
@@ -876,24 +894,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * STAFF
      * =====================================================
      */
-    if (isHeadOffice ||
-        hasAnyPermission(const <String>[
-          'staff.view',
-          'staff.create',
-          'staff.update',
-          'staff.suspend',
-          'roles.view',
-          'roles.create',
-          'roles.update',
-        ])) {
-      addNavigationPage(
-        page: StaffManagementScreen(role: adminRole),
-        icon: Icons.groups_outlined,
-        activeIcon: Icons.groups_rounded,
-        label: 'Staff',
-      );
-    }
-
     if (isHeadOffice || hasPermission('roles.view')) {
       addNavigationPage(
         page: AdminRolesPermissionsScreen(
@@ -1018,7 +1018,9 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
         configureNavigation();
         currentIndex = AdminMainNavigation.preferredWorkspaceIndex(
-          labels: items.map((BottomNavigationBarItem item) => item.label ?? '').toList(),
+          labels: items
+              .map((BottomNavigationBarItem item) => item.label ?? '')
+              .toList(),
           role: adminRole,
           permissions: permissions,
         );

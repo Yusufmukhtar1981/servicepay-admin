@@ -74,8 +74,7 @@ class _AdminRolesPermissionsScreenState
     if (confirmed != true || !mounted || !access.isHeadOffice) return;
     setState(() => provisioningWorkspaceRoles = true);
     try {
-      final Map<String, dynamic> response =
-          await workspaceApi.provisionRoles();
+      final Map<String, dynamic> response = await workspaceApi.provisionRoles();
       final dynamic data = response['data'];
       final dynamic roles = data is Map ? data['roles'] : null;
       final String detail = roles is List && roles.isNotEmpty
@@ -348,7 +347,7 @@ class _AdminRolesPermissionsScreenState
     }
     await showDialog<void>(
       context: context,
-      builder: (_) => _StaffHistoryDialog(
+      builder: (_) => StaffHistoryDialog(
         api: workspaceApi,
         staffId: staffId,
         staffName: person['fullName']?.toString() ?? 'Staff history',
@@ -364,9 +363,8 @@ class _AdminRolesPermissionsScreenState
         actions: <Widget>[
           if (access.isHeadOffice)
             TextButton.icon(
-              onPressed: provisioningWorkspaceRoles
-                  ? null
-                  : _provisionWorkspaceRoles,
+              onPressed:
+                  provisioningWorkspaceRoles ? null : _provisionWorkspaceRoles,
               icon: provisioningWorkspaceRoles
                   ? const SizedBox(
                       width: 16,
@@ -455,8 +453,9 @@ class _AdminRolesPermissionsScreenState
   }
 }
 
-class _StaffHistoryDialog extends StatefulWidget {
-  const _StaffHistoryDialog({
+class StaffHistoryDialog extends StatefulWidget {
+  const StaffHistoryDialog({
+    super.key,
     required this.api,
     required this.staffId,
     required this.staffName,
@@ -467,10 +466,10 @@ class _StaffHistoryDialog extends StatefulWidget {
   final String staffName;
 
   @override
-  State<_StaffHistoryDialog> createState() => _StaffHistoryDialogState();
+  State<StaffHistoryDialog> createState() => _StaffHistoryDialogState();
 }
 
-class _StaffHistoryDialogState extends State<_StaffHistoryDialog> {
+class _StaffHistoryDialogState extends State<StaffHistoryDialog> {
   bool _loading = true;
   String _error = '';
   Map<String, dynamic> _data = <String, dynamic>{};
@@ -492,7 +491,8 @@ class _StaffHistoryDialogState extends State<_StaffHistoryDialog> {
       final dynamic raw = response['data'];
       if (!mounted) return;
       setState(() {
-        _data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+        _data =
+            raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
       });
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
@@ -561,10 +561,9 @@ class _StaffHistoryDialogState extends State<_StaffHistoryDialog> {
     final double height = MediaQuery.sizeOf(context).height > 850
         ? 640
         : MediaQuery.sizeOf(context).height * .72;
-    final Map<String, dynamic> staff =
-        _data['staff'] is Map
-            ? Map<String, dynamic>.from(_data['staff'])
-            : <String, dynamic>{};
+    final Map<String, dynamic> staff = _data['staff'] is Map
+        ? Map<String, dynamic>.from(_data['staff'])
+        : <String, dynamic>{};
     return AlertDialog(
       title: Text('${staff['fullName'] ?? widget.staffName} · History'),
       content: SizedBox(
@@ -607,7 +606,8 @@ class _StaffHistoryDialogState extends State<_StaffHistoryDialog> {
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.badge_outlined),
                         title: Text('${staff['fullName'] ?? widget.staffName}'),
-                        subtitle: Text('Account status: ${staff['status'] ?? 'Unavailable'}'),
+                        subtitle: Text(
+                            'Account status: ${staff['status'] ?? 'Unavailable'}'),
                       ),
                       _historySection(
                         'Login history',
@@ -615,7 +615,8 @@ class _StaffHistoryDialogState extends State<_StaffHistoryDialog> {
                         (entry) => ListTile(
                           dense: true,
                           leading: const Icon(Icons.login_outlined),
-                          title: Text('${entry['outcome'] ?? 'Outcome unavailable'}'),
+                          title: Text(
+                              '${entry['outcome'] ?? 'Outcome unavailable'}'),
                           subtitle: Text(
                             '${entry['eventType'] ?? 'Login event'} · ${_date(entry['createdAt'])}',
                           ),

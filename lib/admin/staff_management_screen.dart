@@ -1,10 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'create_staff_screen.dart';
+import 'admin_permissions.dart';
+import 'admin_roles_permissions_api.dart';
+import 'admin_staff_workspace_api.dart';
+import 'admin_roles_permissions_screen.dart' show StaffHistoryDialog;
 import 'phase1_operations_api.dart';
 import 'roles_permissions_screen.dart';
 
@@ -12,10 +12,14 @@ class StaffManagementScreen extends StatefulWidget {
   const StaffManagementScreen({
     super.key,
     this.api,
+    this.staffApi,
+    this.workspaceApi,
     this.role = '',
   });
 
   final Phase1OperationsApi? api;
+  final AdminRolesPermissionsApi? staffApi;
+  final AdminStaffWorkspaceApi? workspaceApi;
   final String role;
 
   @override
@@ -23,8 +27,6 @@ class StaffManagementScreen extends StatefulWidget {
 }
 
 class _StaffManagementScreenState extends State<StaffManagementScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
-
   bool isLoading = true;
   bool isRefreshing = false;
   String errorMessage = '';
@@ -34,8 +36,19 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   List<Map<String, dynamic>> staff = [];
   late final Phase1OperationsApi operationsApi =
       widget.api ?? Phase1OperationsApi();
+  late final AdminRolesPermissionsApi staffApi =
+      widget.staffApi ?? AdminRolesPermissionsApi();
+  late final AdminStaffWorkspaceApi workspaceApi =
+      widget.workspaceApi ?? AdminStaffWorkspaceApi();
 
-  bool get isHeadOffice => widget.role.trim().toUpperCase() == 'HEAD_OFFICE';
+  bool get isHeadOffice =>
+      AdminAccess.normalizeRole(widget.role) == 'HEAD_OFFICE' ||
+      const <String>{
+        'ADMIN',
+        'SUPER_ADMIN',
+        'HEAD_OFFICE_ADMIN',
+        'SERVICEPAY_SUPER_ADMIN',
+      }.contains(AdminAccess.normalizeRole(widget.role));
 
   @override
   void initState() {
@@ -46,68 +59,25 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   @override
   void dispose() {
     searchController.dispose();
+    if (widget.workspaceApi == null) workspaceApi.close();
     super.dispose();
-  }
-
-  Future<String?> getToken() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    const List<String> keys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in keys) {
-      final String? value = prefs.getString(key);
-
-      if (value == null || value.trim().isEmpty) {
-        continue;
-      }
-
-      String token = value.trim();
-
-      if (token.toLowerCase().startsWith(
-            'bearer ',
-          )) {
-        token = token.substring(7).trim();
-      }
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    return null;
-  }
-
-  Map<String, dynamic> decodeResponse(
-    http.Response response,
-  ) {
-    try {
-      final dynamic decoded = jsonDecode(
-        response.body,
-      );
-
-      if (decoded is Map) {
-        return Map<String, dynamic>.from(
-          decoded,
-        );
-      }
-    } catch (_) {}
-
-    return {
-      'success': false,
-      'message': 'The server returned an invalid response.',
-    };
   }
 
   Future<void> loadStaff({
     bool refresh = false,
   }) async {
+    if (!isHeadOffice) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+          errorMessage =
+              'This account does not have access to Staff Management.';
+          staff = <Map<String, dynamic>>[];
+        });
+      }
+      return;
+    }
     if (refresh) {
       setState(() {
         isRefreshing = true;
@@ -119,55 +89,8 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     }
 
     try {
-      final String? token = await getToken();
-
-      if (token == null || token.isEmpty) {
-        throw Exception(
-          'Login session has expired.',
-        );
-      }
-
-      final String query = searchController.text.trim();
-
-      final Uri uri = Uri.parse(
-        '$baseUrl/staff-management/staff',
-      ).replace(
-        queryParameters: {
-          if (query.isNotEmpty) 'search': query,
-        },
-      );
-
-      final http.Response response = await http.get(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      final Map<String, dynamic> result = decodeResponse(response);
-
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300 ||
-          result['success'] != true) {
-        throw Exception(
-          result['message']?.toString() ?? 'Unable to load staff.',
-        );
-      }
-
-      final dynamic rawData =
-          result['staff'] ?? result['data'] ?? result['results'];
-
-      final List<Map<String, dynamic>> list = rawData is List
-          ? rawData
-              .whereType<Map>()
-              .map(
-                (Map item) => Map<String, dynamic>.from(
-                  item,
-                ),
-              )
-              .toList()
-          : <Map<String, dynamic>>[];
+      final List<Map<String, dynamic>> list =
+          await staffApi.loadStaff(search: searchController.text);
 
       if (!mounted) {
         return;
@@ -247,38 +170,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     }
 
     try {
-      final String? token = await getToken();
-
-      if (token == null || token.isEmpty) {
-        throw Exception(
-          'Login session has expired.',
-        );
-      }
-
-      final http.Response response = await http.put(
-        Uri.parse(
-          '$baseUrl/staff-management/staff/'
-          '$staffId/status',
-        ),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'status': newStatus,
-        }),
-      );
-
-      final Map<String, dynamic> result = decodeResponse(response);
-
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300 ||
-          result['success'] != true) {
-        throw Exception(
-          result['message']?.toString() ?? 'Unable to update staff status.',
-        );
-      }
+      await staffApi.updateStaffStatus(staffId, newStatus);
 
       if (!mounted) {
         return;
@@ -318,6 +210,263 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           ),
         );
     }
+  }
+
+  String staffAccountId(Map<String, dynamic> member) =>
+      textValue(member, const <String>['_id', 'id', 'staffId']);
+
+  Map<String, dynamic> assignedRole(Map<String, dynamic> member) {
+    final dynamic populated =
+        member['staffRoleId'] ?? member['staffRole'] ?? member['role'];
+    return mapValue(populated);
+  }
+
+  String assignedRoleId(Map<String, dynamic> member) {
+    final Map<String, dynamic> role = assignedRole(member);
+    final String populatedId = textValue(
+      role,
+      const <String>['_id', 'id', 'roleId'],
+    );
+    if (populatedId.isNotEmpty) return populatedId;
+    final dynamic rawRole = member['staffRoleId'] ?? member['staffRole'];
+    return rawRole is String
+        ? rawRole.trim()
+        : textValue(member, const <String>['roleId']);
+  }
+
+  bool hasActiveAssignedRole(Map<String, dynamic> member) {
+    final Map<String, dynamic> assigned = assignedRole(member);
+    final String roleId = assignedRoleId(member);
+    final String roleStatus =
+        textValue(assigned, const <String>['status'], fallback: 'ACTIVE')
+            .toUpperCase();
+    return roleId.isNotEmpty && roleStatus == 'ACTIVE';
+  }
+
+  Future<void> editStaff(Map<String, dynamic> member) async {
+    final String id = staffAccountId(member);
+    if (id.isEmpty) return;
+    final name = TextEditingController(
+        text: textValue(member, const ['fullName', 'name']));
+    final email =
+        TextEditingController(text: textValue(member, const ['email']));
+    final phone = TextEditingController(
+        text: textValue(member, const ['phone', 'phoneNumber']));
+    final Map<String, dynamic>? values = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit staff account'),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Full name')),
+            TextField(
+                controller: email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email')),
+            TextField(
+                controller: phone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Phone')),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, <String, dynamic>{
+                    'fullName': name.text.trim(),
+                    'email': email.text.trim(),
+                    'phone': phone.text.trim(),
+                  }),
+              child: const Text('Save changes')),
+        ],
+      ),
+    );
+    name.dispose();
+    email.dispose();
+    phone.dispose();
+    if (values == null) return;
+    try {
+      await staffApi.updateStaff(id, values);
+      _showMessage('Staff account updated.');
+      await loadStaff(refresh: true);
+    } catch (error) {
+      _showMessage('$error', failure: true);
+    }
+  }
+
+  Future<void> assignRole(Map<String, dynamic> member) async {
+    final String id = staffAccountId(member);
+    if (id.isEmpty) return;
+    try {
+      final List<Map<String, dynamic>> roles = await staffApi.loadRoles();
+      final activeRoles = roles
+          .where((r) =>
+              (r['status'] ?? 'ACTIVE').toString().toUpperCase() == 'ACTIVE')
+          .toList();
+      if (!mounted) return;
+      final String currentRoleId = assignedRoleId(member);
+      String selected = activeRoles.any(
+        (role) => (role['_id'] ?? role['id'] ?? '').toString() == currentRoleId,
+      )
+          ? currentRoleId
+          : '';
+      final String? roleId = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setState) => AlertDialog(
+                  title: const Text('Assign a role'),
+                  content: DropdownButtonFormField<String>(
+                    value: selected.isEmpty ? null : selected,
+                    items: activeRoles.map((role) {
+                      final roleId =
+                          (role['_id'] ?? role['id'] ?? '').toString();
+                      return DropdownMenuItem(
+                          value: roleId,
+                          child: Text(
+                              (role['displayName'] ?? role['name'] ?? 'Role')
+                                  .toString()));
+                    }).toList(),
+                    onChanged: (value) =>
+                        setState(() => selected = value ?? ''),
+                    decoration: const InputDecoration(
+                        labelText: 'Existing active role'),
+                  ),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: selected.isEmpty
+                            ? null
+                            : () => Navigator.pop(dialogContext, selected),
+                        child: const Text('Assign')),
+                  ],
+                )),
+      );
+      if (roleId == null) return;
+      await staffApi.assignStaffRole(id, roleId);
+      _showMessage('Role assigned.');
+      await loadStaff(refresh: true);
+    } catch (error) {
+      _showMessage('$error', failure: true);
+    }
+  }
+
+  Future<void> revokeRole(Map<String, dynamic> member) async {
+    final String id = staffAccountId(member);
+    if (id.isEmpty) return;
+    final reason = TextEditingController();
+    final String? confirmedReason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Revoke assigned role?'),
+        content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                  'This suspends the account and revokes active sessions.'),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: reason,
+                  maxLines: 3,
+                  decoration:
+                      const InputDecoration(labelText: 'Reason (required)')),
+            ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => reason.text.trim().isEmpty
+                  ? null
+                  : Navigator.pop(dialogContext, reason.text.trim()),
+              child: const Text('Revoke role')),
+        ],
+      ),
+    );
+    reason.dispose();
+    if (confirmedReason == null) return;
+    try {
+      await staffApi.revokeStaffRole(id, reason: confirmedReason);
+      _showMessage('Role revoked; account suspended and sessions revoked.');
+      await loadStaff(refresh: true);
+    } catch (error) {
+      _showMessage('$error', failure: true);
+    }
+  }
+
+  Future<void> resetPassword(Map<String, dynamic> member) async {
+    final String id = staffAccountId(member);
+    if (id.isEmpty) return;
+    final password = TextEditingController();
+    String? temporaryPassword = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset password'),
+        content: TextField(
+          controller: password,
+          obscureText: true,
+          enableSuggestions: false,
+          autocorrect: false,
+          decoration: const InputDecoration(
+              labelText: 'Temporary password',
+              helperText:
+                  'Use a unique temporary password. It will not be shown again.'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => password.text.length < 8
+                  ? null
+                  : Navigator.pop(dialogContext, password.text),
+              child: const Text('Reset password')),
+        ],
+      ),
+    );
+    password.clear();
+    password.dispose();
+    if (temporaryPassword == null) return;
+    try {
+      await staffApi.resetStaffPassword(id,
+          temporaryPassword: temporaryPassword);
+      _showMessage(
+          'Password reset completed. Share the temporary password securely.');
+      temporaryPassword = null;
+    } catch (error) {
+      temporaryPassword = null;
+      _showMessage('$error', failure: true);
+    }
+  }
+
+  Future<void> showStaffHistory(Map<String, dynamic> member) async {
+    if (!isHeadOffice) return;
+    final id = staffAccountId(member);
+    if (id.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => StaffHistoryDialog(
+        api: workspaceApi,
+        staffId: id,
+        staffName: textValue(member, const ['fullName', 'name'],
+            fallback: 'Staff history'),
+      ),
+    );
+  }
+
+  void _showMessage(String message, {bool failure = false}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          content: Text(message),
+          backgroundColor: failure ? Colors.red.shade700 : null));
   }
 
   Future<void> showCreateZonalManagerDialog() async {
@@ -488,7 +637,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   Widget buildStaffCard(
     Map<String, dynamic> item,
   ) {
-    final Map<String, dynamic> role = mapValue(item['staffRole']);
+    final Map<String, dynamic> role = assignedRole(item);
 
     final String fullName = textValue(
       item,
@@ -649,24 +798,48 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                 'Phone: $phone',
               ),
             const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  updateStatus(
-                    item,
-                    active ? 'SUSPENDED' : 'ACTIVE',
-                  );
-                },
-                icon: Icon(
-                  active
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                TextButton.icon(
+                    onPressed: () => editStaff(item),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit')),
+                TextButton.icon(
+                    onPressed: () => assignRole(item),
+                    icon: const Icon(Icons.badge_outlined),
+                    label: const Text('Assign role')),
+                TextButton.icon(
+                    onPressed: () => revokeRole(item),
+                    icon: const Icon(Icons.person_remove_alt_1_outlined),
+                    label: const Text('Revoke role')),
+                TextButton.icon(
+                    onPressed: () => resetPassword(item),
+                    icon: const Icon(Icons.password_outlined),
+                    label: const Text('Reset password')),
+                TextButton.icon(
+                    onPressed: () => showStaffHistory(item),
+                    icon: const Icon(Icons.history),
+                    label: const Text('History')),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    if (!active && !hasActiveAssignedRole(item)) {
+                      _showMessage(
+                        'Assign a valid active role before activating this account.',
+                        failure: true,
+                      );
+                      return;
+                    }
+                    updateStatus(item, active ? 'SUSPENDED' : 'ACTIVE');
+                  },
+                  icon: Icon(active
                       ? Icons.pause_circle_outline
-                      : Icons.check_circle_outline,
+                      : Icons.check_circle_outline),
+                  label: Text(active ? 'Suspend' : 'Activate'),
                 ),
-                label: Text(
-                  active ? 'Suspend' : 'Activate',
-                ),
-              ),
+              ],
             ),
           ],
         ),
@@ -678,6 +851,20 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   Widget build(
     BuildContext context,
   ) {
+    if (!isHeadOffice) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Staff Management')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Access denied. Staff administration requires a Head Office session.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9F8),
       appBar: AppBar(
@@ -702,27 +889,29 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final bool? created = await Navigator.of(context).push<bool>(
-            MaterialPageRoute<bool>(
-              builder: (_) => const CreateStaffScreen(),
-            ),
-          );
+      floatingActionButton: isHeadOffice
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final bool? created = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute<bool>(
+                    builder: (_) => const CreateStaffScreen(),
+                  ),
+                );
 
-          if (created == true && mounted) {
-            await loadStaff(
-              refresh: true,
-            );
-          }
-        },
-        icon: const Icon(
-          Icons.person_add_alt_1_rounded,
-        ),
-        label: const Text(
-          'Create Staff',
-        ),
-      ),
+                if (created == true && mounted) {
+                  await loadStaff(
+                    refresh: true,
+                  );
+                }
+              },
+              icon: const Icon(
+                Icons.person_add_alt_1_rounded,
+              ),
+              label: const Text(
+                'Create Staff',
+              ),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: () => loadStaff(
           refresh: true,
@@ -730,26 +919,24 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
-            if (isHeadOffice) ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: showCreateZonalManagerDialog,
-                  icon: const Icon(Icons.hub_outlined),
-                  label: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4),
-                    child: Text(
-                      '+ Create Zonal Manager',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: showCreateZonalManagerDialog,
+                icon: const Icon(Icons.hub_outlined),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '+ Create Zonal Manager',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-            ],
+            ),
+            const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(

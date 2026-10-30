@@ -42,6 +42,8 @@ import 'admin_data_pricing_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_solar_screen.dart';
 import 'admin_customer_support_screen.dart';
+import 'admin_ai_support_center_screen.dart';
+import 'admin_staff_workspace_screens.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'admin_transaction_intelligence_screen.dart';
@@ -152,6 +154,12 @@ class AdminMainNavigation extends StatefulWidget {
   /// canonical module name is returned here for permission checks.
   static List<String> visibleDestinationLabels(AdminAccess access) {
     final List<String> labels = <String>[];
+    if (access.permissions.contains(AdminPermissions.operationsWorkspaceView)) {
+      labels.add('Operations overview');
+    }
+    if (access.permissions.contains(AdminPermissions.supportWorkspaceView)) {
+      labels.add('Customer support desk');
+    }
     if (access.has(AdminPermissions.logisticsView)) {
       labels.add('Interstate Logistics');
     }
@@ -190,6 +198,24 @@ class AdminMainNavigation extends StatefulWidget {
       labels.add('EduPay');
     }
     return labels;
+  }
+
+  @visibleForTesting
+  static int preferredWorkspaceIndex({
+    required List<String> labels,
+    required String role,
+    required Set<String> permissions,
+  }) {
+    final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+    if (access.isHeadOffice) return 0;
+    final String? preferred = access.permissions.contains(AdminPermissions.operationsWorkspaceView)
+        ? 'Operations overview'
+        : access.permissions.contains(AdminPermissions.supportWorkspaceView)
+            ? 'Customer support desk'
+            : null;
+    if (preferred == null) return 0;
+    final int index = labels.indexOf(preferred);
+    return index < 0 ? 0 : index;
   }
 
   @override
@@ -305,6 +331,24 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    if (permissions.contains(AdminPermissions.operationsWorkspaceView)) {
+      addNavigationPage(
+        page: const OperationsManagerDashboard(),
+        icon: Icons.monitor_heart_outlined,
+        activeIcon: Icons.monitor_heart_rounded,
+        label: 'Operations overview',
+      );
+    }
+
+    if (permissions.contains(AdminPermissions.supportWorkspaceView)) {
+      addNavigationPage(
+        page: const CustomerSupportDashboard(),
+        icon: Icons.manage_search_outlined,
+        activeIcon: Icons.manage_search_rounded,
+        label: 'Customer support desk',
       );
     }
 
@@ -682,12 +726,26 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
      * SUPPORT / TICKETS
      * =====================================================
      */
-    if (isHeadOffice || hasPermission('support.view')) {
+    if (isHeadOffice ||
+        hasPermission('support.view') ||
+        hasPermission(AdminPermissions.operationsWorkspaceView) ||
+        hasPermission(AdminPermissions.supportWorkspaceView)) {
       addNavigationPage(
         page: const AdminCustomerSupportScreen(),
         icon: Icons.support_agent_outlined,
         activeIcon: Icons.support_agent_rounded,
         label: 'Support / Tickets',
+      );
+    }
+
+    if (isHeadOffice || hasPermission(AdminPermissions.supportView)) {
+      addNavigationPage(
+        page: AdminAiSupportCenterScreen(
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+        ),
+        icon: Icons.smart_toy_outlined,
+        activeIcon: Icons.smart_toy_rounded,
+        label: 'AI Support Center',
       );
     }
 
@@ -958,9 +1016,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
         permissions = normalizedPermissions;
 
-        currentIndex = 0;
-
         configureNavigation();
+        currentIndex = AdminMainNavigation.preferredWorkspaceIndex(
+          labels: items.map((BottomNavigationBarItem item) => item.label ?? '').toList(),
+          role: adminRole,
+          permissions: permissions,
+        );
 
         isLoading = false;
       });

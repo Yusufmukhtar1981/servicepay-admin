@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_api.dart';
+import 'admin_staff_workspace_api.dart';
 
 class AdminRolesPermissionsScreen extends StatefulWidget {
   const AdminRolesPermissionsScreen({
     super.key,
     this.api,
+    this.workspaceApi,
     this.access,
   });
 
   final AdminRolesPermissionsApi? api;
+  final AdminStaffWorkspaceApi? workspaceApi;
   final AdminAccess? access;
 
   @override
@@ -22,12 +25,15 @@ class _AdminRolesPermissionsScreenState
     extends State<AdminRolesPermissionsScreen> {
   late final AdminRolesPermissionsApi api =
       widget.api ?? AdminRolesPermissionsApi();
+  late final AdminStaffWorkspaceApi workspaceApi =
+      widget.workspaceApi ?? AdminStaffWorkspaceApi();
   AdminAccess access = const AdminAccess(role: '', permissions: <String>{});
   final TextEditingController searchController = TextEditingController();
   List<Map<String, dynamic>> roles = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> staff = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> permissions = <Map<String, dynamic>>[];
   bool loading = true;
+  bool provisioningWorkspaceRoles = false;
   String? error;
 
   @override
@@ -39,7 +45,54 @@ class _AdminRolesPermissionsScreenState
   @override
   void dispose() {
     searchController.dispose();
+    if (widget.workspaceApi == null) workspaceApi.close();
     super.dispose();
+  }
+
+  Future<void> _provisionWorkspaceRoles() async {
+    if (!access.isHeadOffice || provisioningWorkspaceRoles) return;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Provision workspace roles?'),
+        content: const Text(
+          'This requests the standard OPERATIONS_MANAGER and CUSTOMER_SUPPORT roles. '
+          'Existing role scopes and activation settings are preserved.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Provision roles'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || !access.isHeadOffice) return;
+    setState(() => provisioningWorkspaceRoles = true);
+    try {
+      final Map<String, dynamic> response =
+          await workspaceApi.provisionRoles();
+      final dynamic data = response['data'];
+      final dynamic roles = data is Map ? data['roles'] : null;
+      final String detail = roles is List && roles.isNotEmpty
+          ? ' ${roles.length} workspace role(s) returned.'
+          : '';
+      if (mounted) {
+        _message(
+          'Workspace role provisioning completed.$detail '
+          'Use Staff Management to create STAFF accounts and assign a role.',
+        );
+        await _load();
+      }
+    } catch (exception) {
+      if (mounted) _message(exception.toString(), failure: true);
+    } finally {
+      if (mounted) setState(() => provisioningWorkspaceRoles = false);
+    }
   }
 
   Future<void> _load() async {
@@ -250,6 +303,13 @@ class _AdminRolesPermissionsScreenState
                                 person['staffId']?.toString() ??
                                 '',
                           ),
+                          trailing: access.isHeadOffice
+                              ? IconButton(
+                                  tooltip: 'View login and activity history',
+                                  icon: const Icon(Icons.history),
+                                  onPressed: () => _showStaffHistory(person),
+                                )
+                              : null,
                         );
                       },
                     ),
@@ -264,12 +324,58 @@ class _AdminRolesPermissionsScreenState
     }
   }
 
+  String _staffHistoryId(Map<String, dynamic> person) {
+    for (final dynamic value in <dynamic>[
+      person['id'],
+      person['_id'],
+      person['staffId'],
+    ]) {
+      final String candidate = value?.toString().trim() ?? '';
+      if (candidate.isNotEmpty) return candidate;
+    }
+    return '';
+  }
+
+  Future<void> _showStaffHistory(Map<String, dynamic> person) async {
+    if (!access.isHeadOffice) return;
+    final String staffId = _staffHistoryId(person);
+    if (staffId.isEmpty) {
+      _message(
+        'Staff history is unavailable: no staff account ID was returned.',
+        failure: true,
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _StaffHistoryDialog(
+        api: workspaceApi,
+        staffId: staffId,
+        staffName: person['fullName']?.toString() ?? 'Staff history',
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Roles & Permissions'),
         actions: <Widget>[
+          if (access.isHeadOffice)
+            TextButton.icon(
+              onPressed: provisioningWorkspaceRoles
+                  ? null
+                  : _provisionWorkspaceRoles,
+              icon: provisioningWorkspaceRoles
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('Provision workspace roles'),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: loading ? null : _load,
@@ -345,6 +451,211 @@ class _AdminRolesPermissionsScreenState
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _StaffHistoryDialog extends StatefulWidget {
+  const _StaffHistoryDialog({
+    required this.api,
+    required this.staffId,
+    required this.staffName,
+  });
+
+  final AdminStaffWorkspaceApi api;
+  final String staffId;
+  final String staffName;
+
+  @override
+  State<_StaffHistoryDialog> createState() => _StaffHistoryDialogState();
+}
+
+class _StaffHistoryDialogState extends State<_StaffHistoryDialog> {
+  bool _loading = true;
+  String _error = '';
+  Map<String, dynamic> _data = <String, dynamic>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+    try {
+      final Map<String, dynamic> response =
+          await widget.api.staffHistory(widget.staffId);
+      final dynamic raw = response['data'];
+      if (!mounted) return;
+      setState(() {
+        _data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  List<Map<String, dynamic>> _items(String key) {
+    final dynamic raw = _data[key];
+    return raw is List
+        ? raw
+            .whereType<Map>()
+            .map((Map item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  String _date(dynamic value) {
+    final DateTime? parsed = DateTime.tryParse('$value')?.toLocal();
+    return parsed?.toString() ?? '$value';
+  }
+
+  String _safePath(dynamic value) {
+    final String raw = value?.toString() ?? '';
+    final Uri? parsed = Uri.tryParse(raw);
+    if (parsed == null) return raw.split('?').first.split('#').first;
+    return parsed.path.isNotEmpty
+        ? parsed.path
+        : raw.split('?').first.split('#').first;
+  }
+
+  Widget _historySection(
+    String title,
+    List<Map<String, dynamic>> entries,
+    Widget Function(Map<String, dynamic>) builder,
+  ) =>
+      Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      )),
+              if (entries.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Text('No history records.'),
+                )
+              else
+                ...entries.map(builder),
+            ],
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final double width = MediaQuery.sizeOf(context).width > 980
+        ? 900
+        : MediaQuery.sizeOf(context).width * .92;
+    final double height = MediaQuery.sizeOf(context).height > 850
+        ? 640
+        : MediaQuery.sizeOf(context).height * .72;
+    final Map<String, dynamic> staff =
+        _data['staff'] is Map
+            ? Map<String, dynamic>.from(_data['staff'])
+            : <String, dynamic>{};
+    return AlertDialog(
+      title: Text('${staff['fullName'] ?? widget.staffName} · History'),
+      content: SizedBox(
+        width: width,
+        height: height,
+        child: _loading
+            ? const Center(
+                child: SizedBox(
+                  width: 260,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      LinearProgressIndicator(),
+                      SizedBox(height: 12),
+                      Text('Loading staff history…'),
+                    ],
+                  ),
+                ),
+              )
+            : _error.isNotEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.lock_outline, size: 36),
+                        const SizedBox(height: 12),
+                        Text(_error, textAlign: TextAlign.center),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.badge_outlined),
+                        title: Text('${staff['fullName'] ?? widget.staffName}'),
+                        subtitle: Text('Account status: ${staff['status'] ?? 'Unavailable'}'),
+                      ),
+                      _historySection(
+                        'Login history',
+                        _items('logins'),
+                        (entry) => ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.login_outlined),
+                          title: Text('${entry['outcome'] ?? 'Outcome unavailable'}'),
+                          subtitle: Text(
+                            '${entry['eventType'] ?? 'Login event'} · ${_date(entry['createdAt'])}',
+                          ),
+                        ),
+                      ),
+                      _historySection(
+                        'Activity history',
+                        _items('activities'),
+                        (entry) => ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.history),
+                          title: Text('${entry['action'] ?? 'Activity'}'),
+                          subtitle: Text(
+                            '${entry['reason'] ?? 'No reason recorded'} · ${_date(entry['createdAt'])}',
+                          ),
+                        ),
+                      ),
+                      _historySection(
+                        'Admin access history',
+                        _items('access'),
+                        (entry) => ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.api_outlined),
+                          title: Text(
+                            '${entry['method'] ?? 'Request'} ${_safePath(entry['path'])}',
+                          ),
+                          subtitle: Text(
+                            'Status ${entry['statusCode'] ?? '—'} · ${_date(entry['createdAt'])}',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

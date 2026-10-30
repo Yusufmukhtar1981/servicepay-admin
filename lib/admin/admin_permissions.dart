@@ -44,6 +44,8 @@ abstract final class AdminPermissions {
   static const airtimeToCashView = 'airtime_to_cash.view';
   static const supportView = 'support.view';
   static const supportResolve = 'support.resolve';
+  static const operationsWorkspaceView = 'operations.workspace.view';
+  static const supportWorkspaceView = 'support.workspace.view';
   static const kycView = 'kyc.view';
   static const trustView = 'trust.view';
   static const notificationsView = 'notifications.view';

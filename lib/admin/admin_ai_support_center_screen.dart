@@ -70,6 +70,30 @@ class _AdminAiSupportCenterScreenState extends State<AdminAiSupportCenterScreen>
         }
         return;
       }
+      // Staff may inspect AI conversations and continue work through the
+      // ticket queue, but AI configuration and knowledge management are
+      // Head Office controls. Do not even request those protected resources.
+      if (!access.isHeadOffice) {
+        final Map<String, dynamic> conversations =
+            _nested(await _api.aiConversations(page: _page, limit: 20));
+        if (!mounted) return;
+        final dynamic rawItems = conversations['items'];
+        setState(() {
+          _access = access;
+          _conversations = rawItems is List
+              ? rawItems
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList()
+              : <Map<String, dynamic>>[];
+          _page = (conversations['page'] as num?)?.toInt() ?? _page;
+          _pages = (conversations['pages'] as num?)?.toInt() ?? 1;
+          _metrics = <String, dynamic>{};
+          _settings = <String, dynamic>{};
+          _articles = <Map<String, dynamic>>[];
+        });
+        return;
+      }
       final values = await Future.wait([
         _api.aiMetrics(),
         _api.aiSettings(),
@@ -332,15 +356,17 @@ class _AdminAiSupportCenterScreenState extends State<AdminAiSupportCenterScreen>
             label: const Text('Tickets'),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Overview & controls'),
-            Tab(text: 'Knowledge base'),
-            Tab(text: 'Conversations'),
-          ],
-        ),
+        bottom: _access.isHeadOffice
+            ? TabBar(
+                controller: _tabs,
+                isScrollable: true,
+                tabs: const [
+                  Tab(text: 'Overview & controls'),
+                  Tab(text: 'Knowledge base'),
+                  Tab(text: 'Conversations'),
+                ],
+              )
+            : null,
       ),
       body: Column(
         children: [
@@ -353,14 +379,16 @@ class _AdminAiSupportCenterScreenState extends State<AdminAiSupportCenterScreen>
               ],
             ),
           Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [
-                _overview(),
-                _knowledge(),
-                _conversationList(),
-              ],
-            ),
+            child: _access.isHeadOffice
+                ? TabBarView(
+                    controller: _tabs,
+                    children: [
+                      _overview(),
+                      _knowledge(),
+                      _conversationList(),
+                    ],
+                  )
+                : _conversationList(),
           ),
         ],
       ),

@@ -78,6 +78,8 @@ class _AdminCustomerSupportScreenState
       case 'WAITING_ON_CUSTOMER':
       case 'WAITING_FOR_CUSTOMER':
         return 'Waiting for customer';
+      case 'ESCALATED':
+        return 'Escalated';
       case 'REJECTED':
         return 'Closed';
       default:
@@ -162,6 +164,7 @@ class _AdminCustomerSupportScreenState
                         'IN_PROGRESS',
                         'IN_REVIEW',
                         'WAITING_ON_CUSTOMER',
+                        'ESCALATED',
                         'RESOLVED',
                         'CLOSED',
                       ],
@@ -526,6 +529,16 @@ class _DetailState extends State<_Detail> {
   @override
   Widget build(BuildContext context) {
     final x = ticket;
+    final String currentStatus = '${x?['status'] ?? 'OPEN'}';
+    final List<String> editableStatuses = <String>[
+      'OPEN',
+      'IN_PROGRESS',
+      'IN_REVIEW',
+      'WAITING_ON_CUSTOMER',
+      'RESOLVED',
+      'CLOSED',
+      if (currentStatus == 'ESCALATED') 'ESCALATED',
+    ];
     return Scaffold(
       appBar: AppBar(title: const Text('Ticket details')),
       body: loading
@@ -573,33 +586,18 @@ class _DetailState extends State<_Detail> {
                   spacing: 8,
                   children: [
                     DropdownButton<String>(
-                      value:
-                          [
-                            'OPEN',
-                            'IN_PROGRESS',
-                            'IN_REVIEW',
-                            'WAITING_ON_CUSTOMER',
-                            'RESOLVED',
-                            'CLOSED',
-                          ].contains('${x['status'] ?? 'OPEN'}')
-                          ? '${x['status'] ?? 'OPEN'}'
+                      value: editableStatuses.contains(currentStatus)
+                          ? currentStatus
                           : 'OPEN',
-                      items:
-                          [
-                                'OPEN',
-                                'IN_PROGRESS',
-                                'IN_REVIEW',
-                                'WAITING_ON_CUSTOMER',
-                                'RESOLVED',
-                                'CLOSED',
-                              ]
-                              .map(
-                                (v) => DropdownMenuItem(
-                                  value: v,
-                                  child: Text(statusLabel(v)),
-                                ),
-                              )
-                              .toList(),
+                      items: editableStatuses
+                          .map(
+                            (v) => DropdownMenuItem(
+                              value: v,
+                              enabled: v != 'ESCALATED',
+                              child: Text(statusLabel(v)),
+                            ),
+                          )
+                          .toList(),
                       onChanged: busy
                           ? null
                           : (v) {

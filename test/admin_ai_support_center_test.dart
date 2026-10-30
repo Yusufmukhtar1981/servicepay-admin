@@ -86,7 +86,7 @@ void main() {
       home: AdminAiSupportCenterScreen(
         api: api,
         initialAccess: const AdminAccess(
-          role: 'STAFF',
+          role: 'HEAD_OFFICE',
           permissions: <String>{
             AdminPermissions.supportView,
             AdminPermissions.supportResolve,

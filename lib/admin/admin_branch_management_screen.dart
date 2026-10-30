@@ -1044,7 +1044,7 @@ class _AdminBranchManagementScreenState
     return fallback;
   }
 
-  String _branchLocation(Map<String, dynamic> branch) => <String>[
+  String _branchLocation(Map<String, dynamic> branch) => <dynamic>[
         branch['city'],
         branch['state'],
         branch['lga'],

@@ -73,6 +73,10 @@ class AdminBranchManagementApi {
       _request('GET', '$baseUrl/approvals',
           query: <String, String>{'branchId': branchId});
 
+  Future<Map<String, dynamic>> audit(String branchId) =>
+      _request('GET', '$baseUrl/audit',
+          query: <String, String>{'branchId': branchId});
+
   Future<Map<String, dynamic>> allApprovals() =>
       _request('GET', '$baseUrl/approvals');
 

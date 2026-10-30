@@ -13,11 +13,13 @@ class AdminBranchManagementScreen extends StatefulWidget {
     required this.canManage,
     required this.canViewReports,
     required this.canViewApprovals,
+    this.canViewFinance = false,
   });
 
   final bool canManage;
   final bool canViewReports;
   final bool canViewApprovals;
+  final bool canViewFinance;
 
   @override
   State<AdminBranchManagementScreen> createState() =>
@@ -79,6 +81,40 @@ class _AdminBranchManagementScreenState
   int _number(dynamic value) =>
       value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
+  Map<String, dynamic> _asMap(dynamic value) =>
+      value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+
+  bool _hasDeliveryModule(Map<String, dynamic> branch) {
+    final dynamic assigned = branch['assignedModules'];
+    if (assigned is! List) return false;
+    return assigned.any((dynamic value) {
+      final String module =
+          value is Map ? '${value['name'] ?? value['code'] ?? ''}' : '$value';
+      return module.trim().toUpperCase() == 'DELIVERY';
+    });
+  }
+
+  String _deliveryCount(dynamic value) =>
+      value == null ? 'Unavailable' : '$value';
+
+  String _deliveryPercent(dynamic value) =>
+      value is num ? '${value.toStringAsFixed(1)}%' : 'Unavailable';
+
+  String _deliveryMoney(dynamic value) {
+    if (value == null) return 'Unavailable';
+    final num? amount = value is num ? value : num.tryParse('$value');
+    if (amount == null) return 'Unavailable';
+    final String raw = amount == amount.roundToDouble()
+        ? amount.toInt().toString()
+        : amount.toStringAsFixed(2);
+    final List<String> parts = raw.split('.');
+    final String grouped = parts.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (Match match) => ',',
+    );
+    return '₦$grouped${parts.length > 1 ? '.${parts.last}' : ''}';
+  }
+
   List<Map<String, dynamic>> get _filteredBranches {
     final query = _searchController.text.trim().toLowerCase();
     return _branches.where((branch) {
@@ -89,6 +125,7 @@ class _AdminBranchManagementScreenState
           <dynamic>[
             branch['name'],
             branch['code'],
+            branch['city'],
             branch['state'],
             branch['lga'],
             branch['email'],
@@ -230,6 +267,21 @@ class _AdminBranchManagementScreenState
       // The list record still provides a useful detail view if the enrichment
       // request is temporarily unavailable.
     }
+    Map<String, dynamic> deliveryOperations = <String, dynamic>{};
+    bool deliveryReportUnavailable = false;
+    if (widget.canViewReports && _hasDeliveryModule(detail)) {
+      try {
+        final Map<String, dynamic> response = await _api.reports(branchId);
+        final dynamic reportPayload =
+            response['data'] ?? response['report'] ?? response;
+        final Map<String, dynamic> payload = _asMap(reportPayload);
+        final Map<String, dynamic> metrics = _asMap(payload['metrics']);
+        final Map<String, dynamic> deliveries = _asMap(metrics['deliveries']);
+        deliveryOperations = _asMap(deliveries['operations']);
+      } catch (_) {
+        deliveryReportUnavailable = true;
+      }
+    }
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -245,6 +297,41 @@ class _AdminBranchManagementScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _detailGrid(detail),
+                if (widget.canViewReports && _hasDeliveryModule(detail)) ...[
+                  const SizedBox(height: 18),
+                  if (deliveryOperations.isNotEmpty)
+                    _branchDeliverySummary(deliveryOperations)
+                  else
+                    Text(
+                      deliveryReportUnavailable
+                          ? 'Delivery report metrics are temporarily unavailable. Use View reports to retry.'
+                          : 'No delivery operations are reported for this branch.',
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                ],
+                const SizedBox(height: 18),
+                Text('Branch staff',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                if (detail['members'] is! List ||
+                    (detail['members'] as List).isEmpty)
+                  const Text('No staff members are assigned to this branch.')
+                else
+                  ...((detail['members'] as List)
+                          .whereType<Map>()
+                          .map((member) => Map<String, dynamic>.from(member)))
+                      .take(20)
+                      .map((member) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(_text(member['fullName'], 'Staff')),
+                            subtitle: Text(<String>[
+                              _text(member['jobTitle'], ''),
+                              _text(member['department'], ''),
+                            ].where((value) => value.isNotEmpty).join(' · ')),
+                            trailing: _statusPill(
+                                _text(member['status'], 'UNKNOWN')
+                                    .toUpperCase()),
+                          )),
                 const SizedBox(height: 18),
                 Text('Assigned modules',
                     style: Theme.of(context).textTheme.titleSmall),
@@ -287,6 +374,18 @@ class _AdminBranchManagementScreenState
                         },
                         icon: const Icon(Icons.fact_check_outlined),
                         label: const Text('View approvals'),
+                      ),
+                    if (widget.canViewApprovals)
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(dialogContext);
+                          _showCollection(
+                            title: 'Branch activity history',
+                            loader: () => _api.audit(branchId),
+                          );
+                        },
+                        icon: const Icon(Icons.history_outlined),
+                        label: const Text('Activity history'),
                       ),
                   ],
                 ),
@@ -332,6 +431,8 @@ class _AdminBranchManagementScreenState
       if (!mounted) return;
       final value = response['targets'] ??
           response['requests'] ??
+          response['logs'] ??
+          response['events'] ??
           response['transactions'] ??
           response['report'] ??
           response['data'] ??
@@ -384,7 +485,9 @@ class _AdminBranchManagementScreenState
       'code',
       'period',
       'type',
+      'action',
       'target',
+      'reason',
       'createdAt',
     ]) {
       if (map[key] != null && '$map[key]'.isNotEmpty) {
@@ -402,6 +505,8 @@ class _AdminBranchManagementScreenState
         TextEditingController(text: existing?['code']?.toString() ?? '');
     final state =
         TextEditingController(text: existing?['state']?.toString() ?? '');
+    final city =
+        TextEditingController(text: existing?['city']?.toString() ?? '');
     final lga = TextEditingController(text: existing?['lga']?.toString() ?? '');
     final address =
         TextEditingController(text: existing?['address']?.toString() ?? '');
@@ -501,6 +606,7 @@ class _AdminBranchManagementScreenState
                           SizedBox(
                               width: width,
                               child: field(state, 'State', required: true)),
+                          SizedBox(width: width, child: field(city, 'City')),
                           SizedBox(
                               width: width,
                               child: field(lga, 'LGA', required: true)),
@@ -680,6 +786,7 @@ class _AdminBranchManagementScreenState
                   'name': name.text.trim(),
                   'code': normalizedCode,
                   'state': state.text.trim(),
+                  'city': city.text.trim(),
                   'lga': lga.text.trim(),
                   'address': address.text.trim(),
                   'phone': phone.text.trim(),
@@ -714,6 +821,7 @@ class _AdminBranchManagementScreenState
     name.dispose();
     code.dispose();
     state.dispose();
+    city.dispose();
     lga.dispose();
     address.dispose();
     phone.dispose();
@@ -767,6 +875,7 @@ class _AdminBranchManagementScreenState
   Widget _detailGrid(Map<String, dynamic> branch) {
     final rows = <String, String>{
       'Branch code': _text(branch['code']),
+      'City': _text(branch['city']),
       'State / LGA': '${_text(branch['state'])} / ${_text(branch['lga'])}',
       'Address': _text(branch['address']),
       'Phone': _text(branch['phone']),
@@ -800,6 +909,128 @@ class _AdminBranchManagementScreenState
     );
   }
 
+  Widget _branchDeliverySummary(Map<String, dynamic> operations) {
+    final Map<String, dynamic> financial = _asMap(operations['financial']);
+    final List<Widget> summaryRows = <Widget>[
+      _deliverySummaryRow('Orders', _deliveryCount(operations['total'])),
+      _deliverySummaryRow('Today', _deliveryCount(operations['today'])),
+      _deliverySummaryRow('Pending', _deliveryCount(operations['pending'])),
+      _deliverySummaryRow('Assigned', _deliveryCount(operations['assigned'])),
+      _deliverySummaryRow(
+          'In transit', _deliveryCount(operations['inTransit'])),
+      _deliverySummaryRow('Delivered', _deliveryCount(operations['delivered'])),
+      _deliverySummaryRow('Cancelled', _deliveryCount(operations['cancelled'])),
+      _deliverySummaryRow('Failed', _deliveryCount(operations['failed'])),
+      _deliverySummaryRow(
+          'Unclassified', _deliveryCount(operations['unclassified'])),
+      _deliverySummaryRow(
+          'Active riders', _deliveryCount(operations['activeRiders'])),
+      _deliverySummaryRow('Delivered performance',
+          _deliveryPercent(operations['deliveredPercent'])),
+      _deliverySummaryRow(
+          'Local workload', _deliveryCount(operations['localOrders'])),
+      _deliverySummaryRow('Interstate workload',
+          _deliveryCount(operations['interstateOrders'])),
+    ];
+    if (widget.canViewFinance) {
+      summaryRows.addAll(<Widget>[
+        const Divider(height: 20),
+        _deliverySummaryRow(
+            'Gross order value', _deliveryMoney(financial['grossOrderValue'])),
+        _deliverySummaryRow('Recorded paid delivery fees',
+            _deliveryMoney(financial['recordedPaidValue'])),
+        _deliverySummaryRow(
+            'Unpaid delivery fees', _deliveryMoney(financial['unpaidValue'])),
+        _deliverySummaryRow(
+            'Recorded refunds', _deliveryMoney(financial['refundedValue'])),
+        _deliverySummaryRow('Recorded rider commissions',
+            _deliveryMoney(financial['recordedRiderCommissions'])),
+        _deliverySummaryRow('Operational expenses',
+            _deliveryMoney(financial['operationalExpenses'])),
+        _deliverySummaryRow(
+            'Reconciled profit', _deliveryMoney(financial['reconciledProfit'])),
+        _deliverySummaryRow('Estimated net earnings',
+            _deliveryMoney(financial['estimatedNetEarnings'])),
+      ]);
+    }
+    final Map<String, dynamic> rawStatuses = _asMap(operations['rawStatuses']);
+    if (rawStatuses.isNotEmpty) {
+      summaryRows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            'Observed statuses: ${rawStatuses.entries.map((MapEntry<String, dynamic> item) => '${item.key} ${item.value}').join(' · ')}',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+          ),
+        ),
+      );
+    }
+    if (widget.canViewFinance) {
+      final List<String> limitations = financial['limitations'] is List
+          ? (financial['limitations'] as List)
+              .map((dynamic value) => '$value')
+              .toList()
+          : <String>[];
+      final String attribution = _text(financial['attribution'], '');
+      final String basis = _text(financial['basis'], '');
+      summaryRows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            <String>[
+              'Recorded paid fees are operational payment flags, not bank reconciliation or profit.',
+              'Interstate workload includes both hubs; fee totals are attributed to the origin branch only.',
+              if (basis.isNotEmpty) basis,
+              if (attribution.isNotEmpty) attribution,
+              ...limitations,
+            ].join(' '),
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F7F2),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD7E7DA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const Text(
+            'Delivery operations',
+            style: TextStyle(
+                color: _branchInk, fontWeight: FontWeight.w800, fontSize: 15),
+          ),
+          const SizedBox(height: 8),
+          ...summaryRows,
+        ],
+      ),
+    );
+  }
+
+  Widget _deliverySummaryRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+
   String _managerName(dynamic managerId) {
     if (managerId is Map) {
       return _text(managerId['fullName'] ?? managerId['name']);
@@ -812,6 +1043,15 @@ class _AdminBranchManagementScreenState
     if (value is List && value.isNotEmpty) return value.join(', ');
     return fallback;
   }
+
+  String _branchLocation(Map<String, dynamic> branch) => <String>[
+        branch['city'],
+        branch['state'],
+        branch['lga'],
+      ]
+          .map((value) => '$value'.trim())
+          .where((value) => value.isNotEmpty && value != 'null')
+          .join(' • ');
 
   Widget _statusPill(String status) {
     final color = status == 'ACTIVE'
@@ -900,7 +1140,9 @@ class _AdminBranchManagementScreenState
               ]),
               const SizedBox(height: 14),
               Text(
-                '${_text(branch['state'])} • ${_text(branch['lga'])}',
+                _branchLocation(branch).isEmpty
+                    ? 'Location not recorded'
+                    : _branchLocation(branch),
                 style: TextStyle(color: Colors.grey.shade700),
               ),
               const SizedBox(height: 4),

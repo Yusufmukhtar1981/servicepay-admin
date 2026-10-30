@@ -400,6 +400,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           canManage: true,
           canViewReports: true,
           canViewApprovals: true,
+          canViewFinance: true,
         ),
         icon: Icons.account_tree_outlined,
         activeIcon: Icons.account_tree,

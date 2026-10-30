@@ -129,7 +129,7 @@ void main() {
     final MockClient client = MockClient((http.Request request) async {
       expect(request.method, 'POST');
       expect(request.url.path,
-          '/api/branches/logistics/interstate/office-quote');
+          '/api/branch/logistics/interstate/office-quote');
       expect(request.headers['Authorization'], 'Bearer branch-token');
       return http.Response('{"quote":{"total":1200}}', 200);
     });

@@ -56,6 +56,7 @@ void main() {
       'name': 'Kano Branch',
       'code': 'SP-KANO-001',
       'state': 'Kano',
+      'city': 'Kano',
       'lga': 'Nassarawa',
       'address': 'ServicePay Office',
       'phone': '08000000000',
@@ -96,6 +97,68 @@ void main() {
     expect(requests[1].url.path, '/api/branches/branch-1/manager');
     expect(jsonDecode(requests[1].body),
         <String, dynamic>{'managerId': 'staff-1'});
+    api.close();
+  });
+
+  test('loads branch staff activity from the existing audit route', () async {
+    late http.Request request;
+    final api = AdminBranchManagementApi(
+      baseUrl: 'https://example.test/api/branches',
+      client: MockClient((value) async {
+        request = value;
+        return http.Response(
+            '{"success":true,"logs":[{"action":"BRANCH_STAFF_UPDATED"}]}', 200);
+      }),
+    );
+
+    await api.audit('branch-1');
+
+    expect(request.method, 'GET');
+    expect(request.url.path, '/api/branches/audit');
+    expect(request.url.queryParameters['branchId'], 'branch-1');
+    api.close();
+  });
+
+  test(
+      'loads branch-scoped delivery operations through the existing reports route',
+      () async {
+    late http.Request request;
+    final api = AdminBranchManagementApi(
+      baseUrl: 'https://example.test/api/branches',
+      client: MockClient((value) async {
+        request = value;
+        return http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'metrics': <String, dynamic>{
+                'deliveries': <String, dynamic>{
+                  'operations': <String, dynamic>{
+                    'total': 14,
+                    'delivered': 9,
+                    'financial': <String, dynamic>{
+                      'recordedPaidValue': 18250,
+                      'operationalExpenses': null,
+                      'reconciledProfit': null,
+                    },
+                  },
+                },
+              },
+            }),
+            200);
+      }),
+    );
+
+    final Map<String, dynamic> report = await api.reports('branch-7');
+
+    expect(request.method, 'GET');
+    expect(request.url.path, '/api/branches/reports');
+    expect(request.url.queryParameters['branchId'], 'branch-7');
+    final Map<String, dynamic> operations =
+        (((report['metrics'] as Map)['deliveries'] as Map)['operations'] as Map)
+            .cast<String, dynamic>();
+    expect(operations['total'], 14);
+    expect((operations['financial'] as Map)['recordedPaidValue'], 18250);
+    expect((operations['financial'] as Map)['operationalExpenses'], isNull);
     api.close();
   });
 

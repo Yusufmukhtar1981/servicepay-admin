@@ -46,7 +46,7 @@ class LogisticsApi {
   }
 
   String _officeBase(String scope) =>
-      '/${scope == 'branch' ? 'branches' : 'admin'}/logistics/interstate';
+      '/${scope == 'branch' ? 'branch' : 'admin'}/logistics/interstate';
 
   Future<List<Map<String, dynamic>>> officeRoutes(
       {String scope = 'admin'}) async {

@@ -147,7 +147,13 @@ bool canAccessCustomerLeaderboardNavigation({
 }
 
 class AdminMainNavigation extends StatefulWidget {
-  const AdminMainNavigation({super.key});
+  const AdminMainNavigation({
+    super.key,
+    @visibleForTesting this.pageOverrides = const <String, Widget>{},
+  });
+
+  @visibleForTesting
+  final Map<String, Widget> pageOverrides;
 
   /// Testable visibility projection for role-management and deep-link callers.
   /// The live destination keeps its established ServicePay label, while the
@@ -231,6 +237,7 @@ class AdminMainNavigation extends StatefulWidget {
 
 class _AdminMainNavigationState extends State<AdminMainNavigation> {
   int currentIndex = 0;
+  final Set<int> _visitedStaffPageIndices = <int>{};
 
   bool isLoading = true;
 
@@ -301,7 +308,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     required IconData activeIcon,
     required String label,
   }) {
-    pages.add(page);
+    pages.add(widget.pageOverrides[label] ?? page);
 
     items.add(
       BottomNavigationBarItem(
@@ -1025,6 +1032,11 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           role: adminRole,
           permissions: permissions,
         );
+        if (isStaff && pages.isNotEmpty) {
+          _visitedStaffPageIndices
+            ..clear()
+            ..add(currentIndex);
+        }
 
         isLoading = false;
       });
@@ -1112,7 +1124,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
             ),
         ],
       ),
-      body: IndexedStack(index: safeIndex, children: pages),
+      body: IndexedStack(
+        index: safeIndex,
+        children: pages.asMap().entries.map((MapEntry<int, Widget> entry) {
+          if (isStaff && !_visitedStaffPageIndices.contains(entry.key)) {
+            return const SizedBox.shrink();
+          }
+          return entry.value;
+        }).toList(),
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: LayoutBuilder(
@@ -1124,6 +1144,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
               setState(() {
                 currentIndex = index;
+                if (isStaff) _visitedStaffPageIndices.add(index);
               });
             }
 

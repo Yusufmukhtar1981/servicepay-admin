@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_control_center_screen.dart';
 import 'admin_permissions.dart';
+import 'admin_session_gate.dart';
 import 'admin_phone_financing_screen.dart';
 import 'login_screen.dart';
 import 'svp_management_screen.dart';
@@ -31,33 +32,54 @@ class ServicepayAdminApp extends StatelessWidget {
               (Uri.base.path.startsWith('/school') ||
                   Uri.base.queryParameters['entry'] == 'school')
           ? const SchoolSessionGate()
-          : const AdminLoginScreen(),
+          : const AdminSessionGate(),
       routes: <String, WidgetBuilder>{
         '/school': (_) => const SchoolSessionGate(),
-        '/edupay': (_) => const _EduPayRouteGate(),
-        '/svp': (_) => const _SvpRouteGate(),
-        '/staff-management': (_) => const _StaffManagementRouteGate(),
-        '/phone-financing': (_) => const _PhoneFinancingRouteGate(),
-        '/control-center/audit-logs': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'audit-logs'),
-        '/control-center/security-events': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'security-events'),
-        '/control-center/access-logs': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'access-logs'),
-        '/control-center/data-exports': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'data-exports'),
-        '/control-center/backups': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'backups'),
-        '/control-center/privacy-controls': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'privacy-controls'),
-        '/control-center/executive-dashboard': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'executive-dashboard'),
-        '/control-center/service-performance': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'service-performance'),
-        '/control-center/transaction-analytics': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'transaction-analytics'),
-        '/control-center/customer-analytics': (_) =>
-            const _ControlCenterRouteGate(moduleId: 'customer-analytics'),
+        '/edupay': (_) => const AdminSessionGate(
+              fallback: _EduPayRouteGate(),
+            ),
+        '/svp': (_) => const AdminSessionGate(
+              fallback: _SvpRouteGate(),
+            ),
+        '/staff-management': (_) => const AdminSessionGate(
+              fallback: _StaffManagementRouteGate(),
+            ),
+        '/phone-financing': (_) => const AdminSessionGate(
+              fallback: _PhoneFinancingRouteGate(),
+            ),
+        '/control-center/audit-logs': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'audit-logs'),
+            ),
+        '/control-center/security-events': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'security-events'),
+            ),
+        '/control-center/access-logs': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'access-logs'),
+            ),
+        '/control-center/data-exports': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'data-exports'),
+            ),
+        '/control-center/backups': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'backups'),
+            ),
+        '/control-center/privacy-controls': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'privacy-controls'),
+            ),
+        '/control-center/executive-dashboard': (_) => const AdminSessionGate(
+              fallback:
+                  _ControlCenterRouteGate(moduleId: 'executive-dashboard'),
+            ),
+        '/control-center/service-performance': (_) => const AdminSessionGate(
+              fallback:
+                  _ControlCenterRouteGate(moduleId: 'service-performance'),
+            ),
+        '/control-center/transaction-analytics': (_) => const AdminSessionGate(
+              fallback:
+                  _ControlCenterRouteGate(moduleId: 'transaction-analytics'),
+            ),
+        '/control-center/customer-analytics': (_) => const AdminSessionGate(
+              fallback: _ControlCenterRouteGate(moduleId: 'customer-analytics'),
+            ),
       },
     );
   }

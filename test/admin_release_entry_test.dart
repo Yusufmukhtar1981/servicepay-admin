@@ -10,7 +10,7 @@ void main() {
       (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     admin.main();
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byType(admin.ServicepayAdminApp), findsOneWidget);
     expect(find.byType(AdminLoginScreen), findsOneWidget);
     expect(find.byType(customer.LoginScreen), findsNothing);

@@ -7,9 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main_navigation.dart';
 import 'admin_permissions.dart';
+import 'admin_change_password_screen.dart';
 
 class AdminLoginScreen extends StatefulWidget {
-  const AdminLoginScreen({super.key});
+  const AdminLoginScreen({super.key, this.client});
+
+  final http.Client? client;
 
   @override
   State<AdminLoginScreen> createState() => _AdminLoginScreenState();
@@ -24,6 +27,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
   bool hidePassword = true;
   bool isLoading = false;
+  http.Client get _client => widget.client ?? http.Client();
 
   @override
   void dispose() {
@@ -42,9 +46,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           content: Text(message),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
-          backgroundColor: isError
-              ? Colors.red.shade700
-              : Colors.green.shade700,
+          backgroundColor:
+              isError ? Colors.red.shade700 : Colors.green.shade700,
         ),
       );
   }
@@ -92,8 +95,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
     final Map<String, dynamic> auth = mapFromDynamic(result['auth']);
 
-    final dynamic tokenValue =
-        result['token'] ??
+    final dynamic tokenValue = result['token'] ??
         result['accessToken'] ??
         result['access_token'] ??
         result['jwt'] ??
@@ -130,8 +132,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       return nestedUser;
     }
 
-    final bool dataLooksLikeUser =
-        data.containsKey('_id') ||
+    final bool dataLooksLikeUser = data.containsKey('_id') ||
         data.containsKey('id') ||
         data.containsKey('email') ||
         data.containsKey('phone') ||
@@ -160,6 +161,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       'user_role',
       'user_status',
       'wallet_balance',
+      'must_change_password',
+      'forced_password_user_context',
     ];
 
     for (final String key in loginKeys) {
@@ -234,7 +237,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     try {
       final Uri endpoint = Uri.parse('$baseUrl/auth/login');
 
-      final http.Response response = await http
+      final http.Response response = await _client
           .post(
             endpoint,
             headers: const {
@@ -348,10 +351,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       final List<String> permissions = rawPermissions is List
           ? rawPermissions
-                .map((dynamic item) => item.toString().trim())
-                .where((String item) => item.isNotEmpty)
-                .toSet()
-                .toList()
+              .map((dynamic item) => item.toString().trim())
+              .where((String item) => item.isNotEmpty)
+              .toSet()
+              .toList()
           : <String>[];
 
       await preferences.setString(
@@ -378,14 +381,19 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       await preferences.setStringList('staff_permissions', permissions);
 
-      await preferences.setBool(
-        'must_change_password',
-        user['mustChangePassword'] == true,
-      );
-
       await preferences.setBool('is_staff', user['isStaff'] == true);
 
       await AdminSessionStore.saveAccess(AdminAccess.fromUser(user));
+      final bool mustChangePassword = user['mustChangePassword'] == true;
+      final bool forcedFlagSaved = await preferences.setBool(
+        'must_change_password',
+        mustChangePassword,
+      );
+      if (!forcedFlagSaved ||
+          preferences.getBool('must_change_password') != mustChangePassword) {
+        throw Exception(
+            'Unable to save the password security state. Please sign in again.');
+      }
 
       if (!mounted) return;
 
@@ -393,7 +401,19 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const AdminMainNavigation()),
+        MaterialPageRoute(
+          builder: (_) => mustChangePassword
+              ? AdminChangePasswordScreen(
+                  onRelogin: () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const AdminLoginScreen()),
+                      (Route<dynamic> route) => false,
+                    );
+                  },
+                )
+              : const AdminMainNavigation(),
+        ),
         (Route<dynamic> route) => false,
       );
     } on TimeoutException {

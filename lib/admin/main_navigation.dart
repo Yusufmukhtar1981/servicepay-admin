@@ -57,6 +57,7 @@ import 'phase1_operations_screen.dart';
 import 'hierarchy_management_screen.dart';
 import 'provider_management_screen.dart';
 import 'revenue_account_screen.dart';
+import 'financial_control_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -128,6 +129,11 @@ bool canAccessRevenueAccountNavigation({
 }
 
 @visibleForTesting
+bool canAccessFinancialControlNavigation({required String role}) {
+  return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE';
+}
+
+@visibleForTesting
 bool canAccessCustomerWithdrawalsNavigation({
   required String role,
   required Set<String> permissions,
@@ -189,6 +195,9 @@ class AdminMainNavigation extends StatefulWidget {
       permissions: access.permissions,
     )) {
       labels.add('Revenue Account');
+    }
+    if (canAccessFinancialControlNavigation(role: access.role)) {
+      labels.add('FINANCIAL CONTROL CENTER');
     }
     if (access.has(AdminPermissions.referralsView)) {
       labels.add('Referral Monitoring');
@@ -457,6 +466,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_balance_wallet_outlined,
         activeIcon: Icons.account_balance_wallet_rounded,
         label: 'Revenue Account',
+      );
+    }
+
+    if (canAccessFinancialControlNavigation(role: adminRole)) {
+      addNavigationPage(
+        page: const FinancialControlScreen(),
+        icon: Icons.account_balance_outlined,
+        activeIcon: Icons.account_balance_rounded,
+        label: 'FINANCIAL CONTROL CENTER',
       );
     }
 

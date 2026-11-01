@@ -9,6 +9,48 @@ import 'package:servicepay_app/admin/financial_control_screen.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
 
 void main() {
+  testWidgets('failed filter reload clears previously displayed financial figures',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    int requests = 0;
+    final FinancialControlApi api = FinancialControlApi(
+      tokenLoader: () async => 'controlled-fixture-token',
+      client: MockClient((http.Request request) async {
+        requests++;
+        if (requests > 1) {
+          return http.Response(jsonEncode(<String, dynamic>{
+            'success': false, 'message': 'Controlled report unavailable'
+          }), 503);
+        }
+        return http.Response(jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{
+            'currency': 'NGN',
+            'period': <String, dynamic>{
+              'from': request.url.queryParameters['from'],
+              'to': request.url.queryParameters['to'],
+              'timezone': 'Africa/Lagos',
+            },
+            'totals': <String, dynamic>{'recordedRevenue': 987654},
+            'reconciliation': <String, dynamic>{'status': 'NOT RECONCILED'},
+          }
+        }), 200);
+      }),
+    );
+    await tester.pumpWidget(MaterialApp(home: FinancialControlScreen(api: api)));
+    await tester.pumpAndSettle();
+    expect(find.text('NGN 987,654'), findsOneWidget);
+    await tester.ensureVisible(find.text('Apply filters'));
+    await tester.tap(find.text('Apply filters'));
+    await tester.pumpAndSettle();
+    expect(find.text('Controlled report unavailable'), findsOneWidget);
+    expect(find.text('NGN 987,654'), findsNothing);
+    expect(requests, 2);
+  });
+
   group('Financial Control API', () {
     test('uses the configured endpoint, auth token and report filters',
         () async {

@@ -97,10 +97,12 @@ class _FinancialControlScreenState extends State<FinancialControlScreen>
     }
   }
 
+  int _expenseRequest = 0;
+
   Future<void> _loadSummary({bool refresh = false}) async {
     final int request = ++_request;
     setState(() {
-      _loading = !refresh && _summary == null;
+      _loading = _summary == null;
       _error = null;
     });
     try {
@@ -121,17 +123,18 @@ class _FinancialControlScreenState extends State<FinancialControlScreen>
   }
 
   Future<void> _loadExpenses() async {
+    final int request = ++_expenseRequest;
     setState(() => _expenseLoading = true);
     try {
       final Map<String, dynamic> result =
           await _api.expenses(filters: _filters);
-      if (!mounted) return;
+      if (!mounted || request != _expenseRequest) return;
       setState(() {
         _expenseResult = result;
         _expenseLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || request != _expenseRequest) return;
       setState(() {
         _error = _errorMessage(error);
         _expenseLoading = false;
@@ -144,7 +147,12 @@ class _FinancialControlScreenState extends State<FinancialControlScreen>
       : 'Financial data could not be loaded. Check your connection and retry.';
 
   Future<void> _applyFilters() async {
-    setState(() => _expenseResult = null);
+    ++_expenseRequest;
+    setState(() {
+      _summary = null;
+      _expenseResult = null;
+      _expenseLoading = false;
+    });
     await _loadSummary(refresh: true);
   }
 

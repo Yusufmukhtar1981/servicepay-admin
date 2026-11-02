@@ -95,9 +95,21 @@ class AccountSecurityRecoveryApi {
     required String action,
     required String reason,
     required String currentPassword,
+    String channel = 'EMAIL',
   }) =>
       _request(customerId, suffix: 'challenge', body: {
         'action': action,
+        'reason': reason,
+        'currentPassword': currentPassword,
+        'channel': channel,
+      });
+
+  Future<Map<String, dynamic>> requestContactVerification(
+    String customerId, {
+    required String reason,
+    required String currentPassword,
+  }) =>
+      _request(customerId, suffix: 'contact-verification', body: {
         'reason': reason,
         'currentPassword': currentPassword,
       });
@@ -149,6 +161,7 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
   String? _challengeId;
   String? _challengeExpiresAt;
   String _action = 'PASSWORD_RESET';
+  String _channel = 'EMAIL';
 
   final _reason = TextEditingController();
   final _currentPassword = TextEditingController();
@@ -223,7 +236,7 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
   }
 
   Future<void> _startChallenge() async {
-    if (!_canStart(_action) || _submitting) return;
+    if (!_canStart(_action, channel: _channel) || _submitting) return;
     setState(() {
       _submitting = true;
       _error = null;
@@ -235,14 +248,25 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
         action: _action,
         reason: _reason.text.trim(),
         currentPassword: _currentPassword.text,
+        channel: _channel,
       );
       if (!mounted) return;
       setState(() {
-        _challengeId = _text(result['challengeId'], '');
-        _challengeExpiresAt = _text(result['expiresAt'], '');
-        _message =
-            'A verification code was sent to the customer’s verified email. '
-            'The code is for the customer, not the Admin.';
+        if (_channel == 'PHONE') {
+          _challengeId = null;
+          _challengeExpiresAt = _text(result['expiresAt'], '');
+          final delivery = _deliveryLabel(result['deliveryStatus']);
+          _message = 'Phone OTP recovery was initiated. The customer must '
+              'verify privately using the secure recovery page. No code or '
+              'reset token is shown to Admin staff. '
+              'OTP expires ${_date(result['expiresAt'])}. $delivery';
+        } else {
+          _challengeId = _text(result['challengeId'], '');
+          _challengeExpiresAt = _text(result['expiresAt'], '');
+          _message =
+              'A verification code was sent to the customer’s verified email. '
+              'The code is for the customer, not the Admin.';
+        }
       });
       _currentPassword.clear();
       _otp.clear();
@@ -253,6 +277,43 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
       }
       _currentPassword.clear();
       _otp.clear();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _requestContactReview() async {
+    if (!_has('INITIATE_PASSWORD_RESET') ||
+        _currentPassword.text.isEmpty ||
+        _reason.text.trim().length < 10 ||
+        _submitting) {
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+      _message = null;
+    });
+    try {
+      final result = await _api.requestContactVerification(
+        widget.customerId,
+        reason: _reason.text.trim(),
+        currentPassword: _currentPassword.text,
+      );
+      if (!mounted) return;
+      final handoffMessage = _text(
+          result['message'],
+          'Identity verification is required before account recovery. '
+          'The request has been handed off for independent review.');
+      _currentPassword.clear();
+      await _refresh();
+      if (mounted) setState(() => _message = handoffMessage);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error =
+            'The identity-review request was not completed. Refresh and retry.');
+      }
+      _currentPassword.clear();
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -296,15 +357,31 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
     }
   }
 
-  bool _canStart(String action) {
+  Map<String, dynamic> _recoveryMethod(String channel) {
+    final methods = _map(_snapshot?['recoveryMethods']);
+    final configured = _map(methods[channel.toLowerCase()]);
+    if (configured.isNotEmpty) return configured;
+    // Legacy flat snapshots remain supported. The old channelAvailable flag
+    // describes EMAIL only and must never imply that SMS can be sent.
+    final customer = _map(_snapshot?['customer']);
+    return {
+      'verified': channel == 'EMAIL'
+          ? customer['emailVerified'] == true
+          : customer['phoneVerified'] == true,
+      'available': channel == 'EMAIL' && _snapshot?['channelAvailable'] == true,
+    };
+  }
+
+  bool _canStart(String action, {String channel = 'EMAIL'}) {
     if (action == 'UNLOCK' || !_has('VIEW_ACCOUNT_RECOVERY')) return false;
+    if (_snapshot?['contactVerificationRequired'] == true) return false;
     if (_snapshot == null ||
         _map(_snapshot?['recovery'])['status'] == 'PENDING') {
       return false;
     }
-    final customer = _map(_snapshot?['customer']);
-    if (customer['emailVerified'] != true ||
-        _snapshot?['channelAvailable'] != true) {
+    if (channel == 'PHONE' && action != 'PASSWORD_RESET') return false;
+    final method = _recoveryMethod(channel);
+    if (method['verified'] != true || method['available'] != true) {
       return false;
     }
     if (_currentPassword.text.isEmpty) return false;
@@ -325,6 +402,26 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
     if (date == null) return 'Not recorded';
     final local = date.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year} · ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _maskedPhone(Map<String, dynamic> customer) {
+    final supplied = _text(customer['phoneMasked'], '');
+    if (supplied.isNotEmpty) return supplied;
+    final phone = _text(customer['phone'], '');
+    if (phone.isEmpty) return 'Not recorded';
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length <= 4) return '****';
+    return '${List<String>.filled(digits.length - 4, '*').join()}'
+        '${digits.substring(digits.length - 4)}';
+  }
+
+  String _deliveryLabel(dynamic value) {
+    final status = _text(value, '').toUpperCase();
+    if (status == 'DELIVERED') return 'SMS delivery is confirmed.';
+    if (status == 'ACCEPTED' || status == 'QUEUED' || status == 'SENT') {
+      return 'The SMS request was accepted; delivery is not confirmed.';
+    }
+    return 'Delivery status is not confirmed.';
   }
 
   @override
@@ -371,7 +468,7 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
           icon: const Icon(Icons.refresh_rounded),
         ),
         child: const Text(
-          'Admin actions start a customer-only email verification. Never ask for or enter a customer password or PIN here.',
+          'Recovery is customer-led. Admin staff never receive a phone OTP, reset token, customer password or PIN.',
           style: TextStyle(color: Color(0xff526c67), height: 1.4),
         ),
       );
@@ -379,7 +476,8 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
   Widget _diagnostics() {
     final customer = _map(_snapshot?['customer']);
     final diagnostics = _map(_snapshot?['diagnostics']);
-    final emailVerified = customer['emailVerified'] == true;
+    final emailVerified = _recoveryMethod('EMAIL')['verified'] == true;
+    final phoneVerified = _recoveryMethod('PHONE')['verified'] == true;
     return _Panel(
       title: 'Verified customer & sign-in diagnostics',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -387,12 +485,13 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
             style: const TextStyle(
                 color: _ink, fontSize: 18, fontWeight: FontWeight.w800)),
         const SizedBox(height: 5),
-        Text('${_text(customer['email'])} · ${_text(customer['phone'])}',
+        Text('${_text(customer['email'])} · ${_maskedPhone(customer)}',
             style: const TextStyle(color: Color(0xff607773))),
         const SizedBox(height: 9),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _tag('Status: ${_text(customer['status'])}'),
           _tag(emailVerified ? 'Email verified' : 'Email not verified'),
+          _tag(phoneVerified ? 'Phone verified' : 'Phone not verified'),
           _tag(_snapshot?['channelAvailable'] == true
               ? 'Email channel available'
               : 'Email channel unavailable'),
@@ -428,7 +527,10 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
           _detail('Action', _text(recovery['action']).replaceAll('_', ' ')),
         if (_text(recovery['expiresAt'], '').isNotEmpty)
           _detail('Expires', _date(recovery['expiresAt'])),
+        if (_text(recovery['deliveryStatus'], '').isNotEmpty)
+          _detail('Delivery', _deliveryLabel(recovery['deliveryStatus'])),
         if (_challengeId == null) ...[
+          _recoveryReadiness(),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             key: const Key('recovery-action'),
@@ -452,9 +554,37 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
                 : (value) {
                     setState(() {
                       _action = value ?? 'PASSWORD_RESET';
+                      if (_action == 'PIN_RECOVERY' ||
+                          _action == 'FORCE_PASSWORD_CHANGE') {
+                        _channel = 'EMAIL';
+                      }
                       _currentPassword.clear();
                     });
                   },
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            key: const Key('recovery-channel'),
+            value: _channel,
+            decoration: const InputDecoration(
+              labelText: 'Recovery method',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem(
+                  value: 'EMAIL', child: Text('Email recovery')),
+              DropdownMenuItem(
+                value: 'PHONE',
+                enabled: _action == 'PASSWORD_RESET',
+                child: const Text('Phone OTP (password reset only)'),
+              ),
+            ],
+            onChanged: _submitting
+                ? null
+                : (value) => setState(() {
+                      _channel = value ?? 'EMAIL';
+                      _currentPassword.clear();
+                    }),
           ),
           if (_action == 'UNLOCK')
             Padding(
@@ -495,19 +625,34 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
             ),
           ),
           const SizedBox(height: 8),
-          FilledButton.icon(
-            key: const Key('recovery-send-challenge'),
-            onPressed: !_canStart(_action) ||
-                    _reason.text.trim().length < 5 ||
-                    _submitting
-                ? null
-                : _startChallenge,
-            style: FilledButton.styleFrom(
-                backgroundColor: _teal, foregroundColor: Colors.white),
-            icon: const Icon(Icons.mark_email_read_outlined),
-            label:
-                Text(_submitting ? 'Sending…' : 'Send customer verification'),
-          ),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.icon(
+              key: const Key('recovery-send-challenge'),
+              onPressed: _channel != 'EMAIL' ||
+                      !_canStart(_action, channel: 'EMAIL') ||
+                      _reason.text.trim().length < 10 ||
+                      _submitting
+                  ? null
+                  : _startChallenge,
+              style: FilledButton.styleFrom(
+                  backgroundColor: _teal, foregroundColor: Colors.white),
+              icon: const Icon(Icons.mark_email_read_outlined),
+              label: Text(_submitting ? 'Sending…' : 'Send Email Recovery'),
+            ),
+            FilledButton.icon(
+              key: const Key('recovery-send-phone-otp'),
+              onPressed: _channel != 'PHONE' ||
+                      !_canStart(_action, channel: 'PHONE') ||
+                      _reason.text.trim().length < 10 ||
+                      _submitting
+                  ? null
+                  : _startChallenge,
+              style: FilledButton.styleFrom(
+                  backgroundColor: _teal, foregroundColor: Colors.white),
+              icon: const Icon(Icons.sms_outlined),
+              label: Text(_submitting ? 'Sending…' : 'Send Phone OTP'),
+            ),
+          ]),
           if (!_has(_permissionFor(_action)) && _action != 'UNLOCK')
             const Padding(
               padding: EdgeInsets.only(top: 8),
@@ -516,12 +661,12 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
                   key: Key('recovery-permission-denied'),
                   style: TextStyle(color: Color(0xff708783), fontSize: 12)),
             ),
-          if (_snapshot?['channelAvailable'] != true ||
-              _map(_snapshot?['customer'])['emailVerified'] != true)
+          if (_recoveryMethod(_channel)['available'] != true ||
+              _recoveryMethod(_channel)['verified'] != true)
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text(
-                'Recovery requires an available email channel and a verified customer email.',
+                'This recovery method requires a verified customer contact and an available delivery channel.',
                 key: Key('recovery-email-unavailable'),
                 style: TextStyle(color: Color(0xff9b3d32), fontSize: 12),
               ),
@@ -586,6 +731,57 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
               child: const Text('Cancel'),
             ),
           ]),
+        ],
+      ]),
+    );
+  }
+
+  Widget _recoveryReadiness() {
+    final email = _recoveryMethod('EMAIL');
+    final phone = _recoveryMethod('PHONE');
+    final noVerifiedContacts =
+        email['verified'] != true && phone['verified'] != true;
+    final identityRequired =
+        noVerifiedContacts || _snapshot?['contactVerificationRequired'] == true;
+    return Container(
+      key: const Key('recovery-method-readiness'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: identityRequired ? const Color(0xfffff0ed) : _mint,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Recovery method readiness',
+            style: TextStyle(color: _ink, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        _detail('Email',
+            '${email['verified'] == true ? 'Verified' : 'Not verified'} · ${email['available'] == true ? 'Delivery available' : 'Delivery unavailable'}'),
+        _detail('Phone',
+            '${phone['verified'] == true ? 'Verified' : 'Not verified'} · ${phone['available'] == true ? 'SMS available' : 'SMS unavailable'}'),
+        if (identityRequired) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Customer identity verification is required before account recovery.',
+              key: Key('recovery-no-verified-contacts'),
+              style: TextStyle(color: Color(0xff8e382f), height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 6),
+          OutlinedButton(
+            key: const Key('recovery-request-identity-review'),
+            onPressed: _has('INITIATE_PASSWORD_RESET') &&
+                    _currentPassword.text.isNotEmpty &&
+                    _reason.text.trim().length >= 5 &&
+                    !_submitting
+                ? _requestContactReview
+                : null,
+            child: const Text('Request identity verification review'),
+          ),
+          const Text(
+            'This audited handoff does not verify a contact or unlock recovery.',
+            style: TextStyle(color: Color(0xff607773), fontSize: 12),
+          ),
         ],
       ]),
     );

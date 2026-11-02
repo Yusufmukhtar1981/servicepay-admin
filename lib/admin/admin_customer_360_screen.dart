@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_customer_360_api.dart';
 import 'admin_permissions.dart';
+import 'account_security_recovery.dart';
 import 'customer_profile_admin.dart';
 import 'customer_virtual_account_admin.dart';
 
@@ -411,6 +412,13 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
       _profileHeader(profile),
       if (_isCustomer(profile)) _profileActions(profile),
       const SizedBox(height: 14),
+      if (_isRecoveryHeadOffice() && _isCustomer(profile))
+        AccountSecurityRecovery(
+          key: ValueKey(
+              'account-recovery-${_selectedId ?? _profileCustomerId(profile)}'),
+          customerId: _selectedId ?? _profileCustomerId(profile),
+          access: _access,
+        ),
       if (_cap('financial'))
         _financial(_map(_customer!['financial']))
       else
@@ -436,6 +444,10 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
             'Transactions are not included for your current financial access.'),
     ]);
   }
+
+  bool _isRecoveryHeadOffice() =>
+      _access != null &&
+      AdminAccess.normalizeRole(_access!.role) == 'HEAD_OFFICE';
 
   bool _isCustomer(Map<String, dynamic> profile) {
     final role = _text(

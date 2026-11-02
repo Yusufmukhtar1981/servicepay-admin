@@ -71,7 +71,9 @@ class AccountSecurityRecoveryApi {
     } catch (_) {
       responseBody = {};
     }
-    final data = responseBody['data'];
+    // Recovery endpoints return the canonical flat contract. Accept an
+    // envelope too for compatibility, but never require a fictional wrapper.
+    final data = responseBody['data'] ?? responseBody;
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
         responseBody['success'] != true ||

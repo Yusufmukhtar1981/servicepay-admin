@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:servicepay_app/admin/account_security_recovery.dart';
 import 'package:servicepay_app/admin/admin_permissions.dart';
 
@@ -100,6 +104,64 @@ Widget _app({
     );
 
 void main() {
+  test('real HTTP client accepts the production flat recovery contracts',
+      () async {
+    SharedPreferences.setMockInitialValues(
+        {'auth_token': 'disposable-test-token'});
+    final calls = <String>[];
+    final client = MockClient((request) async {
+      expect(request.headers['Authorization'], 'Bearer disposable-test-token');
+      calls.add(request.url.path);
+      final payload = request.url.path.endsWith('/challenge')
+          ? {'success': true, 'challengeId': 'test-challenge', 'expiresAt': 123}
+          : request.url.path.endsWith('/verify')
+              ? {
+                  'success': true,
+                  'message': 'Customer-only recovery link sent.'
+                }
+              : {
+                  'success': true,
+                  'customer': {'id': 'cust-1'},
+                  'channelAvailable': false,
+                  'permissions': ['VIEW_ACCOUNT_RECOVERY'],
+                  'diagnostics': {'ordinaryLockSupported': false}
+                };
+      return http.Response(jsonEncode(payload), 200);
+    });
+    final api = AccountSecurityRecoveryApi(
+        client: client, baseUrl: 'https://example.invalid/api');
+    final snapshot = await api.load('cust-1');
+    expect(snapshot['channelAvailable'], false);
+    expect((snapshot['customer'] as Map)['id'], 'cust-1');
+    final challenge = await api.challenge('cust-1',
+        action: 'PASSWORD_RESET',
+        reason: 'Disposable HTTP contract verification',
+        currentPassword: 'test-only');
+    expect(challenge['challengeId'], 'test-challenge');
+    final verified = await api.verify('cust-1',
+        challengeId: 'test-challenge',
+        otp: '123456',
+        currentPassword: 'test-only');
+    expect(verified['message'], contains('Customer-only'));
+    expect(calls, [
+      '/api/admin/account-recovery/cust-1',
+      '/api/admin/account-recovery/cust-1/challenge',
+      '/api/admin/account-recovery/cust-1/verify'
+    ]);
+    client.close();
+  });
+
+  test('real HTTP client rejects unsuccessful recovery responses', () async {
+    SharedPreferences.setMockInitialValues(
+        {'auth_token': 'disposable-test-token'});
+    final client = MockClient((request) async => http.Response(
+        jsonEncode({'success': false, 'message': 'Not permitted.'}), 403));
+    final api = AccountSecurityRecoveryApi(
+        client: client, baseUrl: 'https://example.invalid/api');
+    await expectLater(api.load('cust-1'), throwsException);
+    client.close();
+  });
+
   testWidgets('shows loading state while security data is pending',
       (tester) async {
     final pending = Completer<Map<String, dynamic>>();

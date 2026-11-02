@@ -18,6 +18,9 @@ class _RecoveryApi extends AccountSecurityRecoveryApi {
     this.emailAvailable = true,
     this.phoneVerified = false,
     this.smsAvailable = false,
+    this.phonePinRecoveryAvailable = false,
+    this.recoveryStatus = 'NONE',
+    this.retryAfter,
   });
 
   final List<String> permissions;
@@ -31,6 +34,9 @@ class _RecoveryApi extends AccountSecurityRecoveryApi {
   final bool emailAvailable;
   final bool phoneVerified;
   final bool smsAvailable;
+  final bool phonePinRecoveryAvailable;
+  final String recoveryStatus;
+  final String? retryAfter;
   Map<String, dynamic>? challengePayload;
   Map<String, dynamic>? verifyPayload;
 
@@ -55,9 +61,16 @@ class _RecoveryApi extends AccountSecurityRecoveryApi {
         'channelAvailable': emailAvailable,
         'recoveryMethods': {
           'email': {'verified': emailVerified, 'available': emailAvailable},
-          'phone': {'verified': phoneVerified, 'available': smsAvailable},
+          'phone': {
+            'verified': phoneVerified,
+            'available': smsAvailable,
+            if (phonePinRecoveryAvailable) 'pinRecoveryAvailable': true,
+          },
         },
-        'recovery': {'status': 'NONE'},
+        'recovery': {
+          'status': recoveryStatus,
+          if (retryAfter != null) 'retryAfter': retryAfter,
+        },
         'history': [],
       };
 
@@ -90,6 +103,9 @@ class _RecoveryApi extends AccountSecurityRecoveryApi {
       'challengeId': 'challenge-1',
       'expiresAt': '2025-02-01T11:00:00Z',
       'message': 'A code was sent to the customer.',
+      if (channel == 'PHONE')
+        'customerEntryUrl':
+            'https://api.servicepay.ng/api/account-recovery/page#challenge=550e8400-e29b-41d4-a716-446655440000&action=PHONE_OTP',
     };
   }
 
@@ -153,7 +169,14 @@ void main() {
       expect(request.headers['Authorization'], 'Bearer disposable-test-token');
       calls.add(request.url.path);
       final payload = request.url.path.endsWith('/challenge')
-          ? {'success': true, 'challengeId': 'test-challenge', 'expiresAt': 123}
+          ? {
+              'success': true,
+              'challengeId': 'test-challenge',
+              'expiresAt': 123,
+              if (request.body.contains('"channel":"PHONE"'))
+                'customerEntryUrl':
+                    'https://api.servicepay.ng/api/account-recovery/page#challenge=550e8400-e29b-41d4-a716-446655440000&action=PHONE_OTP',
+            }
           : request.url.path.endsWith('/contact-verification')
               ? {
                   'success': true,
@@ -162,10 +185,18 @@ void main() {
                   'message': 'Identity verification required.'
                 }
               : request.url.path.endsWith('/verify')
-                  ? {
-                      'success': true,
-                      'message': 'Customer-only recovery link sent.'
-                    }
+                  ? jsonDecode(request.body)['otp'] == '654321'
+                      ? {
+                          'success': true,
+                          'action': 'PHONE_VERIFICATION',
+                          'verified': true,
+                          'requiresLogin': true,
+                        }
+                      : {
+                          'success': true,
+                          'action': 'PIN_RECOVERY',
+                          'token': List<String>.filled(64, 'a').join(),
+                        }
                   : {
                       'success': true,
                       'customer': {'id': 'cust-1'},
@@ -191,6 +222,8 @@ void main() {
         currentPassword: 'test-only',
         channel: 'PHONE');
     expect(phoneChallenge['challengeId'], 'test-challenge');
+    expect(phoneChallenge['customerEntryUrl'],
+        startsWith('https://api.servicepay.ng/api/account-recovery/page#'));
     final review = await api.requestContactVerification('cust-1',
         reason: 'Disposable identity review contract',
         currentPassword: 'test-only');
@@ -199,12 +232,21 @@ void main() {
         challengeId: 'test-challenge',
         otp: '123456',
         currentPassword: 'test-only');
-    expect(verified['message'], contains('Customer-only'));
+    expect(verified['action'], 'PIN_RECOVERY');
+    expect(verified['token'], hasLength(64));
+    final phoneVerified = await api.verify('cust-1',
+        challengeId: 'test-challenge',
+        otp: '654321',
+        currentPassword: 'test-only');
+    expect(phoneVerified['action'], 'PHONE_VERIFICATION');
+    expect(phoneVerified['verified'], true);
+    expect(phoneVerified['requiresLogin'], true);
     expect(calls, [
       '/api/admin/account-recovery/cust-1',
       '/api/admin/account-recovery/cust-1/challenge',
       '/api/admin/account-recovery/cust-1/challenge',
       '/api/admin/account-recovery/cust-1/contact-verification',
+      '/api/admin/account-recovery/cust-1/verify',
       '/api/admin/account-recovery/cust-1/verify'
     ]);
     client.close();
@@ -385,8 +427,7 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('recovery-channel')));
     await tester.tap(find.byKey(const Key('recovery-channel')));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.textContaining('Phone OTP (password reset only').last);
+    await tester.tap(find.text('Phone OTP').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('recovery-reason')),
         'Customer confirmed phone recovery request');
@@ -405,6 +446,12 @@ void main() {
     expect(
         find.byKey(const Key('recovery-admin-verify-password')), findsNothing);
     expect(find.textContaining('verify privately'), findsOneWidget);
+    expect(
+        find.byKey(const Key('recovery-customer-entry-url')), findsOneWidget);
+    expect(
+      find.byKey(const Key('recovery-phone-url-safety')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('phone verified does not imply SMS availability', (tester) async {
@@ -427,8 +474,7 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('recovery-channel')));
     await tester.tap(find.byKey(const Key('recovery-channel')));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.textContaining('Phone OTP (password reset only').last);
+    await tester.tap(find.text('Phone OTP').last);
     await tester.pumpAndSettle();
     expect(
       tester
@@ -438,6 +484,125 @@ void main() {
           .onPressed,
       isNull,
     );
+    expect(api.challengeCalls, 0);
+  });
+
+  testWidgets(
+      'phone PIN recovery is enabled only by explicit method flag and keeps OTP private',
+      (tester) async {
+    final api = _RecoveryApi(
+      permissions: const ['VIEW_ACCOUNT_RECOVERY', 'INITIATE_PIN_RECOVERY'],
+      phoneVerified: true,
+      smsAvailable: true,
+      phonePinRecoveryAvailable: true,
+    );
+    await tester.pumpWidget(_app(
+      api: api,
+      localPermissions: const {
+        'VIEW_ACCOUNT_RECOVERY',
+        'INITIATE_PIN_RECOVERY',
+      },
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('recovery-action')));
+    await tester.tap(find.byKey(const Key('recovery-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PIN recovery').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('recovery-channel')));
+    await tester.tap(find.byKey(const Key('recovery-channel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phone OTP').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('recovery-reason')),
+        'Customer requested phone-based PIN recovery');
+    await tester.enterText(
+        find.byKey(const Key('recovery-admin-current-password')), 'admin-pass');
+    await tester.pump();
+    await tester
+        .ensureVisible(find.byKey(const Key('recovery-send-phone-otp')));
+    await tester.tap(find.byKey(const Key('recovery-send-phone-otp')));
+    await tester.pumpAndSettle();
+
+    expect(api.challengePayload?['action'], 'PIN_RECOVERY');
+    expect(api.challengePayload?['channel'], 'PHONE');
+    expect(find.byKey(const Key('recovery-customer-otp')), findsNothing);
+    expect(
+        find.byKey(const Key('recovery-customer-entry-url')), findsOneWidget);
+  });
+
+  testWidgets('phone PIN recovery remains unavailable without explicit flag',
+      (tester) async {
+    final api = _RecoveryApi(
+      permissions: const ['VIEW_ACCOUNT_RECOVERY', 'INITIATE_PIN_RECOVERY'],
+      phoneVerified: true,
+      smsAvailable: true,
+    );
+    await tester.pumpWidget(_app(
+      api: api,
+      localPermissions: const {
+        'VIEW_ACCOUNT_RECOVERY',
+        'INITIATE_PIN_RECOVERY',
+      },
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('recovery-action')));
+    await tester.tap(find.byKey(const Key('recovery-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PIN recovery').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('recovery-channel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phone OTP').last);
+    await tester.pumpAndSettle();
+    expect(api.challengeCalls, 0);
+    expect(find.text('Email recovery'), findsWidgets);
+    expect(find.byKey(const Key('recovery-send-phone-otp')).hitTestable(),
+        findsNothing);
+  });
+
+  testWidgets(
+      'active provider lease explains retry time and blocks email and phone requests',
+      (tester) async {
+    final retryAfter = DateTime.now().add(const Duration(minutes: 7));
+    final api = _RecoveryApi(
+      permissions: const ['VIEW_ACCOUNT_RECOVERY', 'INITIATE_PASSWORD_RESET'],
+      phoneVerified: true,
+      smsAvailable: true,
+      recoveryStatus: 'AWAITING_PROVIDER_EXPIRY',
+      retryAfter: retryAfter.toUtc().toIso8601String(),
+    );
+    await tester.pumpWidget(_app(
+      api: api,
+      localPermissions: const {
+        'VIEW_ACCOUNT_RECOVERY',
+        'INITIATE_PASSWORD_RESET',
+      },
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recovery-provider-lease-notice')),
+        findsOneWidget);
+    expect(find.textContaining('five-minute code has expired'), findsOneWidget);
+    expect(find.textContaining('after '), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('recovery-reason')),
+        'Customer requested account recovery');
+    await tester.enterText(
+        find.byKey(const Key('recovery-admin-current-password')), 'admin-pass');
+    await tester.pump();
+    final emailButton = tester
+        .widget<FilledButton>(find.byKey(const Key('recovery-send-challenge')));
+    expect(emailButton.onPressed, isNull);
+
+    await tester.ensureVisible(find.byKey(const Key('recovery-channel')));
+    await tester.tap(find.byKey(const Key('recovery-channel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Phone OTP').last);
+    await tester.pumpAndSettle();
+    final phoneButton = tester
+        .widget<FilledButton>(find.byKey(const Key('recovery-send-phone-otp')));
+    expect(phoneButton.onPressed, isNull);
     expect(api.challengeCalls, 0);
   });
 

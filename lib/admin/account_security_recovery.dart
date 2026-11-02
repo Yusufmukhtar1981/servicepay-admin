@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -158,8 +160,11 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
   String? _message;
   bool _loading = true;
   bool _submitting = false;
+  Timer? _leaseTimer;
   String? _challengeId;
   String? _challengeExpiresAt;
+  String? _phoneEntryUrl;
+  bool _phoneChallengeStarted = false;
   String _action = 'PASSWORD_RESET';
   String _channel = 'EMAIL';
 
@@ -180,6 +185,7 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
     _reason.dispose();
     _currentPassword.dispose();
     _otp.dispose();
+    _leaseTimer?.cancel();
     if (widget.api == null) _api.dispose();
     super.dispose();
   }
@@ -222,7 +228,10 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
     });
     try {
       final result = await _api.load(widget.customerId);
-      if (mounted) setState(() => _snapshot = result);
+      if (mounted) {
+        setState(() => _snapshot = result);
+        _scheduleLeaseRefresh(result);
+      }
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -233,6 +242,18 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _scheduleLeaseRefresh(Map<String, dynamic> snapshot) {
+    _leaseTimer?.cancel();
+    final recovery = _map(snapshot['recovery']);
+    final retryAfter = DateTime.tryParse(_text(recovery['retryAfter'], ''));
+    if (retryAfter == null || !retryAfter.isAfter(DateTime.now())) return;
+    final delay = retryAfter.difference(DateTime.now()) +
+        const Duration(milliseconds: 50);
+    _leaseTimer = Timer(delay, () {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _startChallenge() async {
@@ -255,14 +276,24 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
         if (_channel == 'PHONE') {
           _challengeId = null;
           _challengeExpiresAt = _text(result['expiresAt'], '');
+          _phoneChallengeStarted = true;
+          _phoneEntryUrl =
+              _validatedCustomerEntryUrl(result['customerEntryUrl']);
           final delivery = _deliveryLabel(result['deliveryStatus']);
-          _message = 'Phone OTP recovery was initiated. The customer must '
-              'verify privately using the secure recovery page. No code or '
-              'reset token is shown to Admin staff. '
-              'OTP expires ${_date(result['expiresAt'])}. $delivery';
+          _message = _phoneEntryUrl == null
+              ? 'Phone OTP recovery was initiated, but a secure customer entry '
+                  'URL was not returned. Do not ask the customer to share a '
+                  'code; refresh and contact support. $delivery'
+              : 'Phone recovery was initiated. Give the customer the secure '
+                  'entry URL below so they can verify privately. The URL '
+                  'contains no OTP and does not authorize a password reset. '
+                  'No code or reset token is shown to Admin staff. '
+                  'OTP expires ${_date(result['expiresAt'])}. $delivery';
         } else {
           _challengeId = _text(result['challengeId'], '');
           _challengeExpiresAt = _text(result['expiresAt'], '');
+          _phoneChallengeStarted = false;
+          _phoneEntryUrl = null;
           _message =
               'A verification code was sent to the customer’s verified email. '
               'The code is for the customer, not the Admin.';
@@ -372,14 +403,56 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
     };
   }
 
+  String? _validatedCustomerEntryUrl(dynamic value) {
+    final raw = _text(value, '');
+    final uri = Uri.tryParse(raw);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'api.servicepay.ng' ||
+        uri.path != '/api/account-recovery/page' ||
+        uri.fragment.isEmpty) {
+      return null;
+    }
+    Map<String, String> fragment;
+    try {
+      fragment = Uri.splitQueryString(uri.fragment);
+    } on FormatException {
+      return null;
+    }
+    final challenge = fragment['challenge'] ?? '';
+    if (fragment.length != 2 ||
+        fragment['action'] != 'PHONE_OTP' ||
+        !RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          caseSensitive: false,
+        ).hasMatch(challenge)) {
+      return null;
+    }
+    return uri.toString();
+  }
+
+  bool _phonePinRecoveryAvailable() =>
+      _recoveryMethod('PHONE')['pinRecoveryAvailable'] == true;
+
+  bool _providerLeaseActive() {
+    final recovery = _map(_snapshot?['recovery']);
+    final retryAfter = DateTime.tryParse(_text(recovery['retryAfter'], ''));
+    return retryAfter != null && retryAfter.isAfter(DateTime.now());
+  }
+
   bool _canStart(String action, {String channel = 'EMAIL'}) {
     if (action == 'UNLOCK' || !_has('VIEW_ACCOUNT_RECOVERY')) return false;
     if (_snapshot?['contactVerificationRequired'] == true) return false;
     if (_snapshot == null ||
-        _map(_snapshot?['recovery'])['status'] == 'PENDING') {
+        _map(_snapshot?['recovery'])['status'] == 'PENDING' ||
+        _providerLeaseActive()) {
       return false;
     }
-    if (channel == 'PHONE' && action != 'PASSWORD_RESET') return false;
+    if (channel == 'PHONE' &&
+        action != 'PASSWORD_RESET' &&
+        !(action == 'PIN_RECOVERY' && _phonePinRecoveryAvailable())) {
+      return false;
+    }
     final method = _recoveryMethod(channel);
     if (method['verified'] != true || method['available'] != true) {
       return false;
@@ -523,13 +596,32 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
       title: 'Customer recovery workflow',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _detail('Current recovery', _text(recovery['status'], 'NONE')),
+        if (_providerLeaseActive())
+          Container(
+            key: const Key('recovery-provider-lease-notice'),
+            margin: const EdgeInsets.only(top: 8, bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xfffff4e5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xffead3a8)),
+            ),
+            child: Text(
+              'A fresh recovery request can be made after '
+              '${_date(recovery['retryAfter'])}. The customer’s five-minute '
+              'code has expired; this provider lease does not extend its '
+              'validity. Wait until the lease ends to avoid reusing a provider '
+              'code across recovery actions.',
+              style: const TextStyle(color: _ink, height: 1.45),
+            ),
+          ),
         if (_text(recovery['action'], '').isNotEmpty)
           _detail('Action', _text(recovery['action']).replaceAll('_', ' ')),
         if (_text(recovery['expiresAt'], '').isNotEmpty)
           _detail('Expires', _date(recovery['expiresAt'])),
         if (_text(recovery['deliveryStatus'], '').isNotEmpty)
           _detail('Delivery', _deliveryLabel(recovery['deliveryStatus'])),
-        if (_challengeId == null) ...[
+        if (_challengeId == null && !_phoneChallengeStarted) ...[
           _recoveryReadiness(),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -575,8 +667,9 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
                   value: 'EMAIL', child: Text('Email recovery')),
               DropdownMenuItem(
                 value: 'PHONE',
-                enabled: _action == 'PASSWORD_RESET',
-                child: const Text('Phone OTP (password reset only)'),
+                enabled: _action == 'PASSWORD_RESET' ||
+                    (_action == 'PIN_RECOVERY' && _phonePinRecoveryAvailable()),
+                child: const Text('Phone OTP'),
               ),
             ],
             onChanged: _submitting
@@ -671,6 +764,59 @@ class _AccountSecurityRecoveryState extends State<AccountSecurityRecovery> {
                 style: TextStyle(color: Color(0xff9b3d32), fontSize: 12),
               ),
             ),
+        ] else if (_phoneChallengeStarted) ...[
+          const SizedBox(height: 10),
+          const Text(
+            'Customer phone verification',
+            style: TextStyle(color: _ink, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Give this secure entry URL to the customer. It contains no OTP '
+            'and does not authorize a password reset. Do not collect or enter '
+            'the customer’s SMS code.',
+            key: Key('recovery-phone-url-safety'),
+            style: TextStyle(color: Color(0xff607773), height: 1.4),
+          ),
+          if (_phoneEntryUrl != null) ...[
+            const SizedBox(height: 8),
+            SelectableText(
+              _phoneEntryUrl!,
+              key: const Key('recovery-customer-entry-url'),
+              style: const TextStyle(color: _teal, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              key: const Key('recovery-copy-customer-entry-url'),
+              onPressed: _submitting
+                  ? null
+                  : () async {
+                      await Clipboard.setData(
+                          ClipboardData(text: _phoneEntryUrl!));
+                      if (mounted) {
+                        setState(() => _message =
+                            'Secure customer entry URL copied. It contains '
+                                'no OTP and does not authorize a password reset.');
+                      }
+                    },
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('Copy customer entry URL'),
+            ),
+          ],
+          if (_challengeExpiresAt != null && _challengeExpiresAt!.isNotEmpty)
+            Text('Expires ${_date(_challengeExpiresAt)}',
+                style: const TextStyle(color: Color(0xff708783), fontSize: 12)),
+          TextButton(
+            onPressed: _submitting
+                ? null
+                : () => setState(() {
+                      _phoneChallengeStarted = false;
+                      _phoneEntryUrl = null;
+                      _challengeExpiresAt = null;
+                      _currentPassword.clear();
+                    }),
+            child: const Text('Start another recovery request'),
+          ),
         ] else ...[
           const SizedBox(height: 10),
           Text('Verification code for the customer’s email',

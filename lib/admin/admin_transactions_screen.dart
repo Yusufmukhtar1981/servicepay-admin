@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin_manual_refunds_api.dart';
+
 @visibleForTesting
 List<MapEntry<String, String>> transactionProviderDetailFields(
   Map<String, dynamic> transaction,
@@ -37,20 +39,28 @@ List<MapEntry<String, String>> transactionProviderDetailFields(
 }
 
 class AdminTransactionsScreen extends StatefulWidget {
-  const AdminTransactionsScreen({super.key});
+  const AdminTransactionsScreen({super.key, this.refundsApi});
+
+  @visibleForTesting
+  final AdminManualRefundsApi? refundsApi;
 
   @override
   State<AdminTransactionsScreen> createState() =>
       _AdminTransactionsScreenState();
 }
 
-class _AdminTransactionsScreenState
-    extends State<AdminTransactionsScreen> {
-  static const String baseUrl =
-      'https://api.servicepay.ng/api';
+class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
+  late final AdminManualRefundsApi refundsApi =
+      widget.refundsApi ?? AdminManualRefundsApi();
+  bool showingRefundHistory = false;
+  bool historyLoading = false;
+  bool historyError = false;
+  String historyErrorMessage = '';
+  int historyPage = 1;
+  int historyPages = 1;
+  List<dynamic> refundHistoryItems = <dynamic>[];
 
-  final TextEditingController searchController =
-      TextEditingController();
+  final TextEditingController searchController = TextEditingController();
 
   bool isLoading = true;
   bool isRefreshing = false;
@@ -72,6 +82,7 @@ class _AdminTransactionsScreenState
     'PENDING',
     'FAILED',
     'REVERSED',
+    'REFUNDED',
   ];
 
   final List<String> services = const [
@@ -100,6 +111,7 @@ class _AdminTransactionsScreenState
   void dispose() {
     searchTimer?.cancel();
     searchController.dispose();
+    if (widget.refundsApi == null) refundsApi.close();
     super.dispose();
   }
 
@@ -163,12 +175,9 @@ class _AdminTransactionsScreenState
   }) {
     if (data is Map) {
       final dynamic message =
-          data['message'] ??
-          data['error'] ??
-          data['detail'];
+          data['message'] ?? data['error'] ?? data['detail'];
 
-      if (message != null &&
-          message.toString().trim().isNotEmpty) {
+      if (message != null && message.toString().trim().isNotEmpty) {
         return message.toString();
       }
     }
@@ -177,8 +186,7 @@ class _AdminTransactionsScreenState
   }
 
   Future<String?> getToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     return prefs.getString('auth_token') ??
         prefs.getString('token') ??
@@ -218,52 +226,47 @@ class _AdminTransactionsScreenState
         'limit': '20',
       };
 
-      final String search =
-          searchController.text.trim();
+      final String search = searchController.text.trim();
 
       if (search.isNotEmpty) {
         queryParameters['search'] = search;
       }
 
       if (selectedStatus != 'ALL') {
-        queryParameters['status'] =
-            selectedStatus;
+        queryParameters['status'] = selectedStatus;
       }
 
       if (selectedService != 'ALL') {
-        queryParameters['serviceType'] =
-            selectedService;
+        queryParameters['serviceType'] = selectedService;
       }
 
+      final String baseUrl = const String.fromEnvironment(
+        'SERVICEPAY_API_BASE_URL',
+        defaultValue: 'https://api.servicepay.ng/api',
+      ).replaceFirst(RegExp(r'/$'), '');
       final Uri uri = Uri.parse(
         '$baseUrl/admin/transactions',
       ).replace(
         queryParameters: queryParameters,
       );
 
-      final http.Response response =
-          await http
-              .get(
-                uri,
-                headers: {
-                  'Accept': 'application/json',
-                  'Authorization':
-                      'Bearer ${token.trim()}',
-                },
-              )
-              .timeout(
-                const Duration(seconds: 30),
-              );
+      final http.Response response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ${token.trim()}',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+      );
 
-      final dynamic decoded =
-          decodeResponse(response.body);
+      final dynamic decoded = decodeResponse(response.body);
 
       if (response.statusCode == 401) {
         throw Exception(
           extractMessage(
             decoded,
-            fallback:
-                'Your login session has expired.',
+            fallback: 'Your login session has expired.',
           ),
         );
       }
@@ -272,14 +275,12 @@ class _AdminTransactionsScreenState
         throw Exception(
           extractMessage(
             decoded,
-            fallback:
-                'You are not allowed to view transactions.',
+            fallback: 'You are not allowed to view transactions.',
           ),
         );
       }
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
           extractMessage(
             decoded,
@@ -289,27 +290,21 @@ class _AdminTransactionsScreenState
         );
       }
 
-      final Map<String, dynamic> body =
-          toMap(decoded);
+      final Map<String, dynamic> body = toMap(decoded);
 
-      final Map<String, dynamic> data =
-          toMap(body['data']);
+      final Map<String, dynamic> data = toMap(body['data']);
 
-      dynamic transactionList =
-          data['transactions'] ??
+      dynamic transactionList = data['transactions'] ??
           body['transactions'] ??
           data['items'] ??
           body['items'];
 
-      if (transactionList is! List &&
-          data['docs'] is List) {
+      if (transactionList is! List && data['docs'] is List) {
         transactionList = data['docs'];
       }
 
-      final Map<String, dynamic> pagination =
-          toMap(
-        data['pagination'] ??
-            body['pagination'],
+      final Map<String, dynamic> pagination = toMap(
+        data['pagination'] ?? body['pagination'],
       );
 
       final int serverCurrentPage = toInt(
@@ -328,17 +323,14 @@ class _AdminTransactionsScreenState
             1,
       );
 
-      final int serverTotalTransactions =
-          toInt(
+      final int serverTotalTransactions = toInt(
         pagination['total'] ??
             pagination['totalItems'] ??
             data['total'] ??
             data['totalTransactions'] ??
             body['total'] ??
             body['totalTransactions'] ??
-            (transactionList is List
-                ? transactionList.length
-                : 0),
+            (transactionList is List ? transactionList.length : 0),
       );
 
       if (!mounted) return;
@@ -351,17 +343,11 @@ class _AdminTransactionsScreenState
             : <dynamic>[];
 
         currentPage =
-            serverCurrentPage <= 0
-                ? requestedPage
-                : serverCurrentPage;
+            serverCurrentPage <= 0 ? requestedPage : serverCurrentPage;
 
-        totalPages =
-            serverTotalPages <= 0
-                ? 1
-                : serverTotalPages;
+        totalPages = serverTotalPages <= 0 ? 1 : serverTotalPages;
 
-        totalTransactions =
-            serverTotalTransactions;
+        totalTransactions = serverTotalTransactions;
 
         isLoading = false;
         isRefreshing = false;
@@ -420,14 +406,11 @@ class _AdminTransactionsScreenState
   }
 
   String formatMoney(double amount) {
-    final String fixed =
-        amount.toStringAsFixed(2);
+    final String fixed = amount.toStringAsFixed(2);
 
-    final List<String> parts =
-        fixed.split('.');
+    final List<String> parts = fixed.split('.');
 
-    final String whole =
-        parts.first.replaceAllMapped(
+    final String whole = parts.first.replaceAllMapped(
       RegExp(r'\B(?=(\d{3})+(?!\d))'),
       (_) => ',',
     );
@@ -436,8 +419,7 @@ class _AdminTransactionsScreenState
   }
 
   String formatDate(dynamic value) {
-    final DateTime? date =
-        DateTime.tryParse(
+    final DateTime? date = DateTime.tryParse(
       value?.toString() ?? '',
     );
 
@@ -445,36 +427,22 @@ class _AdminTransactionsScreenState
       return 'Unknown date';
     }
 
-    final DateTime localDate =
-        date.toLocal();
+    final DateTime localDate = date.toLocal();
 
-    final String day =
-        localDate.day
-            .toString()
-            .padLeft(2, '0');
+    final String day = localDate.day.toString().padLeft(2, '0');
 
-    final String month =
-        localDate.month
-            .toString()
-            .padLeft(2, '0');
+    final String month = localDate.month.toString().padLeft(2, '0');
 
-    final String hour =
-        localDate.hour
-            .toString()
-            .padLeft(2, '0');
+    final String hour = localDate.hour.toString().padLeft(2, '0');
 
-    final String minute =
-        localDate.minute
-            .toString()
-            .padLeft(2, '0');
+    final String minute = localDate.minute.toString().padLeft(2, '0');
 
     return '$day/$month/${localDate.year} '
         '$hour:$minute';
   }
 
   String formatText(dynamic value) {
-    final String text =
-        value?.toString().trim() ?? '';
+    final String text = value?.toString().trim() ?? '';
 
     if (text.isEmpty) {
       return 'Not available';
@@ -496,23 +464,18 @@ class _AdminTransactionsScreenState
   String transactionId(
     Map<String, dynamic> transaction,
   ) {
-    return (
-      transaction['_id'] ??
-      transaction['id'] ??
-      ''
-    ).toString();
+    return (transaction['_id'] ?? transaction['id'] ?? '').toString();
   }
 
   String transactionReference(
     Map<String, dynamic> transaction,
   ) {
-    return (
-      transaction['reference'] ??
-      transaction['transactionReference'] ??
-      transaction['paymentReference'] ??
-      transaction['ref'] ??
-      transactionId(transaction)
-    ).toString();
+    return (transaction['reference'] ??
+            transaction['transactionReference'] ??
+            transaction['paymentReference'] ??
+            transaction['ref'] ??
+            transactionId(transaction))
+        .toString();
   }
 
   Map<String, dynamic> transactionCustomer(
@@ -529,68 +492,57 @@ class _AdminTransactionsScreenState
   String customerName(
     Map<String, dynamic> transaction,
   ) {
-    final Map<String, dynamic> customer =
-        transactionCustomer(transaction);
+    final Map<String, dynamic> customer = transactionCustomer(transaction);
 
-    final String name = (
-      customer['fullName'] ??
-      customer['name'] ??
-      transaction['customerName'] ??
-      transaction['userName'] ??
-      'Unknown User'
-    ).toString();
+    final String name = (customer['fullName'] ??
+            customer['name'] ??
+            transaction['customerName'] ??
+            transaction['userName'] ??
+            'Unknown User')
+        .toString();
 
-    return name.trim().isEmpty
-        ? 'Unknown User'
-        : name;
+    return name.trim().isEmpty ? 'Unknown User' : name;
   }
 
   String customerPhone(
     Map<String, dynamic> transaction,
   ) {
-    final Map<String, dynamic> customer =
-        transactionCustomer(transaction);
+    final Map<String, dynamic> customer = transactionCustomer(transaction);
 
-    return (
-      customer['phone'] ??
-      transaction['phone'] ??
-      transaction['customerPhone'] ??
-      ''
-    ).toString();
+    return (customer['phone'] ??
+            transaction['phone'] ??
+            transaction['customerPhone'] ??
+            '')
+        .toString();
   }
 
   String customerEmail(
     Map<String, dynamic> transaction,
   ) {
-    final Map<String, dynamic> customer =
-        transactionCustomer(transaction);
+    final Map<String, dynamic> customer = transactionCustomer(transaction);
 
-    return (
-      customer['email'] ??
-      transaction['email'] ??
-      transaction['customerEmail'] ??
-      ''
-    ).toString();
+    return (customer['email'] ??
+            transaction['email'] ??
+            transaction['customerEmail'] ??
+            '')
+        .toString();
   }
 
   String transactionStatus(
     Map<String, dynamic> transaction,
   ) {
-    return (
-      transaction['status'] ??
-      'PENDING'
-    ).toString().toUpperCase();
+    return (transaction['status'] ?? 'PENDING').toString().toUpperCase();
   }
 
   String transactionService(
     Map<String, dynamic> transaction,
   ) {
-    return (
-      transaction['serviceType'] ??
-      transaction['service'] ??
-      transaction['type'] ??
-      'TRANSACTION'
-    ).toString().toUpperCase();
+    return (transaction['serviceType'] ??
+            transaction['service'] ??
+            transaction['type'] ??
+            'TRANSACTION')
+        .toString()
+        .toUpperCase();
   }
 
   double transactionAmount(
@@ -643,8 +595,7 @@ class _AdminTransactionsScreenState
         return Icons.school_rounded;
 
       case 'WALLET_FUNDING':
-        return Icons
-            .account_balance_wallet_rounded;
+        return Icons.account_balance_wallet_rounded;
 
       case 'TRANSFER':
       case 'BANK_TRANSFER':
@@ -704,23 +655,19 @@ class _AdminTransactionsScreenState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError
-              ? const Color(0xFFDC2626)
-              : const Color(0xFF059669),
-          behavior:
-              SnackBarBehavior.floating,
+          backgroundColor:
+              isError ? const Color(0xFFDC2626) : const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
         ),
       );
   }
 
-  void showTransactionDetails(
+  void showLegacyTransactionDetails(
     dynamic rawTransaction,
   ) {
-    final Map<String, dynamic> transaction =
-        toMap(rawTransaction);
+    final Map<String, dynamic> transaction = toMap(rawTransaction);
 
-    final String service =
-        transactionService(transaction);
+    final String service = transactionService(transaction);
 
     showDialog<void>(
       context: context,
@@ -728,24 +675,19 @@ class _AdminTransactionsScreenState
         BuildContext dialogContext,
       ) {
         return Dialog(
-          insetPadding:
-              const EdgeInsets.all(20),
+          insetPadding: const EdgeInsets.all(20),
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(24),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               maxWidth: 560,
             ),
             child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.all(22),
+              padding: const EdgeInsets.all(22),
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
@@ -753,37 +695,28 @@ class _AdminTransactionsScreenState
                         width: 52,
                         height: 52,
                         decoration: BoxDecoration(
-                          color:
-                              serviceColor(service)
-                                  .withValues(
+                          color: serviceColor(service).withValues(
                             alpha: 0.12,
                           ),
-                          borderRadius:
-                              BorderRadius.circular(
+                          borderRadius: BorderRadius.circular(
                             16,
                           ),
                         ),
                         child: Icon(
                           serviceIcon(service),
-                          color:
-                              serviceColor(service),
+                          color: serviceColor(service),
                         ),
                       ),
                       const SizedBox(width: 13),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               formatText(service),
-                              style:
-                                  const TextStyle(
+                              style: const TextStyle(
                                 fontSize: 18,
-                                fontWeight:
-                                    FontWeight
-                                        .w900,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                             const SizedBox(
@@ -793,8 +726,7 @@ class _AdminTransactionsScreenState
                               customerName(
                                 transaction,
                               ),
-                              style:
-                                  const TextStyle(
+                              style: const TextStyle(
                                 color: Color(
                                   0xFF64748B,
                                 ),
@@ -825,8 +757,7 @@ class _AdminTransactionsScreenState
                     style: const TextStyle(
                       color: Color(0xFF0F766E),
                       fontSize: 28,
-                      fontWeight:
-                          FontWeight.w900,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -865,11 +796,10 @@ class _AdminTransactionsScreenState
                   ),
                   detailRow(
                     'Description',
-                    (
-                      transaction['description'] ??
-                      transaction['narration'] ??
-                      ''
-                    ).toString(),
+                    (transaction['description'] ??
+                            transaction['narration'] ??
+                            '')
+                        .toString(),
                   ),
                   detailRow(
                     'Created',
@@ -896,20 +826,15 @@ class _AdminTransactionsScreenState
                           dialogContext,
                         );
                       },
-                      style:
-                          FilledButton.styleFrom(
-                        backgroundColor:
-                            const Color(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(
                           0xFF0F766E,
                         ),
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
+                        padding: const EdgeInsets.symmetric(
                           vertical: 14,
                         ),
                       ),
-                      child:
-                          const Text('Close'),
+                      child: const Text('Close'),
                     ),
                   ),
                 ],
@@ -921,22 +846,73 @@ class _AdminTransactionsScreenState
     );
   }
 
+  Future<void> showTransactionDetails(dynamic rawTransaction) async {
+    final Map<String, dynamic> summary = toMap(rawTransaction);
+    final String id = transactionId(summary);
+    if (id.isEmpty) {
+      showMessage('This transaction has no usable ID.', isError: true);
+      return;
+    }
+    try {
+      final Map<String, dynamic> response = await refundsApi.transaction(id);
+      final Map<String, dynamic> transaction = toMap(response['transaction']);
+      if (!mounted || transaction.isEmpty) return;
+      final ManualRefundIntent? pendingIntent = await refundsApi.loadIntent(id);
+      if (!mounted) return;
+      final bool? completed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) => ManualRefundDialog(
+          transaction: transaction,
+          canExecute: response['canExecute'] == true,
+          initialReason: pendingIntent?.reason ?? '',
+          reasonLocked: pendingIntent != null,
+          formatMoney: formatMoney,
+          formatText: formatText,
+          formatDate: formatDate,
+          onSubmit: (String reason) async {
+            try {
+              await refundsApi.submitRefund(
+                id,
+                reason: reason,
+              );
+              if (mounted) {
+                await loadTransactions(refresh: true, page: currentPage);
+              }
+              return null;
+            } on ManualRefundApiException catch (error) {
+              return error.message;
+            } catch (_) {
+              return 'The request could not be confirmed. Retry using the same request; do not start another refund.';
+            }
+          },
+        ),
+      );
+      if (completed == true) {
+        showMessage('Refund request confirmed by Servicepay.', isError: false);
+      }
+    } on ManualRefundApiException catch (error) {
+      showMessage(error.message, isError: true);
+    } catch (_) {
+      showMessage(
+        'Transaction details could not be loaded. Please retry.',
+        isError: true,
+      );
+    }
+  }
+
   Widget detailRow(
     String label,
     String value, {
     Color? valueColor,
   }) {
-    if (value.trim().isEmpty ||
-        value == 'Unknown date') {
+    if (value.trim().isEmpty || value == 'Unknown date') {
       return const SizedBox.shrink();
     }
 
     return Padding(
-      padding:
-          const EdgeInsets.only(bottom: 13),
+      padding: const EdgeInsets.only(bottom: 13),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 115,
@@ -945,8 +921,7 @@ class _AdminTransactionsScreenState
               style: const TextStyle(
                 color: Color(0xFF94A3B8),
                 fontSize: 12,
-                fontWeight:
-                    FontWeight.w600,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -959,8 +934,7 @@ class _AdminTransactionsScreenState
                       0xFF334155,
                     ),
                 fontSize: 13,
-                fontWeight:
-                    FontWeight.w700,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -974,8 +948,7 @@ class _AdminTransactionsScreenState
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: const Color(0xFFE2E8F0),
         ),
@@ -986,35 +959,30 @@ class _AdminTransactionsScreenState
             controller: searchController,
             onChanged: onSearchChanged,
             decoration: InputDecoration(
-              hintText:
-                  'Search customer, phone or reference',
+              hintText: 'Search customer, phone or reference',
               prefixIcon: const Icon(
                 Icons.search_rounded,
               ),
-              suffixIcon:
-                  searchController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            searchController
-                                .clear();
+              suffixIcon: searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        searchController.clear();
 
-                            setState(() {});
+                        setState(() {});
 
-                            loadTransactions(
-                              page: 1,
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.close_rounded,
-                          ),
-                        ),
+                        loadTransactions(
+                          page: 1,
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.close_rounded,
+                      ),
+                    ),
               filled: true,
-              fillColor:
-                  const Color(0xFFF8FAFC),
+              fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(15),
                 borderSide: BorderSide.none,
               ),
             ),
@@ -1025,27 +993,21 @@ class _AdminTransactionsScreenState
               BuildContext context,
               BoxConstraints constraints,
             ) {
-              final bool compact =
-                  constraints.maxWidth < 600;
+              final bool compact = constraints.maxWidth < 600;
 
-              final Widget statusDropdown =
-                  DropdownButtonFormField<
-                      String>(
+              final Widget statusDropdown = DropdownButtonFormField<String>(
                 value: selectedStatus,
                 decoration: InputDecoration(
                   labelText: 'Status',
                   border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(
+                    borderRadius: BorderRadius.circular(
                       14,
                     ),
                   ),
                 ),
                 items: statuses
                     .map(
-                      (String status) =>
-                          DropdownMenuItem<
-                              String>(
+                      (String status) => DropdownMenuItem<String>(
                         value: status,
                         child: Text(
                           formatText(status),
@@ -1065,24 +1027,19 @@ class _AdminTransactionsScreenState
                 },
               );
 
-              final Widget serviceDropdown =
-                  DropdownButtonFormField<
-                      String>(
+              final Widget serviceDropdown = DropdownButtonFormField<String>(
                 value: selectedService,
                 decoration: InputDecoration(
                   labelText: 'Service',
                   border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(
+                    borderRadius: BorderRadius.circular(
                       14,
                     ),
                   ),
                 ),
                 items: services
                     .map(
-                      (String service) =>
-                          DropdownMenuItem<
-                              String>(
+                      (String service) => DropdownMenuItem<String>(
                         value: service,
                         child: Text(
                           formatText(service),
@@ -1111,12 +1068,10 @@ class _AdminTransactionsScreenState
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child:
-                          OutlinedButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: clearFilters,
                         icon: const Icon(
-                          Icons
-                              .filter_alt_off_rounded,
+                          Icons.filter_alt_off_rounded,
                         ),
                         label: const Text(
                           'Clear Filters',
@@ -1140,17 +1095,13 @@ class _AdminTransactionsScreenState
                   OutlinedButton.icon(
                     onPressed: clearFilters,
                     icon: const Icon(
-                      Icons
-                          .filter_alt_off_rounded,
+                      Icons.filter_alt_off_rounded,
                     ),
                     label: const Text(
                       'Clear',
                     ),
-                    style:
-                        OutlinedButton.styleFrom(
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 18,
                       ),
@@ -1168,60 +1119,46 @@ class _AdminTransactionsScreenState
   Widget buildTransactionCard(
     dynamic rawTransaction,
   ) {
-    final Map<String, dynamic> transaction =
-        toMap(rawTransaction);
+    final Map<String, dynamic> transaction = toMap(rawTransaction);
 
-    final String service =
-        transactionService(transaction);
+    final String service = transactionService(transaction);
 
-    final String status =
-        transactionStatus(transaction);
+    final String status = transactionStatus(transaction);
 
-    final Color currentServiceColor =
-        serviceColor(service);
+    final Color currentServiceColor = serviceColor(service);
 
     return Material(
       color: Colors.white,
-      borderRadius:
-          BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: () =>
-            showTransactionDetails(
+        onTap: () => showTransactionDetails(
           transaction,
         ),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.all(17),
           decoration: BoxDecoration(
-            borderRadius:
-                BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color:
-                  const Color(0xFFE8EDF3),
+              color: const Color(0xFFE8EDF3),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black
-                    .withValues(alpha: 0.025),
+                color: Colors.black.withValues(alpha: 0.025),
                 blurRadius: 12,
-                offset:
-                    const Offset(0, 4),
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 49,
                 height: 49,
                 decoration: BoxDecoration(
-                  color: currentServiceColor
-                      .withValues(alpha: 0.11),
-                  borderRadius:
-                      BorderRadius.circular(15),
+                  color: currentServiceColor.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(15),
                 ),
                 child: Icon(
                   serviceIcon(service),
@@ -1231,8 +1168,7 @@ class _AdminTransactionsScreenState
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
@@ -1240,55 +1176,40 @@ class _AdminTransactionsScreenState
                           child: Text(
                             formatText(service),
                             maxLines: 1,
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                            style:
-                                const TextStyle(
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
                               color: Color(
                                 0xFF0F172A,
                               ),
                               fontSize: 15,
-                              fontWeight:
-                                  FontWeight
-                                      .w800,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 9,
                             vertical: 5,
                           ),
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                statusColor(
+                          decoration: BoxDecoration(
+                            color: statusColor(
                               status,
                             ).withValues(
                               alpha: 0.10,
                             ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
+                            borderRadius: BorderRadius.circular(
                               20,
                             ),
                           ),
                           child: Text(
                             status,
-                            style:
-                                TextStyle(
-                              color:
-                                  statusColor(
+                            style: TextStyle(
+                              color: statusColor(
                                 status,
                               ),
                               fontSize: 9,
-                              fontWeight:
-                                  FontWeight
-                                      .w800,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
@@ -1298,14 +1219,11 @@ class _AdminTransactionsScreenState
                     Text(
                       customerName(transaction),
                       maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color:
-                            Color(0xFF475569),
+                        color: Color(0xFF475569),
                         fontSize: 13,
-                        fontWeight:
-                            FontWeight.w600,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1314,11 +1232,9 @@ class _AdminTransactionsScreenState
                         transaction,
                       ),
                       maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color:
-                            Color(0xFF94A3B8),
+                        color: Color(0xFF94A3B8),
                         fontSize: 11,
                       ),
                     ),
@@ -1328,11 +1244,9 @@ class _AdminTransactionsScreenState
                         Expanded(
                           child: Text(
                             formatDate(
-                              transaction[
-                                  'createdAt'],
+                              transaction['createdAt'],
                             ),
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               color: Color(
                                 0xFF94A3B8,
                               ),
@@ -1346,16 +1260,12 @@ class _AdminTransactionsScreenState
                               transaction,
                             ),
                           ),
-                          style:
-                              const TextStyle(
-                            color:
-                                Color(
+                          style: const TextStyle(
+                            color: Color(
                               0xFF0F766E,
                             ),
                             fontSize: 15,
-                            fontWeight:
-                                FontWeight
-                                    .w900,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ],
@@ -1370,6 +1280,170 @@ class _AdminTransactionsScreenState
     );
   }
 
+  Future<void> loadRefundHistory({int page = 1}) async {
+    setState(() {
+      historyLoading = true;
+      historyError = false;
+      historyErrorMessage = '';
+    });
+    try {
+      final Map<String, dynamic> response =
+          await refundsApi.history(page: page);
+      if (!mounted) return;
+      final dynamic items = response['items'];
+      setState(() {
+        refundHistoryItems =
+            items is List ? List<dynamic>.from(items) : <dynamic>[];
+        historyPage =
+            response['page'] is num ? (response['page'] as num).toInt() : page;
+        historyPages = response['pages'] is num
+            ? (response['pages'] as num).toInt().clamp(1, 1 << 31).toInt()
+            : 1;
+        historyLoading = false;
+      });
+    } on ManualRefundApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        historyLoading = false;
+        historyError = true;
+        historyErrorMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        historyLoading = false;
+        historyError = true;
+        historyErrorMessage = 'Refund history could not be loaded.';
+      });
+    }
+  }
+
+  Widget buildRefundHistory() {
+    if (historyLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF0F766E)),
+      );
+    }
+    if (historyError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_rounded,
+                  size: 42, color: Color(0xFFB45309)),
+              const SizedBox(height: 12),
+              Text(historyErrorMessage, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => loadRefundHistory(page: historyPage),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+      children: [
+        const Text(
+          'Refund History',
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0F172A)),
+        ),
+        const SizedBox(height: 14),
+        if (refundHistoryItems.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 55),
+            child: Column(
+              children: [
+                Icon(Icons.history_rounded, size: 50, color: Color(0xFF94A3B8)),
+                SizedBox(height: 12),
+                Text('No refunds recorded',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                SizedBox(height: 5),
+                Text('Completed refunds will appear here.',
+                    style: TextStyle(color: Color(0xFF64748B))),
+              ],
+            ),
+          )
+        else
+          ...refundHistoryItems.map((dynamic raw) {
+            final Map<String, dynamic> item = toMap(raw);
+            return Card(
+              color: Colors.white,
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFFE8EDF3)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${item['customerName'] ?? 'Customer'} · ${item['reference'] ?? '—'}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        Text(
+                          formatMoney(toDouble(item['amount'])),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F766E)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                        'Original: ${item['originalReference'] ?? 'Not available'}'),
+                    Text(
+                        'Status: ${formatText(item['status'])}  ·  ${formatDate(item['createdAt'])}'),
+                    Text('Reason: ${item['reason'] ?? 'Not available'}'),
+                    Text(
+                        'Administrator: ${item['administrator'] ?? 'Not available'}'),
+                  ],
+                ),
+              ),
+            );
+          }),
+        if (historyPages > 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                tooltip: 'Previous page',
+                onPressed: historyPage > 1
+                    ? () => loadRefundHistory(page: historyPage - 1)
+                    : null,
+                icon: const Icon(Icons.chevron_left_rounded),
+              ),
+              Text('Page $historyPage of $historyPages'),
+              IconButton(
+                tooltip: 'Next page',
+                onPressed: historyPage < historyPages
+                    ? () => loadRefundHistory(page: historyPage + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
   Widget buildPagination() {
     if (totalPages <= 1) {
       return const SizedBox.shrink();
@@ -1379,15 +1453,13 @@ class _AdminTransactionsScreenState
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: const Color(0xFFE2E8F0),
         ),
       ),
       child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
             tooltip: 'Previous page',
@@ -1413,16 +1485,13 @@ class _AdminTransactionsScreenState
           const SizedBox(width: 10),
           IconButton(
             tooltip: 'Next page',
-            onPressed:
-                currentPage < totalPages
-                    ? () {
-                        loadTransactions(
-                          page:
-                              currentPage +
-                                  1,
-                        );
-                      }
-                    : null,
+            onPressed: currentPage < totalPages
+                ? () {
+                    loadTransactions(
+                      page: currentPage + 1,
+                    );
+                  }
+                : null,
             icon: const Icon(
               Icons.chevron_right_rounded,
             ),
@@ -1434,8 +1503,7 @@ class _AdminTransactionsScreenState
 
   Widget buildErrorState() {
     return ListView(
-      physics:
-          const AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(24),
       children: [
         const SizedBox(height: 80),
@@ -1465,16 +1533,13 @@ class _AdminTransactionsScreenState
         const SizedBox(height: 22),
         Center(
           child: FilledButton.icon(
-            onPressed: () =>
-                loadTransactions(page: 1),
+            onPressed: () => loadTransactions(page: 1),
             icon: const Icon(
               Icons.refresh_rounded,
             ),
-            label:
-                const Text('Try Again'),
+            label: const Text('Try Again'),
             style: FilledButton.styleFrom(
-              backgroundColor:
-                  const Color(0xFF0F766E),
+              backgroundColor: const Color(0xFF0F766E),
             ),
           ),
         ),
@@ -1491,8 +1556,7 @@ class _AdminTransactionsScreenState
       ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: const Color(0xFFE8EDF3),
         ),
@@ -1527,26 +1591,22 @@ class _AdminTransactionsScreenState
   }
 
   Widget buildTransactionsBody() {
+    if (showingRefundHistory) return buildRefundHistory();
     return LayoutBuilder(
       builder: (
         BuildContext context,
         BoxConstraints constraints,
       ) {
-        final double horizontalPadding =
-            constraints.maxWidth >= 800
-                ? 28
-                : 16;
+        final double horizontalPadding = constraints.maxWidth >= 800 ? 28 : 16;
 
         return RefreshIndicator(
           color: const Color(0xFF0F766E),
-          onRefresh: () =>
-              loadTransactions(
+          onRefresh: () => loadTransactions(
             refresh: true,
             page: currentPage,
           ),
           child: ListView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
               16,
@@ -1556,13 +1616,11 @@ class _AdminTransactionsScreenState
             children: [
               Center(
                 child: ConstrainedBox(
-                  constraints:
-                      const BoxConstraints(
+                  constraints: const BoxConstraints(
                     maxWidth: 950,
                   ),
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       buildFilters(),
                       const SizedBox(height: 22),
@@ -1576,23 +1634,18 @@ class _AdminTransactionsScreenState
                                   0xFF0F172A,
                                 ),
                                 fontSize: 20,
-                                fontWeight:
-                                    FontWeight
-                                        .w900,
+                                fontWeight: FontWeight.w900,
                               ),
                             ),
                           ),
                           Text(
                             '$totalTransactions total',
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               color: Color(
                                 0xFF64748B,
                               ),
                               fontSize: 12,
-                              fontWeight:
-                                  FontWeight
-                                      .w600,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
@@ -1602,15 +1655,11 @@ class _AdminTransactionsScreenState
                         buildEmptyState()
                       else
                         ...transactions.map(
-                          (dynamic transaction) =>
-                              Padding(
-                            padding:
-                                const EdgeInsets
-                                    .only(
+                          (dynamic transaction) => Padding(
+                            padding: const EdgeInsets.only(
                               bottom: 13,
                             ),
-                            child:
-                                buildTransactionCard(
+                            child: buildTransactionCard(
                               transaction,
                             ),
                           ),
@@ -1631,14 +1680,11 @@ class _AdminTransactionsScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FA),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor:
-            const Color(0xFF0F766E),
+        backgroundColor: const Color(0xFF0F766E),
         foregroundColor: Colors.white,
-        surfaceTintColor:
-            Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: const Text(
           'Admin Transactions',
@@ -1647,6 +1693,20 @@ class _AdminTransactionsScreenState
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: showingRefundHistory
+                ? 'Return to transactions'
+                : 'Refund history',
+            onPressed: () {
+              setState(() {
+                showingRefundHistory = !showingRefundHistory;
+              });
+              if (showingRefundHistory) loadRefundHistory(page: 1);
+            },
+            icon: Icon(showingRefundHistory
+                ? Icons.receipt_long_outlined
+                : Icons.history_rounded),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: isRefreshing
@@ -1661,8 +1721,7 @@ class _AdminTransactionsScreenState
                 ? const SizedBox(
                     width: 21,
                     height: 21,
-                    child:
-                        CircularProgressIndicator(
+                    child: CircularProgressIndicator(
                       strokeWidth: 2.2,
                       color: Colors.white,
                     ),
@@ -1676,22 +1735,344 @@ class _AdminTransactionsScreenState
       ),
       body: isLoading
           ? const Center(
-              child:
-                  CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 color: Color(0xFF0F766E),
               ),
             )
           : hasError
               ? RefreshIndicator(
-                  onRefresh: () =>
-                      loadTransactions(
+                  onRefresh: () => loadTransactions(
                     refresh: true,
                     page: 1,
                   ),
-                  child:
-                      buildErrorState(),
+                  child: buildErrorState(),
                 )
               : buildTransactionsBody(),
+    );
+  }
+}
+
+typedef ManualRefundSubmit = Future<String?> Function(String reason);
+
+class ManualRefundDialog extends StatefulWidget {
+  const ManualRefundDialog({
+    super.key,
+    required this.transaction,
+    required this.canExecute,
+    this.initialReason = '',
+    this.reasonLocked = false,
+    required this.formatMoney,
+    required this.formatText,
+    required this.formatDate,
+    required this.onSubmit,
+  });
+
+  final Map<String, dynamic> transaction;
+  final bool canExecute;
+  final String initialReason;
+  final bool reasonLocked;
+  final String Function(double) formatMoney;
+  final String Function(dynamic) formatText;
+  final String Function(dynamic) formatDate;
+  final ManualRefundSubmit onSubmit;
+
+  @override
+  State<ManualRefundDialog> createState() => _ManualRefundDialogState();
+}
+
+class _ManualRefundDialogState extends State<ManualRefundDialog> {
+  late final TextEditingController reasonController =
+      TextEditingController(text: widget.initialReason);
+  bool confirmed = false;
+  bool submitting = false;
+  bool hasAttempted = false;
+  String error = '';
+
+  Map<String, dynamic> get customer {
+    final dynamic value = widget.transaction['customer'];
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : <String, dynamic>{};
+  }
+
+  Map<String, dynamic> get refund {
+    final dynamic value = widget.transaction['refund'];
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : <String, dynamic>{};
+  }
+
+  String get providerStatus =>
+      (widget.transaction['providerStatus'] ?? '').toString().trim();
+
+  bool get providerStatusKnown {
+    return const <String>{
+      'SUCCESS',
+      'SUCCESSFUL',
+      'COMPLETED',
+      'FAILED',
+      'DECLINED',
+      'REVERSED',
+      'REFUNDED',
+      'CANCELLED',
+    }.contains(providerStatus.toUpperCase());
+  }
+
+  bool get processingOrUnknown =>
+      !providerStatusKnown ||
+      const <String>{'PENDING', 'PROCESSING', 'QUEUED', 'IN_PROGRESS'}
+          .contains(providerStatus.toUpperCase());
+
+  bool get providerFailureConfirmed => const <String>{
+        'FAILED',
+        'FAILURE',
+        'DECLINED',
+        'REJECTED',
+        'CANCELLED'
+      }.contains(providerStatus.toUpperCase());
+
+  @override
+  void dispose() {
+    reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    final String reason = reasonController.text.trim();
+    if (reason.length < 10 || reason.length > 500 || !confirmed) {
+      setState(() => error =
+          'Enter a reason of 10–500 characters and confirm the refund.');
+      return;
+    }
+    if (submitting) return;
+    setState(() {
+      submitting = true;
+      hasAttempted = true;
+      error = '';
+    });
+    final String? failure = await widget.onSubmit(reason);
+    if (!mounted) return;
+    if (failure == null) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        submitting = false;
+        error = failure;
+      });
+    }
+  }
+
+  Widget detail(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 142,
+            child: Text(label,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+          ),
+          Expanded(
+            child: SelectableText(value.isEmpty ? 'Not available' : value,
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dynamic rawBlockers = refund['blockers'];
+    final List<String> blockers = rawBlockers is List
+        ? rawBlockers.map((dynamic value) => value.toString()).toList()
+        : <String>[];
+    final bool eligible = refund['eligible'] == true;
+    final bool pendingTransaction =
+        (widget.transaction['status'] ?? '').toString().toUpperCase() ==
+            'PENDING';
+    final bool permitted = eligible &&
+        widget.canExecute &&
+        !processingOrUnknown &&
+        providerFailureConfirmed &&
+        pendingTransaction;
+    return Dialog(
+      insetPadding: const EdgeInsets.all(18),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 760),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Payment investigation',
+                        style: TextStyle(
+                            fontSize: 19, fontWeight: FontWeight.w900)),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: submitting ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                  widget.formatMoney(
+                    (widget.transaction['amount'] as num?)?.toDouble() ??
+                        double.tryParse('${widget.transaction['amount']}') ??
+                        0,
+                  ),
+                  style: const TextStyle(
+                      fontSize: 27,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F766E))),
+              const SizedBox(height: 16),
+              detail('Transaction ID',
+                  '${widget.transaction['id'] ?? 'Not available'}'),
+              detail('Reference',
+                  '${widget.transaction['reference'] ?? 'Not available'}'),
+              detail('Service',
+                  widget.formatText(widget.transaction['serviceType'])),
+              detail('Status', widget.formatText(widget.transaction['status'])),
+              detail('Created',
+                  widget.formatDate(widget.transaction['createdAt'])),
+              detail('Customer', '${customer['name'] ?? 'Not available'}'),
+              detail('Phone', '${customer['phone'] ?? 'Not available'}'),
+              detail('Wallet debit status',
+                  widget.formatText(widget.transaction['walletDebitStatus'])),
+              detail(
+                  'Verified debit amount',
+                  widget.transaction['verifiedDebitAmount'] == null
+                      ? 'Not available'
+                      : widget.formatMoney(double.tryParse(
+                              '${widget.transaction['verifiedDebitAmount']}') ??
+                          0)),
+              detail('Provider status',
+                  providerStatus.isEmpty ? 'Not available' : providerStatus),
+              detail(
+                  'Refund eligibility', eligible ? 'Eligible' : 'Not eligible'),
+              if (blockers.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                const Text('Eligibility blockers',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 5),
+                ...blockers.map((String blocker) => Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text('• $blocker',
+                          style: const TextStyle(color: Color(0xFF9A3412))),
+                    )),
+              ],
+              if (!permitted) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFED7AA)),
+                  ),
+                  child: Text(
+                    processingOrUnknown
+                        ? 'Provider outcome is unknown or still processing. Authorized reconciliation is required before any refund.'
+                        : !pendingTransaction
+                            ? 'Only a transaction currently marked PENDING can be refunded. Successful and already-refunded transactions cannot be refunded again.'
+                            : !widget.canExecute
+                                ? 'Your account does not have the explicit transactions.refund permission required to execute refunds. Ask a Head Office access administrator to assign it.'
+                                : !eligible
+                                    ? 'This transaction is not eligible for a refund.'
+                                    : 'The provider did not confirm a failed payment. Do not refund a successful or unresolved provider outcome.',
+                    style:
+                        const TextStyle(color: Color(0xFF9A3412), height: 1.35),
+                  ),
+                ),
+              ],
+              if (permitted) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Refund Customer',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'The original wallet debit is determined by Servicepay. No refund amount can be entered here.',
+                  style: TextStyle(color: Color(0xFF64748B), height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reasonController,
+                  minLines: 3,
+                  maxLines: 5,
+                  maxLength: 500,
+                  readOnly: submitting || widget.reasonLocked || hasAttempted,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason for refund',
+                    hintText: 'Document the investigation outcome',
+                    helperText:
+                        '10–500 characters. Locked once a request is first submitted.',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                CheckboxListTile(
+                  value: confirmed,
+                  onChanged: submitting
+                      ? null
+                      : (bool? value) =>
+                          setState(() => confirmed = value == true),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text(
+                    'I confirm this refund is authorized and should return the original debit.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+                if (error.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(error,
+                        style: const TextStyle(color: Color(0xFFB91C1C))),
+                  ),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: submitting ? null : submit,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F766E),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: submitting
+                        ? const SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.replay_rounded),
+                    label: Text(
+                        submitting ? 'Submitting securely' : 'Refund Customer'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

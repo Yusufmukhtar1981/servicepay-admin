@@ -891,6 +891,19 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
         showMessage('Refund request confirmed by Servicepay.', isError: false);
       }
     } on ManualRefundApiException catch (error) {
+      if (error.statusCode == 403) {
+        // Staff who may view the existing Transactions list must not lose its
+        // read-only details merely because refund investigation is Head Office
+        // only. This uses only the already-authorized list payload, never
+        // exposes refund controls, and never weakens backend permissions.
+        if (!mounted) return;
+        showLegacyTransactionDetails(rawTransaction);
+        showMessage(
+          'Refund investigation is restricted. Showing existing read-only transaction details.',
+          isError: false,
+        );
+        return;
+      }
       showMessage(error.message, isError: true);
     } catch (_) {
       showMessage(

@@ -11,6 +11,47 @@ import 'package:servicepay_app/admin/admin_manual_refunds_api.dart';
 import 'package:servicepay_app/admin/admin_transactions_screen.dart';
 
 void main() {
+  testWidgets('staff retain read-only details when refund access is forbidden',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final List<http.Request> requests = <http.Request>[];
+    final MockClient client = MockClient((http.Request request) async {
+      requests.add(request);
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': false,
+          'message': 'Head Office access required',
+        }),
+        403,
+      );
+    });
+    final AdminManualRefundsApi api = AdminManualRefundsApi(
+      client: client,
+      baseUrl: 'https://staging.example/api',
+      tokenProvider: () async => 'test-token',
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: AdminTransactionsScreen(refundsApi: api)),
+    );
+    await tester.pumpAndSettle();
+    final dynamic state = tester.state(find.byType(AdminTransactionsScreen));
+    await state.showTransactionDetails(<String, dynamic>{
+      '_id': 'tx-view-only',
+      'reference': 'READ-ONLY-TRANSACTION',
+      'serviceType': 'DATA',
+      'status': 'PENDING',
+      'amount': 125,
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('READ-ONLY-TRANSACTION'), findsWidgets);
+    expect(find.text('Refund Customer'), findsNothing);
+    expect(requests.length, 1);
+    expect(requests.single.method, 'GET');
+    expect(find.textContaining('Showing existing read-only'), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    client.close();
+  });
+
   group('AdminManualRefundsApi', () {
     setUp(() {
       SharedPreferences.setMockInitialValues(<String, Object>{

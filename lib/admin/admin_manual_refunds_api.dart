@@ -1,5 +1,5 @@
-import 'dart:math';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +9,7 @@ class AdminManualRefundsApi {
     http.Client? client,
     String? baseUrl,
     Future<String?> Function()? tokenProvider,
+    Future<bool> Function(String key, String value)? intentWriter,
   })  : baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'SERVICEPAY_API_BASE_URL',
@@ -17,12 +18,14 @@ class AdminManualRefundsApi {
             .replaceFirst(RegExp(r'/$'), ''),
         _client = client ?? http.Client(),
         _ownsClient = client == null,
-        _tokenProvider = tokenProvider ?? _storedToken;
+        _tokenProvider = tokenProvider ?? _storedToken,
+        _intentWriter = intentWriter;
 
   final String baseUrl;
   final http.Client _client;
   final bool _ownsClient;
   final Future<String?> Function() _tokenProvider;
+  final Future<bool> Function(String key, String value)? _intentWriter;
 
   void close() {
     if (_ownsClient) _client.close();
@@ -45,29 +48,75 @@ class AdminManualRefundsApi {
     String id, {
     required String reason,
     required String idempotencyKey,
-  }) =>
-      _request(
-        'POST',
-        '/transactions/${Uri.encodeComponent(id)}/refund',
-        payload: <String, dynamic>{
-          'reason': reason,
-          'confirmation': true,
-          'idempotencyKey': idempotencyKey,
-        },
-        idempotencyKey: idempotencyKey,
+    required bool providerRiskAcknowledged,
+  }) async {
+    if (!providerRiskAcknowledged) {
+      throw const ManualRefundApiException(
+        'Acknowledge the provider outcome risk before submitting a refund.',
       );
+    }
+    final ManualRefundIntent? savedIntent = await loadIntent(id);
+    if (savedIntent != null &&
+        (savedIntent.reason != reason ||
+            savedIntent.idempotencyKey != idempotencyKey)) {
+      throw const ManualRefundApiException(
+        'A saved refund retry request must be reused without changing its reason or key.',
+      );
+    }
+    await saveIntent(
+      id,
+      ManualRefundIntent(
+        reason: savedIntent?.reason ?? reason,
+        idempotencyKey: savedIntent?.idempotencyKey ?? idempotencyKey,
+        providerRiskAcknowledged: true,
+      ),
+    );
+    return _request(
+      'POST',
+      '/transactions/${Uri.encodeComponent(id)}/refund',
+      payload: <String, dynamic>{
+        'reason': reason,
+        'confirmation': true,
+        'providerRiskAcknowledged': true,
+        'idempotencyKey': idempotencyKey,
+      },
+      idempotencyKey: idempotencyKey,
+    );
+  }
 
   /// Persists the exact reason and key before the first POST. Subsequent calls
   /// for this actor/session and transaction always replay that immutable intent.
   Future<Map<String, dynamic>> submitRefund(
     String id, {
     required String reason,
+    required bool providerRiskAcknowledged,
   }) async {
     ManualRefundIntent? intent = await loadIntent(id);
-    intent ??= ManualRefundIntent(
-      reason: reason,
-      idempotencyKey: _newIdempotencyKey(),
-    );
+    if (intent == null) {
+      if (!providerRiskAcknowledged) {
+        throw const ManualRefundApiException(
+          'Acknowledge the provider outcome risk before submitting a refund.',
+        );
+      }
+      intent = ManualRefundIntent(
+        reason: reason,
+        idempotencyKey: _newIdempotencyKey(),
+        providerRiskAcknowledged: true,
+      );
+    } else if (!intent.providerRiskAcknowledged) {
+      if (!providerRiskAcknowledged) {
+        throw const ManualRefundApiException(
+          'This saved request predates risk acknowledgement. Explicitly acknowledge the provider outcome risk before retrying.',
+        );
+      }
+      // Preserve the original immutable reason/key while upgrading the legacy
+      // intent only after a fresh, explicit acknowledgement.
+      intent = ManualRefundIntent(
+        reason: intent.reason,
+        idempotencyKey: intent.idempotencyKey,
+        providerRiskAcknowledged: true,
+      );
+    }
     // SharedPreferences can retain a failed write in memory. Every submission,
     // including a retry, must successfully persist the SAME request first.
     await saveIntent(id, intent);
@@ -77,6 +126,7 @@ class AdminManualRefundsApi {
         id,
         reason: intent.reason,
         idempotencyKey: intent.idempotencyKey,
+        providerRiskAcknowledged: intent.providerRiskAcknowledged,
       );
     } on ManualRefundApiException catch (error) {
       if (const <int>{400, 401, 403, 404, 422}.contains(error.statusCode)) {
@@ -115,6 +165,7 @@ class AdminManualRefundsApi {
         return ManualRefundIntent(
           reason: value['reason'] as String,
           idempotencyKey: value['idempotencyKey'] as String,
+          providerRiskAcknowledged: value['providerRiskAcknowledged'] == true,
         );
       }
     } catch (_) {
@@ -131,13 +182,15 @@ class AdminManualRefundsApi {
   ) async {
     final String token = await _requiredToken();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final bool saved = await prefs.setString(
-      _intentPreferenceKey(prefs, token, transactionId),
-      jsonEncode(<String, String>{
-        'reason': intent.reason,
-        'idempotencyKey': intent.idempotencyKey,
-      }),
-    );
+    final String key = _intentPreferenceKey(prefs, token, transactionId);
+    final String value = jsonEncode(<String, dynamic>{
+      'reason': intent.reason,
+      'idempotencyKey': intent.idempotencyKey,
+      'providerRiskAcknowledged': intent.providerRiskAcknowledged,
+    });
+    final bool saved = _intentWriter == null
+        ? await prefs.setString(key, value)
+        : await _intentWriter!(key, value);
     if (!saved) {
       throw const ManualRefundApiException(
         'The safe retry request could not be saved. No refund was submitted.',
@@ -267,10 +320,12 @@ class ManualRefundIntent {
   const ManualRefundIntent({
     required this.reason,
     required this.idempotencyKey,
+    required this.providerRiskAcknowledged,
   });
 
   final String reason;
   final String idempotencyKey;
+  final bool providerRiskAcknowledged;
 }
 
 class ManualRefundApiException implements Exception {

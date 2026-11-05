@@ -866,14 +866,17 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
           canExecute: response['canExecute'] == true,
           initialReason: pendingIntent?.reason ?? '',
           reasonLocked: pendingIntent != null,
+          initialProviderRiskAcknowledged:
+              pendingIntent?.providerRiskAcknowledged ?? false,
           formatMoney: formatMoney,
           formatText: formatText,
           formatDate: formatDate,
-          onSubmit: (String reason) async {
+          onSubmit: (String reason, bool providerRiskAcknowledged) async {
             try {
               await refundsApi.submitRefund(
                 id,
                 reason: reason,
+                providerRiskAcknowledged: providerRiskAcknowledged,
               );
               if (mounted) {
                 await loadTransactions(refresh: true, page: currentPage);
@@ -1765,7 +1768,10 @@ class _AdminTransactionsScreenState extends State<AdminTransactionsScreen> {
   }
 }
 
-typedef ManualRefundSubmit = Future<String?> Function(String reason);
+typedef ManualRefundSubmit = Future<String?> Function(
+  String reason,
+  bool providerRiskAcknowledged,
+);
 
 class ManualRefundDialog extends StatefulWidget {
   const ManualRefundDialog({
@@ -1774,6 +1780,7 @@ class ManualRefundDialog extends StatefulWidget {
     required this.canExecute,
     this.initialReason = '',
     this.reasonLocked = false,
+    this.initialProviderRiskAcknowledged = false,
     required this.formatMoney,
     required this.formatText,
     required this.formatDate,
@@ -1784,6 +1791,7 @@ class ManualRefundDialog extends StatefulWidget {
   final bool canExecute;
   final String initialReason;
   final bool reasonLocked;
+  final bool initialProviderRiskAcknowledged;
   final String Function(double) formatMoney;
   final String Function(dynamic) formatText;
   final String Function(dynamic) formatDate;
@@ -1797,9 +1805,16 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
   late final TextEditingController reasonController =
       TextEditingController(text: widget.initialReason);
   bool confirmed = false;
+  bool providerRiskAcknowledged = false;
   bool submitting = false;
   bool hasAttempted = false;
   String error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    providerRiskAcknowledged = widget.initialProviderRiskAcknowledged;
+  }
 
   Map<String, dynamic> get customer {
     final dynamic value = widget.transaction['customer'];
@@ -1818,30 +1833,13 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
   String get providerStatus =>
       (widget.transaction['providerStatus'] ?? '').toString().trim();
 
-  bool get providerStatusKnown {
-    return const <String>{
-      'SUCCESS',
-      'SUCCESSFUL',
-      'COMPLETED',
-      'FAILED',
-      'DECLINED',
-      'REVERSED',
-      'REFUNDED',
-      'CANCELLED',
-    }.contains(providerStatus.toUpperCase());
-  }
-
-  bool get processingOrUnknown =>
-      !providerStatusKnown ||
-      const <String>{'PENDING', 'PROCESSING', 'QUEUED', 'IN_PROGRESS'}
-          .contains(providerStatus.toUpperCase());
-
-  bool get providerFailureConfirmed => const <String>{
-        'FAILED',
-        'FAILURE',
-        'DECLINED',
-        'REJECTED',
-        'CANCELLED'
+  bool get providerSuccessConfirmed => const <String>{
+        'SUCCESS',
+        'SUCCESSFUL',
+        'SUCCEEDED',
+        'COMPLETED',
+        'DELIVERED',
+        'ORDER_COMPLETED',
       }.contains(providerStatus.toUpperCase());
 
   @override
@@ -1852,9 +1850,12 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
 
   Future<void> submit() async {
     final String reason = reasonController.text.trim();
-    if (reason.length < 10 || reason.length > 500 || !confirmed) {
+    if (reason.length < 10 ||
+        reason.length > 500 ||
+        !confirmed ||
+        !providerRiskAcknowledged) {
       setState(() => error =
-          'Enter a reason of 10–500 characters and confirm the refund.');
+          'Enter a reason of 10–500 characters, confirm the refund, and acknowledge the provider outcome risk.');
       return;
     }
     if (submitting) return;
@@ -1863,7 +1864,8 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
       hasAttempted = true;
       error = '';
     });
-    final String? failure = await widget.onSubmit(reason);
+    final String? failure =
+        await widget.onSubmit(reason, providerRiskAcknowledged);
     if (!mounted) return;
     if (failure == null) {
       Navigator.of(context).pop(true);
@@ -1906,11 +1908,12 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
     final bool pendingTransaction =
         (widget.transaction['status'] ?? '').toString().toUpperCase() ==
             'PENDING';
+    final bool knownSuccessfulProviderOutcome = providerSuccessConfirmed;
     final bool permitted = eligible &&
         widget.canExecute &&
-        !processingOrUnknown &&
-        providerFailureConfirmed &&
-        pendingTransaction;
+        blockers.isEmpty &&
+        pendingTransaction &&
+        !knownSuccessfulProviderOutcome;
     return Dialog(
       insetPadding: const EdgeInsets.all(18),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
@@ -1994,21 +1997,37 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
                     border: Border.all(color: const Color(0xFFFED7AA)),
                   ),
                   child: Text(
-                    processingOrUnknown
-                        ? 'Provider outcome is unknown or still processing. Authorized reconciliation is required before any refund.'
-                        : !pendingTransaction
+                    !pendingTransaction
                             ? 'Only a transaction currently marked PENDING can be refunded. Successful and already-refunded transactions cannot be refunded again.'
                             : !widget.canExecute
                                 ? 'Your account does not have the explicit transactions.refund permission required to execute refunds. Ask a Head Office access administrator to assign it.'
                                 : !eligible
                                     ? 'This transaction is not eligible for a refund.'
-                                    : 'The provider did not confirm a failed payment. Do not refund a successful or unresolved provider outcome.',
+                                : blockers.isNotEmpty
+                                    ? 'This transaction has refund eligibility blockers. Resolve them before any refund.'
+                                    : knownSuccessfulProviderOutcome
+                                        ? 'The provider outcome confirms successful delivery. This transaction cannot be refunded.'
+                                        : 'Refund execution is unavailable for this transaction.',
                     style:
                         const TextStyle(color: Color(0xFF9A3412), height: 1.35),
                   ),
                 ),
               ],
               if (permitted) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFED7AA)),
+                    ),
+                    child: const Text(
+                      'Provider outcome has not been confirmed. This manual refund may result in a financial loss if the service was delivered.',
+                      style: TextStyle(color: Color(0xFF9A3412), height: 1.35),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 const Text(
                   'Refund Customer',
@@ -2045,6 +2064,20 @@ class _ManualRefundDialogState extends State<ManualRefundDialog> {
                   controlAffinity: ListTileControlAffinity.leading,
                   title: const Text(
                     'I confirm this refund is authorized and should return the original debit.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+                CheckboxListTile(
+                  value: providerRiskAcknowledged,
+                  onChanged: submitting
+                      ? null
+                      : (bool? value) => setState(
+                            () => providerRiskAcknowledged = value == true,
+                          ),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text(
+                    'I acknowledge the financial risk of this manual refund if the service was delivered.',
                     style: TextStyle(fontSize: 13),
                   ),
                 ),

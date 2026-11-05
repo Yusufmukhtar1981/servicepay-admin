@@ -81,6 +81,7 @@ void main() {
         'payment/42',
         reason: 'Verified duplicate debit',
         idempotencyKey: 'stable-key-1',
+        providerRiskAcknowledged: true,
       );
 
       final http.Request request = requests.single;
@@ -91,9 +92,142 @@ void main() {
       expect(jsonDecode(request.body), <String, dynamic>{
         'reason': 'Verified duplicate debit',
         'confirmation': true,
+        'providerRiskAcknowledged': true,
         'idempotencyKey': 'stable-key-1',
       });
       expect(jsonDecode(request.body), isNot(contains('amount')));
+      client.close();
+    });
+
+    test('does not POST a refund without provider risk acknowledgement',
+        () async {
+      final List<http.Request> requests = <http.Request>[];
+      final MockClient client = MockClient((http.Request request) async {
+        requests.add(request);
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'refund': <String, dynamic>{'id': 'rf-1'}
+          }),
+          200,
+        );
+      });
+      final AdminManualRefundsApi api = AdminManualRefundsApi(
+        client: client,
+        baseUrl: 'https://staging.example/api',
+        tokenProvider: () async => 'test-token',
+      );
+
+      await expectLater(
+        api.submitRefund(
+          'tx-no-risk',
+          reason: 'Reviewed the wallet debit',
+          providerRiskAcknowledged: false,
+        ),
+        throwsA(isA<ManualRefundApiException>()),
+      );
+      await expectLater(
+        api.refund(
+          'tx-no-risk',
+          reason: 'Reviewed the wallet debit',
+          idempotencyKey: 'no-risk-key',
+          providerRiskAcknowledged: false,
+        ),
+        throwsA(isA<ManualRefundApiException>()),
+      );
+      expect(requests, isEmpty);
+      expect(await api.loadIntent('tx-no-risk'), isNull);
+      client.close();
+    });
+
+    test('failed intent persistence prevents a refund POST', () async {
+      final List<http.Request> requests = <http.Request>[];
+      final MockClient client = MockClient((http.Request request) async {
+        requests.add(request);
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'refund': <String, dynamic>{'id': 'rf-1'}
+          }),
+          200,
+        );
+      });
+      final AdminManualRefundsApi api = AdminManualRefundsApi(
+        client: client,
+        baseUrl: 'https://staging.example/api',
+        tokenProvider: () async => 'test-token',
+        intentWriter: (String _, String __) async => false,
+      );
+
+      await expectLater(
+        api.submitRefund(
+          'tx-write-failure',
+          reason: 'Reviewed the wallet debit',
+          providerRiskAcknowledged: true,
+        ),
+        throwsA(isA<ManualRefundApiException>()),
+      );
+      expect(requests, isEmpty);
+      client.close();
+    });
+
+    test('legacy saved intent needs fresh risk acknowledgement and keeps key',
+        () async {
+      final List<http.Request> requests = <http.Request>[];
+      final MockClient client = MockClient((http.Request request) async {
+        requests.add(request);
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'refund': <String, dynamic>{'id': 'rf-legacy'}
+          }),
+          200,
+        );
+      });
+      final AdminManualRefundsApi api = AdminManualRefundsApi(
+        client: client,
+        baseUrl: 'https://staging.example/api',
+        tokenProvider: () async => 'test-token',
+      );
+      await api.saveIntent(
+        'tx-legacy',
+        const ManualRefundIntent(
+          reason: 'Original review reason',
+          idempotencyKey: 'legacy-stable-key',
+          providerRiskAcknowledged: false,
+        ),
+      );
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String storageKey =
+          prefs.getKeys().singleWhere((String key) => key.contains('tx-legacy'));
+      await prefs.setString(
+        storageKey,
+        jsonEncode(<String, String>{
+          'reason': 'Original review reason',
+          'idempotencyKey': 'legacy-stable-key',
+        }),
+      );
+
+      await expectLater(
+        api.submitRefund(
+          'tx-legacy',
+          reason: 'New text does not replace saved text',
+          providerRiskAcknowledged: false,
+        ),
+        throwsA(isA<ManualRefundApiException>()),
+      );
+      expect(requests, isEmpty);
+      await api.submitRefund(
+        'tx-legacy',
+        reason: 'New text does not replace saved text',
+        providerRiskAcknowledged: true,
+      );
+      expect(requests, hasLength(1));
+      expect(requests.single.headers['X-Idempotency-Key'], 'legacy-stable-key');
+      final Map<String, dynamic> body =
+          jsonDecode(requests.single.body) as Map<String, dynamic>;
+      expect(body['reason'], 'Original review reason');
+      expect(body['providerRiskAcknowledged'], isTrue);
       client.close();
     });
 
@@ -151,16 +285,25 @@ void main() {
       );
 
       await expectLater(
-        api.submitRefund('tx-lost', reason: 'First immutable reason'),
+        api.submitRefund(
+          'tx-lost',
+          reason: 'First immutable reason',
+          providerRiskAcknowledged: true,
+        ),
         throwsA(isA<ManualRefundApiException>()),
       );
       final ManualRefundIntent? saved = await api.loadIntent('tx-lost');
       expect(saved, isNotNull);
       expect(saved!.reason, 'First immutable reason');
+      expect(saved.providerRiskAcknowledged, isTrue);
 
       // Deliberately supply changed text: a pending key must retain its original
       // request body so the backend requestHash cannot be changed on retry.
-      await api.submitRefund('tx-lost', reason: 'Changed reason is ignored');
+      await api.submitRefund(
+        'tx-lost',
+        reason: 'Changed reason is ignored',
+        providerRiskAcknowledged: true,
+      );
       expect(requests, hasLength(2));
       expect(requests[0].body, requests[1].body);
       expect(requests[0].headers['X-Idempotency-Key'],
@@ -186,7 +329,11 @@ void main() {
         tokenProvider: () async => secret,
       );
       await expectLater(
-        api.submitRefund('tx-forbidden', reason: 'Review debit evidence'),
+        api.submitRefund(
+          'tx-forbidden',
+          reason: 'Review debit evidence',
+          providerRiskAcknowledged: true,
+        ),
         throwsA(
           isA<ManualRefundApiException>()
               .having((ManualRefundApiException error) => error.message,
@@ -205,6 +352,7 @@ void main() {
       bool eligible = true,
       String status = 'PENDING',
       String providerStatus = 'FAILED',
+      List<String> blockers = const <String>[],
     }) =>
         <String, dynamic>{
           'id': 'tx-1',
@@ -222,7 +370,7 @@ void main() {
           'providerStatus': providerStatus,
           'refund': <String, dynamic>{
             'eligible': eligible,
-            'blockers': <String>[]
+            'blockers': blockers,
           },
         };
 
@@ -230,11 +378,13 @@ void main() {
       WidgetTester tester, {
       required bool eligible,
       required bool canExecute,
-      required Future<String?> Function(String) submit,
+      required Future<String?> Function(String, bool) submit,
       String status = 'PENDING',
       String providerStatus = 'FAILED',
       String initialReason = '',
       bool reasonLocked = false,
+      bool initialProviderRiskAcknowledged = false,
+      List<String> blockers = const <String>[],
     }) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -243,10 +393,12 @@ void main() {
               eligible: eligible,
               status: status,
               providerStatus: providerStatus,
+              blockers: blockers,
             ),
             canExecute: canExecute,
             initialReason: initialReason,
             reasonLocked: reasonLocked,
+            initialProviderRiskAcknowledged: initialProviderRiskAcknowledged,
             formatMoney: (double value) => '₦${value.toStringAsFixed(2)}',
             formatText: (dynamic value) => '$value',
             formatDate: (dynamic value) => '$value',
@@ -260,7 +412,7 @@ void main() {
         'shows specified investigation details and only eligible execution',
         (WidgetTester tester) async {
       await pumpDialog(tester,
-          eligible: true, canExecute: true, submit: (_) async => null);
+          eligible: true, canExecute: true, submit: (_, __) async => null);
       expect(find.text('Payment investigation'), findsOneWidget);
       expect(find.text('Ada Customer'), findsOneWidget);
       expect(find.text('08000000000'), findsOneWidget);
@@ -275,20 +427,37 @@ void main() {
         'does not offer refund when ineligible or execution is unavailable',
         (WidgetTester tester) async {
       await pumpDialog(tester,
-          eligible: false, canExecute: true, submit: (_) async => null);
+          eligible: false, canExecute: true, submit: (_, __) async => null);
       expect(find.text('Refund Customer'), findsNothing);
       expect(find.textContaining('not eligible'), findsOneWidget);
       await pumpDialog(tester,
-          eligible: true, canExecute: false, submit: (_) async => null);
+          eligible: true, canExecute: false, submit: (_, __) async => null);
       expect(find.text('Refund Customer'), findsNothing);
       expect(find.textContaining('transactions.refund'), findsOneWidget);
+      await pumpDialog(
+        tester,
+        eligible: true,
+        canExecute: true,
+        blockers: const <String>['Wallet debit not verified'],
+        submit: (_, __) async => null,
+      );
+      expect(find.text('Refund Customer'), findsNothing);
+      expect(find.textContaining('eligibility blockers'), findsOneWidget);
+      await pumpDialog(
+        tester,
+        eligible: true,
+        canExecute: true,
+        status: 'COMPLETED',
+        submit: (_, __) async => null,
+      );
+      expect(find.text('Refund Customer'), findsNothing);
     });
 
     testWidgets('requires a valid reason and explicit confirmation',
         (WidgetTester tester) async {
       int calls = 0;
       await pumpDialog(tester, eligible: true, canExecute: true,
-          submit: (_) async {
+          submit: (_, __) async {
         calls++;
         return null;
       });
@@ -300,8 +469,15 @@ void main() {
       await tester.ensureVisible(find.byType(TextField));
       await tester.enterText(
           find.byType(TextField), 'Verified duplicate debit');
-      await tester.ensureVisible(find.byType(Checkbox));
-      await tester.tap(find.byType(Checkbox));
+      await tester.ensureVisible(find.byType(Checkbox).first);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      await tester.ensureVisible(find.text('Refund Customer').last);
+      await tester.tap(find.text('Refund Customer').last);
+      await tester.pumpAndSettle();
+      expect(calls, 0);
+      await tester.ensureVisible(find.byType(Checkbox).last);
+      await tester.tap(find.byType(Checkbox).last);
       await tester.pump();
       await tester.ensureVisible(find.text('Refund Customer').last);
       await tester.tap(find.text('Refund Customer').last);
@@ -309,7 +485,7 @@ void main() {
       expect(calls, 1);
     });
 
-    testWidgets('provider processing requires authorized reconciliation',
+    testWidgets('provider processing is allowed with the exact risk warning',
         (WidgetTester tester) async {
       final Map<String, dynamic> processing =
           detail(providerStatus: 'PROCESSING');
@@ -321,28 +497,33 @@ void main() {
             formatMoney: (double value) => '$value',
             formatText: (dynamic value) => '$value',
             formatDate: (dynamic value) => '$value',
-            onSubmit: (_) async => null,
+            onSubmit: (_, __) async => null,
           ),
         ),
       ));
-      expect(find.textContaining('Authorized reconciliation is required'),
-          findsOneWidget);
-      expect(find.text('Refund Customer'), findsNothing);
+      expect(
+        find.text(
+            'Provider outcome has not been confirmed. This manual refund may result in a financial loss if the service was delivered.'),
+        findsOneWidget,
+      );
+      expect(find.text('Refund Customer'), findsNWidgets(2));
     });
 
     testWidgets('uncertain failure leaves the dialog available for retry',
         (WidgetTester tester) async {
       int calls = 0;
       await pumpDialog(tester, eligible: true, canExecute: true,
-          submit: (_) async {
+          submit: (_, __) async {
         calls++;
         return 'Request could not be confirmed.';
       });
       await tester.ensureVisible(find.byType(TextField));
       await tester.enterText(
           find.byType(TextField), 'Verified duplicate debit');
-      await tester.ensureVisible(find.byType(Checkbox));
-      await tester.tap(find.byType(Checkbox));
+      await tester.ensureVisible(find.byType(Checkbox).first);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.ensureVisible(find.byType(Checkbox).last);
+      await tester.tap(find.byType(Checkbox).last);
       await tester.pump();
       await tester.ensureVisible(find.text('Refund Customer').last);
       await tester.tap(find.text('Refund Customer').last);
@@ -360,7 +541,7 @@ void main() {
         eligible: true,
         canExecute: true,
         status: 'SUCCESSFUL',
-        submit: (_) async => null,
+        submit: (_, __) async => null,
       );
       expect(find.text('Refund Customer'), findsNothing);
       expect(find.textContaining('Only a transaction currently marked PENDING'),
@@ -370,37 +551,62 @@ void main() {
         eligible: true,
         canExecute: true,
         status: 'REFUNDED',
-        submit: (_) async => null,
+        submit: (_, __) async => null,
       );
       expect(find.text('Refund Customer'), findsNothing);
     });
 
-    testWidgets('unknown provider status requires reconciliation',
+    testWidgets('unknown eligible outcome submits after both acknowledgements',
         (WidgetTester tester) async {
+      bool? submittedRiskAcknowledgement;
       await pumpDialog(
         tester,
         eligible: true,
         canExecute: true,
         providerStatus: 'UNRECOGNIZED',
-        submit: (_) async => null,
+        submit: (String _, bool riskAcknowledged) async {
+          submittedRiskAcknowledgement = riskAcknowledged;
+          return null;
+        },
       );
-      expect(find.textContaining('Authorized reconciliation is required'),
-          findsOneWidget);
-      expect(find.text('Refund Customer'), findsNothing);
+      expect(
+        find.text(
+            'Provider outcome has not been confirmed. This manual refund may result in a financial loss if the service was delivered.'),
+        findsOneWidget,
+      );
+      expect(find.text('Refund Customer'), findsNWidgets(2));
+      await tester.ensureVisible(find.byType(TextField));
+      await tester.enterText(
+          find.byType(TextField), 'Reviewed wallet debit evidence');
+      await tester.ensureVisible(find.byType(Checkbox).first);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.ensureVisible(find.byType(Checkbox).last);
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pump();
+      await tester.ensureVisible(find.text('Refund Customer').last);
+      await tester.tap(find.text('Refund Customer').last);
+      await tester.pumpAndSettle();
+      expect(submittedRiskAcknowledgement, isTrue);
     });
 
     testWidgets('provider success blocks an inconsistent eligible response',
         (WidgetTester tester) async {
-      await pumpDialog(
-        tester,
-        eligible: true,
-        canExecute: true,
-        providerStatus: 'SUCCESS',
-        submit: (_) async => null,
-      );
-      expect(find.text('Refund Customer'), findsNothing);
-      expect(find.textContaining('did not confirm a failed payment'),
-          findsOneWidget);
+      for (final String status in <String>[
+        'SUCCESS',
+        'SUCCESSFUL',
+        'COMPLETED',
+        'DELIVERED',
+      ]) {
+        await pumpDialog(
+          tester,
+          eligible: true,
+          canExecute: true,
+          providerStatus: status,
+          submit: (_, __) async => null,
+        );
+        expect(find.text('Refund Customer'), findsNothing);
+        expect(find.textContaining('successful delivery'), findsOneWidget);
+      }
     });
 
     testWidgets('double tap submits only once and locks the attempted reason',
@@ -411,7 +617,7 @@ void main() {
         tester,
         eligible: true,
         canExecute: true,
-        submit: (_) {
+        submit: (_, __) {
           calls++;
           return completion.future;
         },
@@ -419,8 +625,10 @@ void main() {
       await tester.ensureVisible(find.byType(TextField));
       await tester.enterText(
           find.byType(TextField), 'Verified duplicate debit');
-      await tester.ensureVisible(find.byType(Checkbox));
-      await tester.tap(find.byType(Checkbox));
+      await tester.ensureVisible(find.byType(Checkbox).first);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.ensureVisible(find.byType(Checkbox).last);
+      await tester.tap(find.byType(Checkbox).last);
       await tester.pump();
       await tester.ensureVisible(find.text('Refund Customer').last);
       await tester.tap(find.text('Refund Customer').last);
@@ -441,7 +649,7 @@ void main() {
         tester,
         eligible: true,
         canExecute: true,
-        submit: (_) async => null,
+        submit: (_, __) async => null,
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -458,7 +666,7 @@ void main() {
         canExecute: true,
         initialReason: 'Original persisted reason',
         reasonLocked: true,
-        submit: (_) async => 'Request could not be confirmed.',
+        submit: (_, __) async => 'Request could not be confirmed.',
       );
       expect(find.text('Original persisted reason'), findsOneWidget);
       expect(tester.widget<TextField>(find.byType(TextField)).readOnly, isTrue);

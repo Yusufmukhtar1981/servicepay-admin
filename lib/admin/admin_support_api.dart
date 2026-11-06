@@ -2,13 +2,14 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'admin_api_configuration.dart';
 
 class AdminSupportApi {
   AdminSupportApi({http.Client? client, String? aiBaseUrlOverride})
     : _client = client ?? http.Client(),
       _ownsClient = client == null,
       aiApiBaseUrl = aiBaseUrlOverride ?? configuredAiApiBaseUrl;
-  static const baseUrl = 'https://api.servicepay.ng/api/admin/support';
+  static const baseUrl = '${AdminApiConfiguration.baseUrl}/admin/support';
   static const configuredAiApiBaseUrl = String.fromEnvironment(
     'SERVICEPAY_API_BASE_URL',
     defaultValue: '',

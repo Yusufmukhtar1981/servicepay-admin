@@ -104,11 +104,11 @@ void main() {
       MaterialApp(home: CustomerSupportDashboard(api: _WorkspaceApi())),
     );
     expect(
-      find.text('Search securely to investigate a customer.'),
+      find.text('Search a customer to begin a secure investigation.'),
       findsOneWidget,
     );
     expect(
-      find.textContaining('name, phone, email, ID or transaction reference'),
+      find.textContaining('Name, phone, email, customer ID or transaction reference'),
       findsOneWidget,
     );
   });

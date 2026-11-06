@@ -20,6 +20,21 @@ class AdminStaffWorkspaceApi {
   final String _baseUrl;
 
   Future<Map<String, dynamic>> overview() => _request('GET', 'overview');
+  Future<Map<String, dynamic>> supportSummary() =>
+      _request('GET', 'support-summary');
+
+  Future<Map<String, dynamic>> virtualAccounts({
+    String query = '',
+    String status = '',
+    int page = 1,
+    int limit = 20,
+  }) =>
+      _request('GET', 'virtual-accounts', query: {
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (status.isNotEmpty) 'status': status,
+        'page': '$page',
+        'limit': '$limit',
+      });
 
   /// Requests idempotent creation of the two standard workspace roles.
   /// No scope, activation, or permission overrides are sent from the client.
@@ -48,12 +63,16 @@ class AdminStaffWorkspaceApi {
   Future<Map<String, dynamic>> transactions({
     String status = '',
     String type = '',
+    String query = '',
+    String customerId = '',
     int page = 1,
     int limit = 20,
   }) =>
       _request('GET', 'transactions', query: {
         if (status.isNotEmpty) 'status': status,
         if (type.isNotEmpty) 'type': type,
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (customerId.isNotEmpty) 'customerId': customerId,
         'page': '$page',
         'limit': '$limit',
       });

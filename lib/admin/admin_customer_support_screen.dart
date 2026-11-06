@@ -1,11 +1,34 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'admin_support_api.dart';
 import 'admin_support_widgets.dart';
 
+bool canManageSupportAssignmentsForRole({
+  required String staffRoleName,
+  required String adminRole,
+}) {
+  String normalize(String value) =>
+      value.trim().toUpperCase().replaceAll(RegExp(r'[\s-]+'), '_');
+  const headOfficeRoles = <String>{
+    'HEAD_OFFICE',
+    'ADMIN',
+    'SUPER_ADMIN',
+    'HEAD_OFFICE_ADMIN',
+    'SERVICEPAY_SUPER_ADMIN',
+  };
+  return normalize(staffRoleName) != 'CUSTOMER_SUPPORT' ||
+      headOfficeRoles.contains(normalize(adminRole));
+}
+
 class AdminCustomerSupportScreen extends StatefulWidget {
-  const AdminCustomerSupportScreen({super.key, this.api});
+  const AdminCustomerSupportScreen({
+    super.key,
+    this.api,
+    this.canManageAssignments,
+  });
   final AdminSupportApi? api;
+  final bool? canManageAssignments;
   @override
   State<AdminCustomerSupportScreen> createState() =>
       _AdminCustomerSupportScreenState();
@@ -19,10 +42,43 @@ class _AdminCustomerSupportScreenState
   Map<String, dynamic> metrics = {};
   String status = '', priority = '', category = '', error = '';
   bool loading = true;
+  bool _canManageAssignments = false;
   @override
   void initState() {
     super.initState();
+    _loadAssignmentAccess();
     load();
+  }
+
+  Future<void> _loadAssignmentAccess() async {
+    if (widget.canManageAssignments != null) {
+      if (mounted) {
+        setState(
+          () => _canManageAssignments = widget.canManageAssignments == true,
+        );
+      }
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final staffRole = (prefs.getString('staff_role_name') ?? '')
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
+    final adminRole = (prefs.getString('user_role') ??
+            prefs.getString('admin_role') ??
+            prefs.getString('role') ??
+            '')
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
+    if (mounted) {
+      setState(() {
+        _canManageAssignments = canManageSupportAssignmentsForRole(
+          staffRoleName: staffRole,
+          adminRole: adminRole,
+        );
+      });
+    }
   }
 
   @override
@@ -248,6 +304,7 @@ class _AdminCustomerSupportScreenState
                               builder: (_) => _Detail(
                                 id: '${t['_id'] ?? t['id']}',
                                 api: api,
+                                canManageAssignments: _canManageAssignments,
                               ),
                             ),
                           ),
@@ -331,9 +388,14 @@ class _AdminCustomerSupportScreenState
 }
 
 class _Detail extends StatefulWidget {
-  const _Detail({required this.id, required this.api});
+  const _Detail({
+    required this.id,
+    required this.api,
+    required this.canManageAssignments,
+  });
   final String id;
   final AdminSupportApi api;
+  final bool canManageAssignments;
   @override
   State<_Detail> createState() => _DetailState();
 }
@@ -625,10 +687,11 @@ class _DetailState extends State<_Detail> {
                               }
                             },
                     ),
-                    OutlinedButton(
-                      onPressed: busy ? null : assign,
-                      child: const Text('Assign staff'),
-                    ),
+                    if (widget.canManageAssignments)
+                      OutlinedButton(
+                        onPressed: busy ? null : assign,
+                        child: const Text('Assign staff'),
+                      ),
                   ],
                 ),
                 AdminTicketTimeline(

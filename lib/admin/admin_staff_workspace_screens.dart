@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_staff_workspace_api.dart';
 import 'admin_customer_support_screen.dart';
+import 'admin_customer_support_operations_center.dart' as support;
 
 class OperationsManagerDashboard extends StatefulWidget {
   const OperationsManagerDashboard({super.key, this.api});
@@ -432,15 +433,16 @@ class _OperationsManagerDashboardState
       );
 }
 
-class CustomerSupportDashboard extends StatefulWidget {
-  const CustomerSupportDashboard({super.key, this.api});
+class LegacyCustomerSupportDashboard extends StatefulWidget {
+  const LegacyCustomerSupportDashboard({super.key, this.api});
   final AdminStaffWorkspaceApi? api;
   @override
-  State<CustomerSupportDashboard> createState() =>
+  State<LegacyCustomerSupportDashboard> createState() =>
       _CustomerSupportDashboardState();
 }
 
-class _CustomerSupportDashboardState extends State<CustomerSupportDashboard> {
+class _CustomerSupportDashboardState
+    extends State<LegacyCustomerSupportDashboard> {
   late final AdminStaffWorkspaceApi _api =
       widget.api ?? AdminStaffWorkspaceApi();
   final TextEditingController _search = TextEditingController();
@@ -722,4 +724,13 @@ class _CustomerSupportDashboardState extends State<CustomerSupportDashboard> {
           ),
         ]),
       );
+}
+
+class CustomerSupportDashboard extends StatelessWidget {
+  const CustomerSupportDashboard({super.key, this.api});
+  final AdminStaffWorkspaceApi? api;
+
+  @override
+  Widget build(BuildContext context) =>
+      support.CustomerSupportOperationsCenter(api: api);
 }

@@ -166,6 +166,10 @@ class AdminMainNavigation extends StatefulWidget {
   /// canonical module name is returned here for permission checks.
   static List<String> visibleDestinationLabels(AdminAccess access) {
     final List<String> labels = <String>[];
+    final String staffRole = AdminAccess.normalizeRole(access.role);
+    if (staffRole == 'CUSTOMER_SUPPORT' || staffRole == 'SUPPORT_MANAGER') {
+      return <String>['Customer support desk', 'Support / Tickets'];
+    }
     if (access.isHeadOffice ||
         access.permissions.contains(AdminPermissions.operationsWorkspaceView)) {
       labels.add('Operations overview');
@@ -331,6 +335,27 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
   void configureNavigation() {
     pages = <Widget>[];
     items = <BottomNavigationBarItem>[];
+
+    // Dedicated support roles receive only customer investigation and ticket
+    // workflows. Do not infer Head Office rights from their workspace access.
+    if (!isHeadOffice &&
+        const <String>{'CUSTOMER_SUPPORT', 'SUPPORT_MANAGER'}
+        .contains(normalizeRole(staffRoleName))) {
+      addNavigationPage(
+        page: const CustomerSupportDashboard(),
+        icon: Icons.manage_search_outlined,
+        activeIcon: Icons.manage_search_rounded,
+        label: 'Customer support desk',
+      );
+      addNavigationPage(
+        page: const AdminCustomerSupportScreen(),
+        icon: Icons.support_agent_outlined,
+        activeIcon: Icons.support_agent_rounded,
+        label: 'Support / Tickets',
+      );
+      currentIndex = 0;
+      return;
+    }
 
     if (canAccessEduPayNavigation(role: adminRole, permissions: permissions)) {
       addNavigationPage(

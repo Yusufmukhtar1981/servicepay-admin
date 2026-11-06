@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'admin_staff_workspace_api.dart';
+import 'admin_transaction_reliability_panel.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_customer_support_operations_center.dart' as support;
 
@@ -16,6 +17,8 @@ class _OperationsManagerDashboardState
     extends State<OperationsManagerDashboard> {
   late final AdminStaffWorkspaceApi _api =
       widget.api ?? AdminStaffWorkspaceApi();
+  final GlobalKey<AdminTransactionReliabilityPanelState> _reliabilityKey =
+      GlobalKey<AdminTransactionReliabilityPanelState>();
   Map<String, dynamic> _data = {};
   bool _loading = true;
   bool _transactionsLoading = false;
@@ -55,6 +58,13 @@ class _OperationsManagerDashboardState
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _refreshAll() async {
+    await Future.wait<void>([
+      _load(),
+      _reliabilityKey.currentState?.refresh() ?? Future<void>.value(),
+    ]);
   }
 
   Future<void> _loadTransactions({int page = 1}) async {
@@ -144,7 +154,7 @@ class _OperationsManagerDashboardState
           actions: [
             IconButton(
               tooltip: 'Refresh',
-              onPressed: _loading ? null : _load,
+              onPressed: _loading ? null : _refreshAll,
               icon: const Icon(Icons.refresh),
             ),
           ],
@@ -176,10 +186,14 @@ class _OperationsManagerDashboardState
                     ),
                   )
                 : RefreshIndicator(
-                    onRefresh: _load,
+                    onRefresh: _refreshAll,
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
                       children: [
+                        AdminTransactionReliabilityPanel(
+                          key: _reliabilityKey,
+                          api: _api,
+                        ),
                         if (_error.isNotEmpty)
                           MaterialBanner(
                             content: Text(_error),

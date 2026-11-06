@@ -23,6 +23,12 @@ class AdminStaffWorkspaceApi {
   Future<Map<String, dynamic>> supportSummary() =>
       _request('GET', 'support-summary');
 
+  Future<Map<String, dynamic>> reliability({int page = 1}) => _request(
+        'GET',
+        'transaction-reliability',
+        query: {'page': '$page', 'limit': '20'},
+      );
+
   Future<Map<String, dynamic>> virtualAccounts({
     String query = '',
     String status = '',

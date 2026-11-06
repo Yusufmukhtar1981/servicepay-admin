@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,8 +11,23 @@ class _SupportApi extends AdminStaffWorkspaceApi {
   _SupportApi() : super(baseUrl: 'https://support.test');
 
   String lastCustomerQuery = '';
+  String lastCustomerStatus = '';
+  String lastCustomerKycStatus = '';
   String lastTransactionQuery = '';
   String lastTransactionStatus = '';
+  String lastTransactionType = '';
+  String lastAccountStatus = '';
+  int lastCustomerPage = 0;
+  int lastTransactionPage = 0;
+  int lastAccountPage = 0;
+  int customerListCalls = 0;
+  int transactionListCalls = 0;
+  int accountListCalls = 0;
+  bool failCustomers = false;
+  bool failTransactions = false;
+  bool failAccounts = false;
+  Completer<Map<String, dynamic>>? pendingCustomerList;
+  Completer<Map<String, dynamic>>? pendingTransactionList;
   String lastLinkedTransaction = '';
   String lastAccountQuery = '';
   bool failSummaryOnce = false;
@@ -27,6 +44,7 @@ class _SupportApi extends AdminStaffWorkspaceApi {
     'status': 'ACTIVE',
     'kycStatus': 'VERIFIED',
     'walletBalance': 4250,
+    'createdAt': '2025-02-17T09:00:00Z',
   };
 
   @override
@@ -66,14 +84,22 @@ class _SupportApi extends AdminStaffWorkspaceApi {
   @override
   Future<Map<String, dynamic>> customers({
     String query = '',
+    String status = '',
+    String kycStatus = '',
     int page = 1,
     int limit = 20,
   }) async {
+    customerListCalls++;
     lastCustomerQuery = query;
+    lastCustomerStatus = status;
+    lastCustomerKycStatus = kycStatus;
+    lastCustomerPage = page;
+    if (pendingCustomerList != null) return pendingCustomerList!.future;
+    if (failCustomers) throw Exception('Customer records are unavailable.');
     return {
       'data': {
-        'items': query.isEmpty ? [] : [customerRecord],
-        'total': query.isEmpty ? 0 : 1,
+        'items': [customerRecord],
+        'total': 41,
       }
     };
   }
@@ -124,8 +150,17 @@ class _SupportApi extends AdminStaffWorkspaceApi {
     String query = '',
     String customerId = '',
   }) async {
+    transactionListCalls++;
     lastTransactionQuery = query;
     lastTransactionStatus = status;
+    lastTransactionType = type;
+    lastTransactionPage = page;
+    if (pendingTransactionList != null) {
+      return pendingTransactionList!.future;
+    }
+    if (failTransactions) {
+      throw Exception('Transaction records are unavailable.');
+    }
     return {
       'data': {
         'items': [
@@ -133,12 +168,18 @@ class _SupportApi extends AdminStaffWorkspaceApi {
             'id': 'tx-1',
             'reference': 'SP-REF-8041',
             'customerId': 'cust-7',
+            'customerName': 'Ada Okafor',
             'type': 'TRANSFER',
             'status': 'FAILED',
             'amount': 1800,
+            'createdAt': '2025-02-17T09:00:00Z',
+            'updatedAt': '2025-02-17T10:00:00Z',
+            'providerStatus': 'DECLINED',
+            'errorCode': 'P04',
+            'diagnostic': 'Receiving institution did not confirm.',
           }
         ],
-        'total': 1,
+        'total': 41,
       }
     };
   }
@@ -150,19 +191,29 @@ class _SupportApi extends AdminStaffWorkspaceApi {
     int page = 1,
     int limit = 20,
   }) async {
+    accountListCalls++;
     lastAccountQuery = query;
+    lastAccountStatus = status;
+    lastAccountPage = page;
+    if (failAccounts) {
+      throw Exception('Virtual account records are unavailable.');
+    }
     return {
       'data': {
         'items': [
           {
-            'id': 'va-1',
+            'id': 'cust-7',
             'fullName': 'Ada Okafor',
             'status': 'ACTIVE',
             'bankName': 'ServicePay partner bank',
             'maskedAccountNumber': '**** 2084',
+            'accountNumber': '0123456789',
+            'accountName': 'Ada Okafor',
+            'createdAt': '2025-02-17T09:00:00Z',
+            'updatedAt': '2025-02-17T10:00:00Z',
           }
         ],
-        'total': 1,
+        'total': 41,
       }
     };
   }
@@ -226,7 +277,9 @@ void main() {
     );
   });
 
-  testWidgets('customer investigation works at phone width', (tester) async {
+  testWidgets(
+      'customer records load automatically and investigation works at phone width',
+      (tester) async {
     await _setWidth(tester, 390);
     final api = _SupportApi();
     await tester.pumpWidget(_app(api));
@@ -234,6 +287,9 @@ void main() {
 
     expect(find.text('Support Operations Center'), findsOneWidget);
     expect(find.text('18,432'), findsOneWidget);
+    expect(api.customerListCalls, 1);
+    expect(api.lastCustomerQuery, isEmpty);
+    expect(find.text('Ada Okafor'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, 'Ada');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -300,13 +356,15 @@ void main() {
 
   testWidgets('transactions, virtual accounts and report work at desktop width',
       (tester) async {
-    await _setWidth(tester, 1280);
+    await _setWidth(tester, 1365);
     final api = _SupportApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Transactions'));
     await tester.pumpAndSettle();
+    expect(api.transactionListCalls, 1);
+    expect(api.lastTransactionPage, 1);
     final transactionSearch = find.byType(TextField).first;
     await tester.enterText(transactionSearch, 'SP-REF-8041');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -316,11 +374,13 @@ void main() {
 
     await tester.tap(find.text('Virtual accounts'));
     await tester.pumpAndSettle();
+    expect(api.accountListCalls, 1);
+    expect(api.lastAccountPage, 1);
     await tester.enterText(find.byType(TextField).first, 'Ada');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(api.lastAccountQuery, 'Ada');
-    expect(find.textContaining('**** 2084'), findsOneWidget);
+    expect(find.textContaining('0123456789'), findsOneWidget);
 
     await tester.tap(find.text('Team & reports'));
     await tester.pumpAndSettle();
@@ -351,9 +411,136 @@ void main() {
     expect(find.text('Team & reports'), findsNothing);
   });
 
+  testWidgets('server paging and filters send first-page scoped requests',
+      (tester) async {
+    await _setWidth(tester, 768);
+    final api = _SupportApi();
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Next page').first);
+    await tester.pumpAndSettle();
+    expect(api.lastCustomerPage, 2);
+    expect(find.text('Page 2 of 3 · 41 records'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('customer-status-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Suspended').last);
+    await tester.pumpAndSettle();
+    expect(api.lastCustomerStatus, 'SUSPENDED');
+    expect(api.lastCustomerPage, 1);
+    await tester.tap(find.byKey(const ValueKey('customer-kyc-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Verified').last);
+    await tester.pumpAndSettle();
+    expect(api.lastCustomerKycStatus, 'VERIFIED');
+    expect(api.lastCustomerPage, 1);
+
+    await tester.tap(find.text('Transactions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('transaction-status-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Failed').last);
+    await tester.pumpAndSettle();
+    expect(api.lastTransactionStatus, 'FAILED');
+
+    await tester.tap(find.text('Virtual accounts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('account-status-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pending').last);
+    await tester.pumpAndSettle();
+    expect(api.lastAccountStatus, 'PENDING');
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+    expect(api.lastAccountPage, 2);
+    final accountCallsBeforeRefresh = api.accountListCalls;
+    await tester.tap(find.byTooltip('Refresh records'));
+    await tester.pumpAndSettle();
+    expect(api.accountListCalls, accountCallsBeforeRefresh + 1);
+    expect(api.lastAccountPage, 2);
+    await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('record errors show retry instead of an empty state',
+      (tester) async {
+    final api = _SupportApi()..failCustomers = true;
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+    expect(find.text('Customer records are unavailable.'), findsOneWidget);
+    expect(find.textContaining('No customer records'), findsNothing);
+
+    api.failCustomers = false;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ada Okafor'), findsOneWidget);
+
+    api.failTransactions = true;
+    await tester.tap(find.text('Transactions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Transaction records are unavailable.'), findsOneWidget);
+    expect(find.text('No transactions match these filters.'), findsNothing);
+  });
+
+  testWidgets('late tab results cannot replace current-tab errors or profile',
+      (tester) async {
+    final pendingCustomers = Completer<Map<String, dynamic>>();
+    final api = _SupportApi()..pendingCustomerList = pendingCustomers;
+    await tester.pumpWidget(_app(api));
+    await tester.pump();
+
+    await tester.tap(find.text('Virtual accounts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Ada Okafor').last);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('customer-detail')), findsOneWidget);
+
+    pendingCustomers.complete({
+      'data': {
+        'items': [api.customerRecord],
+        'total': 41,
+      }
+    });
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('customer-detail')), findsOneWidget);
+
+    final pendingTransactions = Completer<Map<String, dynamic>>();
+    api.pendingTransactionList = pendingTransactions;
+    await tester.tap(find.text('Transactions'));
+    await tester.pump();
+    await tester.tap(find.text('Virtual accounts'));
+    await tester.pumpAndSettle();
+    pendingTransactions.completeError(
+      Exception('Stale transaction request failed.'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Stale transaction request failed.'), findsNothing);
+    expect(find.text('Virtual account records are unavailable.'), findsNothing);
+  });
+
+  testWidgets(
+      'controls wrap without horizontal overflow at narrow and scaled sizes',
+      (tester) async {
+    await _setWidth(tester, 360);
+    final api = _SupportApi();
+    await tester.pumpWidget(MediaQuery(
+      data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+      child: _app(api),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Customers'), findsWidgets);
+    await tester.tap(find.text('Virtual accounts').last);
+    await tester.pumpAndSettle();
+    expect(api.accountListCalls, 1);
+    expect(tester.takeException(), isNull);
+    await tester.binding.setSurfaceSize(null);
+  });
+
   testWidgets('transaction investigation links the exact record to a complaint',
       (tester) async {
-    await _setWidth(tester, 1280);
+    await _setWidth(tester, 1365);
     final api = _SupportApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -369,11 +556,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('tx-1'), findsOneWidget);
     final description = find.byWidgetPredicate((widget) =>
-        widget is TextField && widget.decoration?.labelText == 'What happened?');
+        widget is TextField &&
+        widget.decoration?.labelText == 'What happened?');
     await tester.enterText(description, 'Please review the provider outcome.');
     await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Create case')).onPressed, isNotNull);
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Create case'))
+            .onPressed,
+        isNotNull);
     await tester.tap(find.text('Create case'));
     await tester.pumpAndSettle();
     expect(api.lastLinkedTransaction, 'tx-1');

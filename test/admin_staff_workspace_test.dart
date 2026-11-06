@@ -11,7 +11,48 @@ import 'package:servicepay_app/admin/admin_staff_workspace_screens.dart';
 import 'package:servicepay_app/admin/main_navigation.dart';
 
 class _WorkspaceApi extends AdminStaffWorkspaceApi {
-  _WorkspaceApi() : super(client: MockClient((_) async => http.Response('{}', 200)));
+  _WorkspaceApi()
+      : super(client: MockClient((_) async => http.Response('{}', 200)));
+  String? initialCustomerQuery;
+
+  @override
+  Future<Map<String, dynamic>> supportSummary() async => {
+        'success': true,
+        'data': {
+          'totalCustomers': 1,
+          'canManageTeam': false,
+        },
+      };
+
+  @override
+  Future<Map<String, dynamic>> customers({
+    String query = '',
+    String status = '',
+    String kycStatus = '',
+    int page = 1,
+    int limit = 20,
+  }) async {
+    initialCustomerQuery = query;
+    return {
+      'success': true,
+      'data': {
+        'items': [
+          {
+            'id': 'cust-1',
+            'fullName': 'Amina Bello',
+            'phone': '+2348000000000',
+            'email': 'amina@example.test',
+            'status': 'ACTIVE',
+            'kycStatus': 'VERIFIED',
+            'createdAt': '2026-06-01T09:00:00Z',
+          }
+        ],
+        'total': 1,
+        'page': page,
+        'limit': limit,
+      },
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> overview() async => {
@@ -32,8 +73,11 @@ class _WorkspaceApi extends AdminStaffWorkspaceApi {
 }
 
 void main() {
-  test('Head Office sees ordinary staff workspaces with an empty permission fixture', () {
-    final labels = AdminMainNavigation.visibleDestinationLabels(const AdminAccess(role: 'HEAD_OFFICE', permissions: <String>{}));
+  test(
+      'Head Office sees ordinary staff workspaces with an empty permission fixture',
+      () {
+    final labels = AdminMainNavigation.visibleDestinationLabels(
+        const AdminAccess(role: 'HEAD_OFFICE', permissions: <String>{}));
     expect(labels, contains('Operations overview'));
     expect(labels, contains('Customer support desk'));
   });
@@ -98,19 +142,16 @@ void main() {
     expect(find.text('No operational records to show.'), findsWidgets);
   });
 
-  testWidgets('customer workspace starts with a privacy-conscious search state',
+  testWidgets('customer support workspace opens with real first-page records',
       (tester) async {
+    final api = _WorkspaceApi();
     await tester.pumpWidget(
-      MaterialApp(home: CustomerSupportDashboard(api: _WorkspaceApi())),
+      MaterialApp(home: CustomerSupportDashboard(api: api)),
     );
-    expect(
-      find.text('Search a customer to begin a secure investigation.'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Name, phone, email, customer ID or transaction reference'),
-      findsOneWidget,
-    );
+    await tester.pumpAndSettle();
+    expect(api.initialCustomerQuery, '');
+    expect(find.text('Amina Bello'), findsOneWidget);
+    expect(find.textContaining('KYC VERIFIED'), findsOneWidget);
   });
 
   test('workspace endpoints use protected staff-workspace route', () async {
@@ -125,9 +166,56 @@ void main() {
     );
     await api.customers(query: 'Amina 0800', page: 2);
     expect(request!.url.path, '/api/admin/staff-workspace/customers');
-    expect(request!.url.queryParameters, {'q': 'Amina 0800', 'page': '2', 'limit': '20'});
+    expect(request!.url.queryParameters,
+        {'q': 'Amina 0800', 'page': '2', 'limit': '20'});
     expect(request!.headers['authorization'], 'Bearer workspace-session');
     api.close();
+  });
+
+  test('customer filters use the supported query contract', () async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'workspace-session'});
+    http.Request? request;
+    final api = AdminStaffWorkspaceApi(
+      baseUrl: 'https://example.test/api/admin/staff-workspace',
+      client: MockClient((value) async {
+        request = value;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0}
+          }),
+          200,
+        );
+      }),
+    );
+    await api.customers(
+      status: 'ACTIVE',
+      kycStatus: 'VERIFIED',
+      page: 1,
+      limit: 20,
+    );
+    expect(request!.url.queryParameters, {
+      'status': 'ACTIVE',
+      'kycStatus': 'VERIFIED',
+      'page': '1',
+      'limit': '20',
+    });
+    api.close();
+  });
+
+  test('malformed successful HTTP replies are rejected', () async {
+    SharedPreferences.setMockInitialValues({'auth_token': 'workspace-session'});
+    for (final body in ['not json', '{}', '{"success":true}']) {
+      final api = AdminStaffWorkspaceApi(
+        baseUrl: 'https://example.test/api/admin/staff-workspace',
+        client: MockClient((_) async => http.Response(body, 200)),
+      );
+      await expectLater(
+        api.customers(),
+        throwsA(isA<Exception>()),
+      );
+      api.close();
+    }
   });
 
   test('role provisioning POST is explicit and sends no scope overrides',
@@ -181,15 +269,35 @@ void main() {
           jsonEncode({
             'success': true,
             'data': {
-              'staff': {'id': 'staff-42', 'fullName': 'Amina Bello', 'status': 'ACTIVE'},
+              'staff': {
+                'id': 'staff-42',
+                'fullName': 'Amina Bello',
+                'status': 'ACTIVE'
+              },
               'logins': [
-                {'_id': 'l1', 'outcome': 'SUCCESS', 'eventType': 'LOGIN', 'createdAt': '2026-06-01T09:00:00Z'}
+                {
+                  '_id': 'l1',
+                  'outcome': 'SUCCESS',
+                  'eventType': 'LOGIN',
+                  'createdAt': '2026-06-01T09:00:00Z'
+                }
               ],
               'activities': [
-                {'_id': 'a1', 'action': 'TICKET_REPLY', 'reason': 'Customer response', 'createdAt': '2026-06-01T09:10:00Z'}
+                {
+                  '_id': 'a1',
+                  'action': 'TICKET_REPLY',
+                  'reason': 'Customer response',
+                  'createdAt': '2026-06-01T09:10:00Z'
+                }
               ],
               'access': [
-                {'_id': 'r1', 'method': 'GET', 'path': '/api/admin/support/tickets', 'statusCode': 200, 'createdAt': '2026-06-01T09:11:00Z'}
+                {
+                  '_id': 'r1',
+                  'method': 'GET',
+                  'path': '/api/admin/support/tickets',
+                  'statusCode': 200,
+                  'createdAt': '2026-06-01T09:11:00Z'
+                }
               ],
             },
           }),

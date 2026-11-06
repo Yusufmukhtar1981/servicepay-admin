@@ -17,7 +17,8 @@ class CustomerSupportOperationsCenter extends StatefulWidget {
 
 class _CustomerSupportOperationsCenterState
     extends State<CustomerSupportOperationsCenter> {
-  late final AdminStaffWorkspaceApi _api = widget.api ?? AdminStaffWorkspaceApi();
+  late final AdminStaffWorkspaceApi _api =
+      widget.api ?? AdminStaffWorkspaceApi();
   final TextEditingController _search = TextEditingController();
   final TextEditingController _transactionSearch = TextEditingController();
   final TextEditingController _accountSearch = TextEditingController();
@@ -38,10 +39,23 @@ class _CustomerSupportOperationsCenterState
   String _view = 'Customers';
   String _accountStatus = '';
   String _transactionStatus = '';
+  String _transactionType = '';
+  String _customerStatus = '';
+  String _customerKycStatus = '';
   String _error = '';
   bool _loading = false;
   bool _summaryLoading = true;
+  bool _customersLoading = false;
   bool _accountsLoading = false;
+  bool _transactionsLoading = false;
+  bool _customersLoaded = false;
+  bool _transactionsLoaded = false;
+  bool _accountsLoaded = false;
+  int _customerRequest = 0;
+  int _transactionRequest = 0;
+  int _accountRequest = 0;
+  int _profileRequest = 0;
+  int _viewRequest = 0;
   String _retryAction = 'summary';
   int _customerPage = 1;
   int _customerTotal = 0;
@@ -54,6 +68,7 @@ class _CustomerSupportOperationsCenterState
   void initState() {
     super.initState();
     _loadSummary();
+    _findCustomers();
   }
 
   @override
@@ -103,7 +118,12 @@ class _CustomerSupportOperationsCenterState
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (mounted) {
+        setState(() {
+          _error = _friendlyError(e);
+          _retryAction = 'summary';
+        });
+      }
     } finally {
       if (mounted) setState(() => _summaryLoading = false);
     }
@@ -117,8 +137,10 @@ class _CustomerSupportOperationsCenterState
   }
 
   Future<void> _findCustomers({int page = 1}) async {
+    final request = ++_customerRequest;
+    final viewRequest = _viewRequest;
     setState(() {
-      _loading = true;
+      _customersLoading = true;
       _error = '';
       _retryAction = 'customers';
       _customerPage = page;
@@ -126,33 +148,61 @@ class _CustomerSupportOperationsCenterState
     try {
       final data = _data(await _api.customers(
         query: _search.text.trim(),
+        status: _customerStatus,
+        kycStatus: _customerKycStatus,
         page: page,
         limit: 20,
       ));
-      if (!mounted) return;
+      if (!mounted ||
+          request != _customerRequest ||
+          viewRequest != _viewRequest ||
+          _view != 'Customers' ||
+          _customer != null) {
+        return;
+      }
       setState(() {
+        _customersLoaded = true;
         _customers = _rows(data['items']);
         _customerTotal = (data['total'] as num?)?.toInt() ?? _customers.length;
         _customer = null;
         _profile = {};
       });
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (mounted &&
+          request == _customerRequest &&
+          viewRequest == _viewRequest &&
+          _view == 'Customers' &&
+          _customer == null) {
+        setState(() {
+          _error = _friendlyError(e);
+          _retryAction = 'customers';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _customerRequest) {
+        setState(() => _customersLoading = false);
+      }
     }
   }
 
   Future<void> _openCustomer(Map<String, dynamic> customer) async {
+    final request = ++_profileRequest;
+    ++_customerRequest;
+    final viewRequest = _viewRequest;
     _customerTarget = customer;
     setState(() {
       _loading = true;
+      _customersLoading = false;
       _error = '';
       _retryAction = 'customer';
     });
     try {
       final data = _data(await _api.customer('${customer['id']}'));
-      if (!mounted) return;
+      if (!mounted ||
+          request != _profileRequest ||
+          viewRequest != _viewRequest) {
+        return;
+      }
       setState(() {
         _profile = data;
         _customer = data['customer'] is Map
@@ -160,15 +210,26 @@ class _CustomerSupportOperationsCenterState
             : customer;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (mounted &&
+          request == _profileRequest &&
+          viewRequest == _viewRequest) {
+        setState(() {
+          _error = _friendlyError(e);
+          _retryAction = 'customer';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _profileRequest) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _findTransactions({int page = 1}) async {
+    final request = ++_transactionRequest;
+    final viewRequest = _viewRequest;
     setState(() {
-      _loading = true;
+      _transactionsLoading = true;
       _error = '';
       _retryAction = 'transactions';
       _transactionPage = page;
@@ -177,23 +238,42 @@ class _CustomerSupportOperationsCenterState
       final data = _data(await _api.transactions(
         query: _transactionSearch.text.trim(),
         status: _transactionStatus,
+        type: _transactionType,
         page: page,
         limit: 20,
       ));
-      if (!mounted) return;
+      if (!mounted ||
+          request != _transactionRequest ||
+          viewRequest != _viewRequest ||
+          _view != 'Transactions') {
+        return;
+      }
       setState(() {
+        _transactionsLoaded = true;
         _transactions = _rows(data['items']);
         _transactionTotal =
             (data['total'] as num?)?.toInt() ?? _transactions.length;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (mounted &&
+          request == _transactionRequest &&
+          viewRequest == _viewRequest &&
+          _view == 'Transactions') {
+        setState(() {
+          _error = _friendlyError(e);
+          _retryAction = 'transactions';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _transactionRequest) {
+        setState(() => _transactionsLoading = false);
+      }
     }
   }
 
   Future<void> _findAccounts({int page = 1}) async {
+    final request = ++_accountRequest;
+    final viewRequest = _viewRequest;
     setState(() {
       _accountsLoading = true;
       _error = '';
@@ -207,15 +287,72 @@ class _CustomerSupportOperationsCenterState
         page: page,
         limit: 20,
       ));
-      if (!mounted) return;
+      if (!mounted ||
+          request != _accountRequest ||
+          viewRequest != _viewRequest ||
+          _view != 'Virtual accounts') {
+        return;
+      }
       setState(() {
+        _accountsLoaded = true;
         _accounts = _rows(data['items']);
         _accountTotal = (data['total'] as num?)?.toInt() ?? _accounts.length;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e));
+      if (mounted &&
+          request == _accountRequest &&
+          viewRequest == _viewRequest &&
+          _view == 'Virtual accounts') {
+        setState(() {
+          _error = _friendlyError(e);
+          _retryAction = 'accounts';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _accountsLoading = false);
+      if (mounted && request == _accountRequest) {
+        setState(() => _accountsLoading = false);
+      }
+    }
+  }
+
+  Future<void> _refreshActive() async {
+    final view = _view;
+    final viewRequest = _viewRequest;
+    await _loadSummary();
+    if (!mounted || viewRequest != _viewRequest) return;
+    switch (view) {
+      case 'Customers':
+        if (_customer != null) {
+          await _openCustomer(_customer!);
+        } else {
+          await _findCustomers(page: _customerPage);
+        }
+        break;
+      case 'Transactions':
+        await _findTransactions(page: _transactionPage);
+        break;
+      case 'Virtual accounts':
+        await _findAccounts(page: _accountPage);
+        break;
+    }
+  }
+
+  void _selectView(String value) {
+    _viewRequest++;
+    setState(() {
+      _view = value;
+      _error = '';
+    });
+    switch (value) {
+      case 'Customers':
+        if (!_customersLoaded) _findCustomers();
+        break;
+      case 'Transactions':
+        if (!_transactionsLoaded) _findTransactions();
+        break;
+      case 'Virtual accounts':
+        if (!_accountsLoaded) _findAccounts();
+        break;
     }
   }
 
@@ -432,9 +569,11 @@ class _CustomerSupportOperationsCenterState
           ]),
     ];
     String quote(String value) {
-      final safe = RegExp(r'^[\s]*[=+\-@\t\r]').hasMatch(value) ? "'$value" : value;
+      final safe =
+          RegExp(r'^[\s]*[=+\-@\t\r]').hasMatch(value) ? "'$value" : value;
       return '"${safe.replaceAll('"', '""')}"';
     }
+
     final csv = lines.map((row) => row.map(quote).join(',')).join('\n');
     try {
       await downloadControlCenterCsv(csv, 'servicepay-support-report.csv');
@@ -528,12 +667,19 @@ class _CustomerSupportOperationsCenterState
         border: const OutlineInputBorder(),
         suffixIcon: IconButton(
           tooltip: 'Search',
-          onPressed: _loading || _accountsLoading ? null : search,
+          onPressed: _activeListLoading ? null : search,
           icon: const Icon(Icons.arrow_forward),
         ),
       ),
     );
   }
+
+  bool get _activeListLoading => switch (_view) {
+        'Customers' => _customersLoading || _loading,
+        'Transactions' => _transactionsLoading,
+        'Virtual accounts' => _accountsLoading,
+        _ => false,
+      };
 
   Widget _errorBanner() => _error.isEmpty
       ? const SizedBox.shrink()
@@ -554,6 +700,48 @@ class _CustomerSupportOperationsCenterState
             const SizedBox(width: 10),
             Expanded(child: Text(message, textAlign: TextAlign.start)),
           ],
+        ),
+      );
+
+  List<Widget> _recordSkeletons() => List<Widget>.generate(
+        3,
+        (_) => Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  backgroundColor: Color(0xffe3eee8),
+                  child: SizedBox.shrink(),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 14,
+                        width: 150,
+                        decoration: BoxDecoration(
+                          color: const Color(0xffe3eee8),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 11,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: const Color(0xffedf3ef),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
 
@@ -614,8 +802,13 @@ class _CustomerSupportOperationsCenterState
               title: const Text('Virtual account · read only'),
               subtitle: Text([
                 '${virtual['bankName'] ?? 'Bank unavailable'}',
-                '${virtual['maskedAccountNumber'] ?? 'Account number unavailable'}',
+                'Account: ${virtual['accountNumber'] ?? virtual['maskedAccountNumber'] ?? 'Unavailable'}',
+                'Account name: ${virtual['accountName'] ?? 'Unavailable'}',
                 '${virtual['status'] ?? 'Status unavailable'}',
+                if ('${virtual['createdAt'] ?? ''}'.isNotEmpty)
+                  'Created: ${virtual['createdAt']}',
+                if ('${virtual['updatedAt'] ?? ''}'.isNotEmpty)
+                  'Updated: ${virtual['updatedAt']}',
                 if ('${virtual['message'] ?? ''}'.isNotEmpty)
                   '${virtual['message']}',
                 if ('${virtual['errorCode'] ?? ''}'.isNotEmpty)
@@ -654,16 +847,87 @@ class _CustomerSupportOperationsCenterState
         ],
       );
     }
-    if (_customers.isEmpty && !_loading) {
+    if (_customers.isEmpty &&
+        !_customersLoading &&
+        !_loading &&
+        _error.isEmpty &&
+        _customersLoaded) {
       return _empty(_search.text.isEmpty
-          ? 'Search a customer to begin a secure investigation.'
+          ? 'No customer records are available for these filters.'
           : 'No customer matched that search. Try a phone, email, ID or reference.');
     }
     return ListView(
       key: const ValueKey('customer-results'),
       padding: const EdgeInsets.all(16),
       children: [
-        if (_loading) const LinearProgressIndicator(),
+        if (_customersLoading || _loading) const LinearProgressIndicator(),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            SizedBox(
+              width: 210,
+              child: DropdownButtonFormField<String>(
+                key: const ValueKey('customer-status-filter'),
+                isExpanded: true,
+                value: _customerStatus,
+                decoration: const InputDecoration(
+                  labelText: 'Account status',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  ['', 'All statuses'],
+                  ['ACTIVE', 'Active'],
+                  ['SUSPENDED', 'Suspended'],
+                  ['PENDING', 'Pending'],
+                ]
+                    .map((item) => DropdownMenuItem(
+                        value: item[0],
+                        child: Text(item[1],
+                            maxLines: 1, overflow: TextOverflow.ellipsis)))
+                    .toList(),
+                onChanged: _customersLoading || _loading
+                    ? null
+                    : (value) {
+                        setState(() => _customerStatus = value ?? '');
+                        _findCustomers();
+                      },
+              ),
+            ),
+            SizedBox(
+              width: 210,
+              child: DropdownButtonFormField<String>(
+                key: const ValueKey('customer-kyc-filter'),
+                isExpanded: true,
+                value: _customerKycStatus,
+                decoration: const InputDecoration(
+                  labelText: 'KYC status',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  ['', 'All KYC statuses'],
+                  ['VERIFIED', 'Verified'],
+                  ['NOT_VERIFIED', 'Not verified'],
+                ]
+                    .map((item) => DropdownMenuItem(
+                        value: item[0],
+                        child: Text(item[1],
+                            maxLines: 1, overflow: TextOverflow.ellipsis)))
+                    .toList(),
+                onChanged: _customersLoading || _loading
+                    ? null
+                    : (value) {
+                        setState(() => _customerKycStatus = value ?? '');
+                        _findCustomers();
+                      },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_customersLoading && _customers.isEmpty) ..._recordSkeletons(),
         ..._customers.map((customer) => Card(
               child: ListTile(
                 leading: const CircleAvatar(
@@ -672,13 +936,17 @@ class _CustomerSupportOperationsCenterState
                 ),
                 title: Text('${customer['fullName'] ?? 'Customer'}'),
                 subtitle: Text(
-                    '${customer['phone'] ?? 'No phone'} · ${customer['email'] ?? 'No email'}'),
+                    'ID ${customer['id'] ?? 'Unavailable'} · ${customer['phone'] ?? 'No phone'} · ${customer['email'] ?? 'No email'}\n${customer['status'] ?? 'Status unavailable'} · KYC ${customer['kycStatus'] ?? 'Unavailable'} · Created ${customer['createdAt'] ?? 'Unavailable'}'),
+                isThreeLine: true,
                 trailing: const Icon(Icons.chevron_right),
-                onTap: _loading ? null : () => _openCustomer(customer),
+                onTap: _customersLoading || _loading
+                    ? null
+                    : () => _openCustomer(customer),
               ),
             )),
-        if (_customers.isNotEmpty)
-          _pager(_customerPage, _customerTotal, _loading, _findCustomers),
+        if (_customersLoaded && _error.isEmpty)
+          _pager(
+              _customerPage, _customerTotal, _customersLoading, _findCustomers),
       ],
     );
   }
@@ -705,12 +973,15 @@ class _CustomerSupportOperationsCenterState
           leading: const Icon(Icons.receipt_long_outlined),
           title: Text('${row['reference'] ?? row['id'] ?? 'Transaction'}'),
           subtitle: Text(
-              '${row['type'] ?? 'Payment'} · ${row['status'] ?? 'Unknown'} · ${row['createdAt'] ?? 'Date unavailable'}'
+              '${row['customerName'] ?? 'Customer unavailable'} · ${row['type'] ?? 'Payment'} · ${row['status'] ?? 'Unknown'} · Created ${row['createdAt'] ?? 'date unavailable'} · Updated ${row['updatedAt'] ?? 'date unavailable'}'
               '${row['providerStatus'] == null ? '' : ' · Provider: ${row['providerStatus']}'}'
               '${row['errorCode'] == null ? '' : ' · Code ${row['errorCode']}'}'
               '${row['diagnostic'] == null ? '' : '\n${row['diagnostic']}'}'),
-          isThreeLine: row['diagnostic'] != null,
-          trailing: Text('₦${row['amount'] ?? '—'}'),
+          isThreeLine: true,
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 96),
+            child: Text(_money(row['amount']), textAlign: TextAlign.end),
+          ),
         ),
       );
 
@@ -723,18 +994,24 @@ class _CustomerSupportOperationsCenterState
           child: SelectableText([
             'Reference: ${row['reference'] ?? 'Unavailable'}',
             'Transaction ID: ${row['id'] ?? 'Unavailable'}',
+            'Customer: ${row['customerName'] ?? 'Unavailable'}',
+            'Customer ID: ${row['customerId'] ?? 'Unavailable'}',
+            'Type: ${row['type'] ?? 'Unavailable'}',
             'Status: ${row['status'] ?? 'Unavailable'}',
             'Amount: ${_money(row['amount'])}',
             'Created: ${row['createdAt'] ?? 'Unavailable'}',
             'Updated: ${row['updatedAt'] ?? 'Unavailable'}',
             'Provider status: ${row['providerStatus'] ?? 'Unavailable'}',
+            'Error code: ${row['errorCode'] ?? 'Unavailable'}',
             'Safe diagnostic: ${row['diagnostic'] ?? 'No provider evidence available.'}',
           ].join('\n\n')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Close')),
-          FilledButton(onPressed: () => Navigator.pop(context, true),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('Create linked complaint')),
         ],
       ),
@@ -742,7 +1019,8 @@ class _CustomerSupportOperationsCenterState
     if (create != true || !mounted) return;
     final customerId = '${row['customerId'] ?? _customer?['id'] ?? ''}';
     if (customerId.isEmpty) {
-      setState(() => _error = 'Select the transaction customer before creating a complaint.');
+      setState(() => _error =
+          'Select the transaction customer before creating a complaint.');
       return;
     }
     await _openCustomer({'id': customerId});
@@ -751,24 +1029,33 @@ class _CustomerSupportOperationsCenterState
     await _createTicket(transaction: row);
   }
 
-  Widget _pager(int page, int total, bool busy,
-          Future<void> Function({int page}) load) =>
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text('Page $page · $total records'),
-        Row(children: [
-          IconButton(
-            tooltip: 'Previous page',
-            onPressed: page > 1 && !busy ? () => load(page: page - 1) : null,
-            icon: const Icon(Icons.chevron_left),
-          ),
-          IconButton(
-            tooltip: 'Next page',
-            onPressed:
-                page * 20 < total && !busy ? () => load(page: page + 1) : null,
-            icon: const Icon(Icons.chevron_right),
-          ),
-        ]),
-      ]);
+  Widget _pager(
+      int page, int total, bool busy, Future<void> Function({int page}) load) {
+    final pageCount = total == 0 ? 1 : (total + 19) ~/ 20;
+    return Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 4,
+        children: [
+          Text('Page $page of $pageCount · $total records'),
+          Row(children: [
+            IconButton(
+              key: const ValueKey('support-previous-page'),
+              tooltip: 'Previous page',
+              onPressed: page > 1 && !busy ? () => load(page: page - 1) : null,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            IconButton(
+              key: const ValueKey('support-next-page'),
+              tooltip: 'Next page',
+              onPressed: page * 20 < total && !busy
+                  ? () => load(page: page + 1)
+                  : null,
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ]),
+        ]);
+  }
 
   Widget _transactionsPane() => ListView(
         padding: const EdgeInsets.all(16),
@@ -777,24 +1064,67 @@ class _CustomerSupportOperationsCenterState
               'Investigation only. No payment, refund or balance controls.'),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            key: const ValueKey('transaction-status-filter'),
+            isExpanded: true,
             value: _transactionStatus,
             decoration: const InputDecoration(labelText: 'Transaction status'),
             items: const [
-              ['', 'All statuses'], ['SUCCESSFUL', 'Successful'],
-              ['PENDING', 'Pending'], ['FAILED', 'Failed'], ['REFUNDED', 'Refunded'],
-            ].map((v) => DropdownMenuItem(value: v[0], child: Text(v[1]))).toList(),
-            onChanged: _loading ? null : (value) {
-              setState(() => _transactionStatus = value ?? '');
-              _findTransactions();
-            },
+              ['', 'All statuses'],
+              ['SUCCESSFUL', 'Successful'],
+              ['PENDING', 'Pending'],
+              ['FAILED', 'Failed'],
+              ['REFUNDED', 'Refunded'],
+            ]
+                .map((v) => DropdownMenuItem(
+                    value: v[0],
+                    child: Text(v[1],
+                        maxLines: 1, overflow: TextOverflow.ellipsis)))
+                .toList(),
+            onChanged: _transactionsLoading
+                ? null
+                : (value) {
+                    setState(() => _transactionStatus = value ?? '');
+                    _findTransactions();
+                  },
           ),
-          if (_loading) const LinearProgressIndicator(),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            key: const ValueKey('transaction-type-filter'),
+            isExpanded: true,
+            value: _transactionType,
+            decoration: const InputDecoration(labelText: 'Transaction type'),
+            items: const [
+              ['', 'All types'],
+              ['TRANSFER', 'Transfer'],
+              ['DEPOSIT', 'Deposit'],
+              ['WITHDRAWAL', 'Withdrawal'],
+              ['AIRTIME', 'Airtime'],
+              ['DATA', 'Data'],
+              ['BILL_PAYMENT', 'Bill payment'],
+            ]
+                .map((v) => DropdownMenuItem(
+                    value: v[0],
+                    child: Text(v[1],
+                        maxLines: 1, overflow: TextOverflow.ellipsis)))
+                .toList(),
+            onChanged: _transactionsLoading
+                ? null
+                : (value) {
+                    setState(() => _transactionType = value ?? '');
+                    _findTransactions();
+                  },
+          ),
+          if (_transactionsLoading) const LinearProgressIndicator(),
+          if (_transactionsLoading && _transactions.isEmpty)
+            ..._recordSkeletons(),
           ..._transactions.map(_transactionTile),
-          if (_transactions.isEmpty && !_loading)
-            _empty(
-                'Search by reference or customer details to inspect transactions.'),
-          if (_transactions.isNotEmpty)
-            _pager(_transactionPage, _transactionTotal, _loading,
+          if (_transactions.isEmpty &&
+              !_transactionsLoading &&
+              _transactionsLoaded &&
+              _error.isEmpty)
+            _empty('No transactions match these filters.'),
+          if (_transactionsLoaded && _error.isEmpty)
+            _pager(_transactionPage, _transactionTotal, _transactionsLoading,
                 _findTransactions),
         ],
       );
@@ -803,6 +1133,8 @@ class _CustomerSupportOperationsCenterState
         padding: const EdgeInsets.all(16),
         children: [
           DropdownButtonFormField<String>(
+            key: const ValueKey('account-status-filter'),
+            isExpanded: true,
             value: _accountStatus,
             decoration: const InputDecoration(
                 labelText: 'Account status', border: OutlineInputBorder()),
@@ -815,8 +1147,10 @@ class _CustomerSupportOperationsCenterState
               ['NOT_CREATED', 'Not created'],
               ['UNKNOWN', 'Unknown'],
             ]
-                .map((item) =>
-                    DropdownMenuItem(value: item[0], child: Text(item[1])))
+                .map((item) => DropdownMenuItem(
+                    value: item[0],
+                    child: Text(item[1],
+                        maxLines: 1, overflow: TextOverflow.ellipsis)))
                 .toList(),
             onChanged: _accountsLoading
                 ? null
@@ -826,27 +1160,50 @@ class _CustomerSupportOperationsCenterState
                   },
           ),
           if (_accountsLoading) const LinearProgressIndicator(),
+          if (_accountsLoading && _accounts.isEmpty) ..._recordSkeletons(),
           ..._accounts.map((row) => Card(
-                child: ListTile(
-                  onTap: () async {
-                    await _openCustomer({'id': row['id']});
-                    if (mounted && _customer?['id'] == row['id']) {
-                      setState(() => _view = 'Customers');
-                    }
-                  },
-                  leading: const Icon(Icons.account_balance_outlined),
-                  title: Text('${row['fullName'] ?? 'Customer'}'),
-                  subtitle: Text(
-                      '${row['bankName'] ?? 'Bank unavailable'} · ${row['maskedAccountNumber'] ?? 'Account unavailable'}'
-                      '${row['message'] == null ? '' : '\n${row['message']}'}'
-                      '${row['errorCode'] == null ? '' : ' · Code ${row['errorCode']}'}'),
-                  isThreeLine: row['message'] != null,
-                  trailing: Text('${row['status'] ?? 'Unknown'}'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    onTap: () async {
+                      await _openCustomer({'id': row['id']});
+                      if (mounted && _customer?['id'] == row['id']) {
+                        setState(() => _view = 'Customers');
+                      }
+                    },
+                    leading: const Icon(Icons.account_balance_outlined),
+                    title: Text('${row['fullName'] ?? 'Customer'}'),
+                    subtitle: Text([
+                      'Customer ID: ${row['id'] ?? 'Unavailable'}',
+                      '${row['accountName'] ?? row['fullName'] ?? 'Account name unavailable'}',
+                      '${row['bankName'] ?? 'Bank unavailable'}',
+                      'Account: ${row['accountNumber'] ?? row['maskedAccountNumber'] ?? 'Unavailable'}',
+                      'Masked account: ${row['maskedAccountNumber'] ?? 'Unavailable'}',
+                      'Status: ${row['status'] ?? 'Unknown'}',
+                      if ('${row['phone'] ?? ''}'.isNotEmpty)
+                        'Phone: ${row['phone']}',
+                      if ('${row['email'] ?? ''}'.isNotEmpty)
+                        'Email: ${row['email']}',
+                      if ('${row['createdAt'] ?? ''}'.isNotEmpty)
+                        'Created: ${row['createdAt']}',
+                      if ('${row['updatedAt'] ?? ''}'.isNotEmpty)
+                        'Updated: ${row['updatedAt']}',
+                      if ('${row['message'] ?? ''}'.isNotEmpty)
+                        '${row['message']}',
+                      if ('${row['errorCode'] ?? ''}'.isNotEmpty)
+                        'Code: ${row['errorCode']}',
+                    ].join('\n')),
+                    isThreeLine: true,
+                    trailing: const Icon(Icons.chevron_right),
+                  ),
                 ),
               )),
-          if (_accounts.isEmpty && !_accountsLoading)
+          if (_accounts.isEmpty &&
+              !_accountsLoading &&
+              _accountsLoaded &&
+              _error.isEmpty)
             _empty('No virtual account records match these filters.'),
-          if (_accounts.isNotEmpty)
+          if (_accountsLoaded && _error.isEmpty)
             _pager(
                 _accountPage, _accountTotal, _accountsLoading, _findAccounts),
         ],
@@ -1016,91 +1373,56 @@ class _CustomerSupportOperationsCenterState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Support operations'),
+        backgroundColor: const Color(0xff102a3a),
+        foregroundColor: const Color(0xfff4f8f6),
+        surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
-            tooltip: 'Refresh metrics',
-            onPressed: _summaryLoading ? null : _loadSummary,
+            key: const ValueKey('refresh-support-records'),
+            tooltip: 'Refresh records',
+            onPressed: _refreshActive,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: SafeArea(
         child: Column(children: [
-          Container(
-            width: double.infinity,
-            color: const Color(0xffe8f3ed),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Support Operations Center',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: const Color(0xff155b45),
-                        fontWeight: FontWeight.w800,
-                      )),
-              const SizedBox(height: 4),
-              const Text(
-                  'Investigate carefully. Customer funds are never in scope.'),
-              const SizedBox(height: 10),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  _metric('Customers', _summary['totalCustomers'] ?? 0,
-                      Icons.people_outline,
-                      loading: _summaryLoading),
-                  _metric(
-                      'Pending payments',
-                      _summary['pendingTransactions'] ?? 0,
-                      Icons.hourglass_top_outlined,
-                      loading: _summaryLoading),
-                  _metric('Failed payments',
-                      _summary['failedTransactions'] ?? 0, Icons.error_outline,
-                      loading: _summaryLoading),
-                  _metric('Open complaints', _summary['openComplaints'] ?? 0,
-                      Icons.forum_outlined,
-                      loading: _summaryLoading),
-                  _metric('Resolved', _summary['resolvedTickets'] ?? 0,
-                      Icons.task_alt_outlined,
-                      loading: _summaryLoading),
-                  _metric('Active agents', _summary['activeSupportAgents'] ?? 0,
-                      Icons.support_agent_outlined,
-                      loading: _summaryLoading),
-                ]),
-              ),
-              const SizedBox(height: 6),
-              Wrap(spacing: 16, children: [
-                Text(
-                    'Avg. resolution  ${_duration(_summary['averageResolutionSeconds'])}'),
-                Text(
-                    'First response  ${_duration(_summary['averageFirstResponseSeconds'])}'),
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AdminCustomerSupportScreen(
-                        canManageAssignments: _summary['canManageTeam'] == true,
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(Icons.forum_outlined, size: 18),
-                  label: const Text('Tickets & conversations'),
-                ),
-              ]),
-            ]),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: tabs.map((tab) {
+                final icon = switch (tab) {
+                  'Customers' => Icons.person_search_outlined,
+                  'Transactions' => Icons.receipt_long_outlined,
+                  'Virtual accounts' => Icons.account_balance_outlined,
+                  _ => Icons.groups_outlined,
+                };
+                return ChoiceChip(
+                  key: ValueKey(
+                      'support-tab-${tab.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}'),
+                  avatar: Icon(icon, size: 18),
+                  label: Text(tab),
+                  selected: _view == tab,
+                  onSelected: (_) => _selectView(tab),
+                );
+              }).toList(),
+            ),
           ),
-          _errorBanner(),
           if (_view == 'Customers' && _customer == null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
               child: _searchField(
                 _search,
                 'Find customer',
                 _findCustomers,
-                hint:
-                    'Name, phone, email, customer ID or transaction reference',
+                hint: 'Name, phone, email, customer ID or reference',
               ),
             ),
           if (_view == 'Transactions')
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
               child: _searchField(
                 _transactionSearch,
                 'Search transactions',
@@ -1110,47 +1432,104 @@ class _CustomerSupportOperationsCenterState
             ),
           if (_view == 'Virtual accounts')
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
               child: _searchField(
                 _accountSearch,
                 'Search virtual accounts',
                 _findAccounts,
-                hint: 'Customer or masked account number',
+                hint: 'Customer or account number',
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SegmentedButton<String>(
-                  segments: tabs
-                      .map((tab) => ButtonSegment<String>(
-                            value: tab,
-                            label: Text(tab),
-                            icon: Icon(switch (tab) {
-                              'Customers' => Icons.person_search_outlined,
-                              'Transactions' => Icons.receipt_long_outlined,
-                              'Virtual accounts' =>
-                                Icons.account_balance_outlined,
-                              _ => Icons.groups_outlined,
-                            }),
-                          ))
-                      .toList(),
-                  selected: {_view},
-                  showSelectedIcon: false,
-                  onSelectionChanged: (value) => setState(() {
-                    _view = value.first;
-                    _error = '';
-                  }),
-                ),
+          _errorBanner(),
+          Flexible(
+            flex: 4,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    color: const Color(0xffe8f3ed),
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Support Operations Center',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  color: const Color(0xff155b45),
+                                  fontWeight: FontWeight.w800,
+                                )),
+                        const SizedBox(height: 2),
+                        const Text(
+                            'Investigate carefully. Customer funds are never in scope.'),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 2,
+                          children: [
+                            _metric(
+                                'Customers',
+                                _summary['totalCustomers'] ?? 0,
+                                Icons.people_outline,
+                                loading: _summaryLoading),
+                            _metric(
+                                'Pending payments',
+                                _summary['pendingTransactions'] ?? 0,
+                                Icons.hourglass_top_outlined,
+                                loading: _summaryLoading),
+                            _metric(
+                                'Failed payments',
+                                _summary['failedTransactions'] ?? 0,
+                                Icons.error_outline,
+                                loading: _summaryLoading),
+                            _metric(
+                                'Open complaints',
+                                _summary['openComplaints'] ?? 0,
+                                Icons.forum_outlined,
+                                loading: _summaryLoading),
+                            _metric(
+                                'Resolved',
+                                _summary['resolvedTickets'] ?? 0,
+                                Icons.task_alt_outlined,
+                                loading: _summaryLoading),
+                            _metric(
+                                'Active agents',
+                                _summary['activeSupportAgents'] ?? 0,
+                                Icons.support_agent_outlined,
+                                loading: _summaryLoading),
+                          ],
+                        ),
+                        Wrap(spacing: 12, runSpacing: 0, children: [
+                          Text(
+                              'Avg. resolution  ${_duration(_summary['averageResolutionSeconds'])}'),
+                          Text(
+                              'First response  ${_duration(_summary['averageFirstResponseSeconds'])}'),
+                          TextButton.icon(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => AdminCustomerSupportScreen(
+                                  canManageAssignments:
+                                      _summary['canManageTeam'] == true,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.forum_outlined, size: 18),
+                            label: const Text('Tickets & conversations'),
+                          ),
+                        ]),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          if ((_loading || _accountsLoading) && !_summaryLoading)
-            const LinearProgressIndicator(),
-          Expanded(child: content),
+          if ((_activeListLoading || _summaryLoading) && _error.isEmpty)
+            const LinearProgressIndicator(minHeight: 2),
+          Expanded(flex: 6, child: content),
         ]),
       ),
     );

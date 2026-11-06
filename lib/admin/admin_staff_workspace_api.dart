@@ -48,11 +48,15 @@ class AdminStaffWorkspaceApi {
 
   Future<Map<String, dynamic>> customers({
     String query = '',
+    String status = '',
+    String kycStatus = '',
     int page = 1,
     int limit = 20,
   }) =>
       _request('GET', 'customers', query: {
         if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (status.isNotEmpty) 'status': status,
+        if (kycStatus.isNotEmpty) 'kycStatus': kycStatus,
         'page': '$page',
         'limit': '$limit',
       });
@@ -144,10 +148,13 @@ class AdminStaffWorkspaceApi {
         : <String, dynamic>{};
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
-        result['success'] == false) {
+        result['success'] != true) {
       throw Exception(
-        '${result['message'] ?? 'Workspace request failed.'}',
+        '${result['message'] ?? 'Workspace returned an invalid response.'}',
       );
+    }
+    if (result['data'] is! Map) {
+      throw Exception('Workspace returned an invalid response.');
     }
     return result;
   }

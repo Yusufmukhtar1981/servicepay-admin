@@ -4,17 +4,18 @@ import 'admin_staff_workspace_api.dart';
 import 'admin_transaction_reliability_panel.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_customer_support_operations_center.dart' as support;
+import 'operations_enterprise_dashboard.dart';
 
-class OperationsManagerDashboard extends StatefulWidget {
-  const OperationsManagerDashboard({super.key, this.api});
+class LegacyOperationsManagerDashboard extends StatefulWidget {
+  const LegacyOperationsManagerDashboard({super.key, this.api});
   final AdminStaffWorkspaceApi? api;
   @override
-  State<OperationsManagerDashboard> createState() =>
+  State<LegacyOperationsManagerDashboard> createState() =>
       _OperationsManagerDashboardState();
 }
 
 class _OperationsManagerDashboardState
-    extends State<OperationsManagerDashboard> {
+    extends State<LegacyOperationsManagerDashboard> {
   late final AdminStaffWorkspaceApi _api =
       widget.api ?? AdminStaffWorkspaceApi();
   final GlobalKey<AdminTransactionReliabilityPanelState> _reliabilityKey =
@@ -103,8 +104,7 @@ class _OperationsManagerDashboardState
     return '₦${amount.toStringAsFixed(2)}';
   }
 
-  Widget _panel(String title, List<Widget> children, {String? caption}) =>
-      Card(
+  Widget _panel(String title, List<Widget> children, {String? caption}) => Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -116,8 +116,7 @@ class _OperationsManagerDashboardState
                       )),
               if (caption != null) ...[
                 const SizedBox(height: 4),
-                Text(caption,
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(caption, style: Theme.of(context).textTheme.bodySmall),
               ],
               const SizedBox(height: 10),
               ...children,
@@ -126,7 +125,8 @@ class _OperationsManagerDashboardState
         ),
       );
 
-  Widget _dataRows(List<Map<String, dynamic>> rows, String key, {bool amounts = false}) {
+  Widget _dataRows(List<Map<String, dynamic>> rows, String key,
+      {bool amounts = false}) {
     if (rows.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 14),
@@ -138,7 +138,8 @@ class _OperationsManagerDashboardState
           .map((row) => ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('${row['_id'] ?? row['name'] ?? row['status'] ?? 'Record'}'),
+                title: Text(
+                    '${row['_id'] ?? row['name'] ?? row['status'] ?? 'Record'}'),
                 trailing: Text(amounts
                     ? '${row['count'] ?? 0} · ${_money(row['amount'])}'
                     : '${row['count'] ?? row['resolved'] ?? ''}'),
@@ -165,7 +166,8 @@ class _OperationsManagerDashboardState
                 children: List.generate(
                   5,
                   (_) => const Card(
-                    child: SizedBox(height: 92, child: LinearProgressIndicator()),
+                    child:
+                        SizedBox(height: 92, child: LinearProgressIndicator()),
                   ),
                 ),
               )
@@ -198,12 +200,15 @@ class _OperationsManagerDashboardState
                           MaterialBanner(
                             content: Text(_error),
                             actions: [
-                              TextButton(onPressed: _load, child: const Text('Retry'))
+                              TextButton(
+                                  onPressed: _load, child: const Text('Retry'))
                             ],
                           ),
                         _panel('Recorded ServicePay earnings', [
-                          Text('NGN ${(_data['revenue'] as Map?)?['recordedServicepayProfit'] ?? 0}'),
-                          const Text('Stored ServicePay profit on completed transactions today (UTC). Not gross turnover or a reconciled company income statement.'),
+                          Text(
+                              'NGN ${(_data['revenue'] as Map?)?['recordedServicepayProfit'] ?? 0}'),
+                          const Text(
+                              'Stored ServicePay profit on completed transactions today (UTC). Not gross turnover or a reconciled company income statement.'),
                         ]),
                         _panel(
                           'Daily transaction pulse',
@@ -216,7 +221,8 @@ class _OperationsManagerDashboardState
                               amounts: true,
                             ),
                           ],
-                          caption: 'Operational gross amounts — not net profit.',
+                          caption:
+                              'Operational gross amounts — not net profit.',
                         ),
                         _panel(
                           'Transaction outcomes',
@@ -229,7 +235,8 @@ class _OperationsManagerDashboardState
                               amounts: true,
                             ),
                           ],
-                          caption: 'Success, pending and failed counts and gross amounts.',
+                          caption:
+                              'Success, pending and failed counts and gross amounts.',
                         ),
                         _panel(
                           'Service activity',
@@ -246,17 +253,24 @@ class _OperationsManagerDashboardState
                         _panel(
                           'Ticket resolution performance',
                           _rows((_data['tickets'] as Map?)?['byAgent']).isEmpty
-                              ? [const Text('No ticket resolution records are available.')]
+                              ? [
+                                  const Text(
+                                      'No ticket resolution records are available.')
+                                ]
                               : _rows((_data['tickets'] as Map?)?['byAgent'])
                                   .map((agent) => ListTile(
                                         dense: true,
                                         contentPadding: EdgeInsets.zero,
-                                        title: Text('${agent['name'] ?? 'Support agent'}'),
-                                        subtitle: Text('${agent['resolved'] ?? 0} resolved'),
-                                        trailing: Text('${agent['count'] ?? 0} assigned'),
+                                        title: Text(
+                                            '${agent['name'] ?? 'Support agent'}'),
+                                        subtitle: Text(
+                                            '${agent['resolved'] ?? 0} resolved'),
+                                        trailing: Text(
+                                            '${agent['count'] ?? 0} assigned'),
                                       ))
                                   .toList(),
-                          caption: 'Assigned workload and resolved tickets by agent.',
+                          caption:
+                              'Assigned workload and resolved tickets by agent.',
                         ),
                         Card(
                           child: Padding(
@@ -268,9 +282,11 @@ class _OperationsManagerDashboardState
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.w800)),
+                                        ?.copyWith(
+                                            fontWeight: FontWeight.w800)),
                                 const SizedBox(height: 4),
-                                const Text('Read-only operational records. No balance or payment controls are available.'),
+                                const Text(
+                                    'Read-only operational records. No balance or payment controls are available.'),
                                 const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 12,
@@ -281,7 +297,8 @@ class _OperationsManagerDashboardState
                                       child: DropdownButtonFormField<String>(
                                         value: _statusFilter,
                                         isExpanded: true,
-                                        decoration: const InputDecoration(labelText: 'Status'),
+                                        decoration: const InputDecoration(
+                                            labelText: 'Status'),
                                         items: const [
                                           ['', 'All statuses'],
                                           ['SUCCESSFUL', 'Success'],
@@ -304,7 +321,8 @@ class _OperationsManagerDashboardState
                                       child: DropdownButtonFormField<String>(
                                         value: _typeFilter,
                                         isExpanded: true,
-                                        decoration: const InputDecoration(labelText: 'Service'),
+                                        decoration: const InputDecoration(
+                                            labelText: 'Service'),
                                         items: const [
                                           ['', 'All services'],
                                           ['DATA', 'Data'],
@@ -329,12 +347,14 @@ class _OperationsManagerDashboardState
                                     content: Text(_transactionError),
                                     actions: [
                                       TextButton(
-                                        onPressed: () => _loadTransactions(page: _transactionPage),
+                                        onPressed: () => _loadTransactions(
+                                            page: _transactionPage),
                                         child: const Text('Retry'),
                                       ),
                                     ],
                                   ),
-                                if (_transactionsLoading && _transactionRows.isEmpty)
+                                if (_transactionsLoading &&
+                                    _transactionRows.isEmpty)
                                   const LinearProgressIndicator(),
                                 if (!_transactionsLoading &&
                                     _transactionRows.isEmpty &&
@@ -343,28 +363,40 @@ class _OperationsManagerDashboardState
                                     padding: EdgeInsets.all(12),
                                     child: Text('No matching transactions.'),
                                   ),
-                                ..._transactionRows.map((transaction) => ListTile(
+                                ..._transactionRows.map((transaction) =>
+                                    ListTile(
                                       dense: true,
                                       contentPadding: EdgeInsets.zero,
-                                      leading: const Icon(Icons.receipt_long_outlined),
-                                      title: Text('${transaction['reference'] ?? transaction['id'] ?? 'Transaction'}'),
-                                      subtitle: Text('${transaction['type'] ?? ''} · ${transaction['status'] ?? ''} · ${transaction['createdAt'] ?? ''}'),
-                                      trailing: Text(_money(transaction['amount'])),
+                                      leading: const Icon(
+                                          Icons.receipt_long_outlined),
+                                      title: Text(
+                                          '${transaction['reference'] ?? transaction['id'] ?? 'Transaction'}'),
+                                      subtitle: Text(
+                                          '${transaction['type'] ?? ''} · ${transaction['status'] ?? ''} · ${transaction['createdAt'] ?? ''}'),
+                                      trailing:
+                                          Text(_money(transaction['amount'])),
                                     )),
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('Page $_transactionPage · $_transactionTotal records'),
+                                    Text(
+                                        'Page $_transactionPage · $_transactionTotal records'),
                                     Row(children: [
                                       IconButton(
-                                        onPressed: _transactionPage > 1 && !_transactionsLoading
-                                            ? () => _loadTransactions(page: _transactionPage - 1)
+                                        onPressed: _transactionPage > 1 &&
+                                                !_transactionsLoading
+                                            ? () => _loadTransactions(
+                                                page: _transactionPage - 1)
                                             : null,
                                         icon: const Icon(Icons.chevron_left),
                                       ),
                                       IconButton(
-                                        onPressed: _transactionPage * 20 < _transactionTotal && !_transactionsLoading
-                                            ? () => _loadTransactions(page: _transactionPage + 1)
+                                        onPressed: _transactionPage * 20 <
+                                                    _transactionTotal &&
+                                                !_transactionsLoading
+                                            ? () => _loadTransactions(
+                                                page: _transactionPage + 1)
                                             : null,
                                         icon: const Icon(Icons.chevron_right),
                                       ),
@@ -376,27 +408,41 @@ class _OperationsManagerDashboardState
                           ),
                         ),
                         _panel('Open operational issues', [
-                          Text('Virtual accounts · ${_rows((_data['issues'] as Map?)?['virtualAccounts']).length}'),
-                          ..._rows((_data['issues'] as Map?)?['virtualAccounts']).take(5).map(
-                            (e) => ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.account_balance_outlined),
-                              title: Text('${e['id'] ?? 'Virtual account'}'),
-                              trailing: Text('${e['status'] ?? 'Needs review'}'),
-                              subtitle: Text('Updated ${e['updatedAt'] ?? 'date unavailable'}'),
-                            ),
-                          ),
+                          Text(
+                              'Virtual accounts · ${_rows((_data['issues'] as Map?)?['virtualAccounts']).length}'),
+                          ..._rows(
+                                  (_data['issues'] as Map?)?['virtualAccounts'])
+                              .take(5)
+                              .map(
+                                (e) => ListTile(
+                                  dense: true,
+                                  leading: const Icon(
+                                      Icons.account_balance_outlined),
+                                  title:
+                                      Text('${e['id'] ?? 'Virtual account'}'),
+                                  trailing:
+                                      Text('${e['status'] ?? 'Needs review'}'),
+                                  subtitle: Text(
+                                      'Updated ${e['updatedAt'] ?? 'date unavailable'}'),
+                                ),
+                              ),
                           const Divider(),
-                          Text('Delivery · ${_rows((_data['issues'] as Map?)?['delivery']).length}'),
-                          ..._rows((_data['issues'] as Map?)?['delivery']).take(5).map(
-                            (e) => ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.local_shipping_outlined),
-                              title: Text('${e['id'] ?? 'Delivery'}'),
-                              trailing: Text('${e['status'] ?? 'Needs review'}'),
-                              subtitle: Text('Created ${e['createdAt'] ?? 'date unavailable'}'),
-                            ),
-                          ),
+                          Text(
+                              'Delivery · ${_rows((_data['issues'] as Map?)?['delivery']).length}'),
+                          ..._rows((_data['issues'] as Map?)?['delivery'])
+                              .take(5)
+                              .map(
+                                (e) => ListTile(
+                                  dense: true,
+                                  leading:
+                                      const Icon(Icons.local_shipping_outlined),
+                                  title: Text('${e['id'] ?? 'Delivery'}'),
+                                  trailing:
+                                      Text('${e['status'] ?? 'Needs review'}'),
+                                  subtitle: Text(
+                                      'Created ${e['createdAt'] ?? 'date unavailable'}'),
+                                ),
+                              ),
                         ]),
                         _panel(
                           'Visible branches',
@@ -429,12 +475,14 @@ class _OperationsManagerDashboardState
                               'Today UTC gross transaction amount — not profit.',
                         ),
                         _panel('Support desk', [
-                          const Text('Investigate cases and resolve complaints with the existing ticket workflow.'),
+                          const Text(
+                              'Investigate cases and resolve complaints with the existing ticket workflow.'),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
-                                builder: (_) => const AdminCustomerSupportScreen(),
+                                builder: (_) =>
+                                    const AdminCustomerSupportScreen(),
                               ),
                             ),
                             icon: const Icon(Icons.support_agent),
@@ -445,6 +493,16 @@ class _OperationsManagerDashboardState
                     ),
                   ),
       );
+}
+
+/// Existing navigation target, now upgraded in place to the enterprise
+/// operational control center. Support screens remain separate and unchanged.
+class OperationsManagerDashboard extends StatelessWidget {
+  const OperationsManagerDashboard({super.key, this.api});
+  final AdminStaffWorkspaceApi? api;
+
+  @override
+  Widget build(BuildContext context) => OperationsEnterpriseDashboard(api: api);
 }
 
 class LegacyCustomerSupportDashboard extends StatefulWidget {
@@ -535,38 +593,62 @@ class _CustomerSupportDashboardState
     final description = TextEditingController();
     final transactionId = TextEditingController();
     String category = 'OTHER', priority = 'NORMAL';
-    final Map<String, dynamic>? form =
-        await showDialog<Map<String, dynamic>>(
+    final Map<String, dynamic>? form = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: const Text('Create support case'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: subject, decoration: const InputDecoration(labelText: 'Subject')),
-              TextField(controller: description, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'Description')),
-              TextField(controller: transactionId, decoration: const InputDecoration(labelText: 'Related transaction ID (optional)')),
+              TextField(
+                  controller: subject,
+                  decoration: const InputDecoration(labelText: 'Subject')),
+              TextField(
+                  controller: description,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(labelText: 'Description')),
+              TextField(
+                  controller: transactionId,
+                  decoration: const InputDecoration(
+                      labelText: 'Related transaction ID (optional)')),
               DropdownButtonFormField<String>(
                 value: category,
-                items: const ['TRANSACTION', 'TRANSFER', 'WITHDRAWAL', 'AIRTIME_DATA', 'BILLS', 'DELIVERY', 'OTHER']
-                    .map((v) => DropdownMenuItem(value: v, child: Text(v.replaceAll('_', ' ')))).toList(),
+                items: const [
+                  'TRANSACTION',
+                  'TRANSFER',
+                  'WITHDRAWAL',
+                  'AIRTIME_DATA',
+                  'BILLS',
+                  'DELIVERY',
+                  'OTHER'
+                ]
+                    .map((v) => DropdownMenuItem(
+                        value: v, child: Text(v.replaceAll('_', ' '))))
+                    .toList(),
                 onChanged: (v) => update(() => category = v ?? 'OTHER'),
                 decoration: const InputDecoration(labelText: 'Category'),
               ),
               DropdownButtonFormField<String>(
                 value: priority,
                 items: const ['LOW', 'NORMAL', 'HIGH', 'URGENT']
-                    .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                    .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                    .toList(),
                 onChanged: (v) => update(() => priority = v ?? 'NORMAL'),
                 decoration: const InputDecoration(labelText: 'Priority'),
               ),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                if (subject.text.trim().isEmpty || description.text.trim().isEmpty) return;
+                if (subject.text.trim().isEmpty ||
+                    description.text.trim().isEmpty) {
+                  return;
+                }
                 Navigator.pop(context, {
                   'subject': subject.text.trim(),
                   'description': description.text.trim(),
@@ -592,7 +674,8 @@ class _CustomerSupportDashboardState
         description: '${form['description']}',
         category: '${form['category']}',
         priority: '${form['priority']}',
-        idempotencyKey: '${DateTime.now().microsecondsSinceEpoch}-${customer['id']}',
+        idempotencyKey:
+            '${DateTime.now().microsecondsSinceEpoch}-${customer['id']}',
         transactionId: '${form['transactionId']}'.isEmpty
             ? null
             : '${form['transactionId']}',
@@ -614,11 +697,19 @@ class _CustomerSupportDashboardState
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Escalate case'),
-        content: TextField(controller: reason, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Reason')),
+        content: TextField(
+            controller: reason,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'Reason')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => reason.text.trim().isEmpty ? null : Navigator.pop(context, reason.text.trim()),
+            onPressed: () => reason.text.trim().isEmpty
+                ? null
+                : Navigator.pop(context, reason.text.trim()),
             child: const Text('Escalate'),
           ),
         ],
@@ -651,16 +742,23 @@ class _CustomerSupportDashboardState
               controller: _search,
               onSubmitted: (_) => _find(),
               decoration: InputDecoration(
-                labelText: 'Find by name, phone, email, ID or transaction reference',
+                labelText:
+                    'Find by name, phone, email, ID or transaction reference',
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: IconButton(onPressed: _loading ? null : () => _find(), icon: const Icon(Icons.arrow_forward)),
+                suffixIcon: IconButton(
+                    onPressed: _loading ? null : () => _find(),
+                    icon: const Icon(Icons.arrow_forward)),
               ),
             ),
           ),
           if (_loading) const LinearProgressIndicator(),
           if (_error.isNotEmpty)
-            MaterialBanner(content: Text(_error), actions: [TextButton(onPressed: () => _find(page: _page), child: const Text('Retry'))]),
+            MaterialBanner(content: Text(_error), actions: [
+              TextButton(
+                  onPressed: () => _find(page: _page),
+                  child: const Text('Retry'))
+            ]),
           Expanded(
             child: _selectedCustomer == null
                 ? _customers.isEmpty
@@ -674,9 +772,12 @@ class _CustomerSupportDashboardState
                     : ListView(
                         children: [
                           ..._customers.map((customer) => ListTile(
-                                leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-                                title: Text('${customer['fullName'] ?? 'Customer'}'),
-                                subtitle: Text('${customer['phone'] ?? ''} · ${customer['email'] ?? ''}'),
+                                leading: const CircleAvatar(
+                                    child: Icon(Icons.person_outline)),
+                                title: Text(
+                                    '${customer['fullName'] ?? 'Customer'}'),
+                                subtitle: Text(
+                                    '${customer['phone'] ?? ''} · ${customer['email'] ?? ''}'),
                                 trailing: Text('${customer['status'] ?? ''}'),
                                 onTap: _loading ? null : () => _open(customer),
                               )),
@@ -687,8 +788,17 @@ class _CustomerSupportDashboardState
                               children: [
                                 Text('Page $_page · $_total matches'),
                                 Row(children: [
-                                  IconButton(onPressed: _page > 1 && !_loading ? () => _find(page: _page - 1) : null, icon: const Icon(Icons.chevron_left)),
-                                  IconButton(onPressed: _page * 20 < _total && !_loading ? () => _find(page: _page + 1) : null, icon: const Icon(Icons.chevron_right)),
+                                  IconButton(
+                                      onPressed: _page > 1 && !_loading
+                                          ? () => _find(page: _page - 1)
+                                          : null,
+                                      icon: const Icon(Icons.chevron_left)),
+                                  IconButton(
+                                      onPressed:
+                                          _page * 20 < _total && !_loading
+                                              ? () => _find(page: _page + 1)
+                                              : null,
+                                      icon: const Icon(Icons.chevron_right)),
                                 ]),
                               ],
                             ),
@@ -699,39 +809,66 @@ class _CustomerSupportDashboardState
                     padding: const EdgeInsets.all(16),
                     children: [
                       Row(children: [
-                        IconButton(onPressed: () => setState(() => _selectedCustomer = null), icon: const Icon(Icons.arrow_back)),
-                        Expanded(child: Text('${_selectedCustomer!['fullName']}', style: Theme.of(context).textTheme.titleLarge)),
-                        FilledButton.icon(onPressed: _createTicket, icon: const Icon(Icons.add), label: const Text('New case')),
+                        IconButton(
+                            onPressed: () =>
+                                setState(() => _selectedCustomer = null),
+                            icon: const Icon(Icons.arrow_back)),
+                        Expanded(
+                            child: Text('${_selectedCustomer!['fullName']}',
+                                style: Theme.of(context).textTheme.titleLarge)),
+                        FilledButton.icon(
+                            onPressed: _createTicket,
+                            icon: const Icon(Icons.add),
+                            label: const Text('New case')),
                       ]),
                       ListTile(
                         leading: const Icon(Icons.verified_user_outlined),
-                        title: Text('${_selectedCustomer!['phone'] ?? 'No phone'}'),
-                        subtitle: Text('${_selectedCustomer!['email'] ?? 'No email'} · ${_selectedCustomer!['status'] ?? 'Status unavailable'}'),
+                        title: Text(
+                            '${_selectedCustomer!['phone'] ?? 'No phone'}'),
+                        subtitle: Text(
+                            '${_selectedCustomer!['email'] ?? 'No email'} · ${_selectedCustomer!['status'] ?? 'Status unavailable'}'),
                       ),
                       const Divider(),
-                      Text('Recent transactions', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Recent transactions',
+                          style: Theme.of(context).textTheme.titleMedium),
                       ..._list('transactions').map((row) => ListTile(
                             dense: true,
                             leading: const Icon(Icons.receipt_long_outlined),
-                            title: Text('${row['reference'] ?? row['id'] ?? 'Transaction'}'),
-                            subtitle: Text('${row['type'] ?? ''} · ${row['status'] ?? ''} · ${row['createdAt'] ?? ''}'),
+                            title: Text(
+                                '${row['reference'] ?? row['id'] ?? 'Transaction'}'),
+                            subtitle: Text(
+                                '${row['type'] ?? ''} · ${row['status'] ?? ''} · ${row['createdAt'] ?? ''}'),
                             trailing: Text('₦${row['amount'] ?? '—'}'),
                           )),
-                      if (_list('transactions').isEmpty) const ListTile(title: Text('No transaction history is available.')),
+                      if (_list('transactions').isEmpty)
+                        const ListTile(
+                            title:
+                                Text('No transaction history is available.')),
                       const Divider(),
-                      Text('Related support cases', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Related support cases',
+                          style: Theme.of(context).textTheme.titleMedium),
                       ..._list('tickets').map((ticket) => ListTile(
                             leading: const Icon(Icons.support_agent_outlined),
-                            title: Text('${ticket['caseReference'] ?? ticket['subject'] ?? 'Support case'}'),
-                            subtitle: Text('${ticket['subject'] ?? ''} · ${ticket['status'] ?? ''} · ${ticket['priority'] ?? ''}'),
-                            trailing: TextButton(onPressed: () => _escalate(ticket), child: const Text('Escalate')),
+                            title: Text(
+                                '${ticket['caseReference'] ?? ticket['subject'] ?? 'Support case'}'),
+                            subtitle: Text(
+                                '${ticket['subject'] ?? ''} · ${ticket['status'] ?? ''} · ${ticket['priority'] ?? ''}'),
+                            trailing: TextButton(
+                                onPressed: () => _escalate(ticket),
+                                child: const Text('Escalate')),
                           )),
-                      if (_list('tickets').isEmpty) const ListTile(title: Text('No related support cases.')),
+                      if (_list('tickets').isEmpty)
+                        const ListTile(
+                            title: Text('No related support cases.')),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AdminCustomerSupportScreen())),
+                        onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    const AdminCustomerSupportScreen())),
                         icon: const Icon(Icons.forum_outlined),
-                        label: const Text('Open ticket queue and conversation tools'),
+                        label: const Text(
+                            'Open ticket queue and conversation tools'),
                       ),
                     ],
                   ),

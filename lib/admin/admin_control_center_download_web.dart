@@ -17,3 +17,17 @@ Future<void> downloadControlCenterCsv(String csv, String filename) async {
   await Future<void>.delayed(controlCenterDownloadRevokeDelay);
   html.Url.revokeObjectUrl(url);
 }
+
+Future<void> downloadControlCenterBytes(
+  List<int> bytes,
+  String contentType,
+  String filename,
+) async {
+  final html.Blob blob = html.Blob(<dynamic>[bytes], contentType);
+  final String url = html.Url.createObjectUrlFromBlob(blob);
+  html.AnchorElement(href: url)
+    ..download = controlCenterSafeDownloadFilename(filename)
+    ..click();
+  await Future<void>.delayed(controlCenterDownloadRevokeDelay);
+  html.Url.revokeObjectUrl(url);
+}

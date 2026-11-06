@@ -149,6 +149,10 @@ class _SupportApi extends AdminStaffWorkspaceApi {
     int limit = 20,
     String query = '',
     String customerId = '',
+    String from = '',
+    String to = '',
+    String minAmount = '',
+    String maxAmount = '',
   }) async {
     transactionListCalls++;
     lastTransactionQuery = query;

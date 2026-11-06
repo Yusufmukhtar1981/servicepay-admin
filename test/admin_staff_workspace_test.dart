@@ -70,6 +70,92 @@ class _WorkspaceApi extends AdminStaffWorkspaceApi {
           'branches': [],
         },
       };
+
+  @override
+  Future<Map<String, dynamic>> enterprise({String period = 'day'}) async => {
+        'success': true,
+        'data': {
+          'generatedAt': '2026-07-16T12:00:00Z',
+          'period': period,
+          'from': '2026-07-16',
+          'to': '2026-07-16',
+          'coverageNotice': 'Recorded operational data only.',
+          'permissions': {
+            'refund': false,
+            'customerManage': false,
+            'serviceControl': false,
+            'supportManage': false,
+            'reportExport': false,
+            'staffManage': false,
+          },
+          'customers': {'total': 18, 'active': 15, 'inactive': 3, 'other': 0},
+          'summary': {
+            'total': 12,
+            'successful': 10,
+            'failed': 1,
+            'pending': 1,
+            'refunded': 0,
+            'other': 0,
+            'volume': 26490,
+            'recordedEarnings': 742.5,
+            'refundAmount': 0,
+            'charges': 0,
+            'commission': 0,
+          },
+          'trends': [
+            {
+              'date': '2026-07-16',
+              'count': 12,
+              'successful': 10,
+              'failed': 1,
+              'pending': 1,
+              'volume': 26490,
+              'recordedEarnings': 742.5,
+            }
+          ],
+          'services': [],
+          'financial': {
+            'dailyEarnings': 742.5,
+            'weeklyEarnings': 1240,
+            'monthlyEarnings': 4210,
+            'notice': 'Earnings are stored subtotals.',
+          },
+          'staff': [],
+          'staffCoverage': {'limit': 100, 'truncated': false},
+          'support': {
+            'open': 2,
+            'escalated': 0,
+            'overdue': 0,
+            'aiEscalated': 0,
+            'averageResponseMs': null,
+            'averageResolutionMs': null,
+            'coverageNotice': 'Support coverage is partial.',
+          },
+          'alerts': [],
+          'recentTransactions': [],
+          'serviceControls': [],
+          'activity': [],
+          'coverage': {},
+        },
+      };
+
+  @override
+  Future<Map<String, dynamic>> transactions({
+    String status = '',
+    String type = '',
+    String query = '',
+    String customerId = '',
+    String from = '',
+    String to = '',
+    String minAmount = '',
+    String maxAmount = '',
+    int page = 1,
+    int limit = 20,
+  }) async =>
+      {
+        'success': true,
+        'data': {'items': [], 'total': 0},
+      };
 }
 
 void main() {
@@ -129,17 +215,19 @@ void main() {
     );
   });
 
-  testWidgets('operations dashboard renders real overview and gross disclaimer',
+  testWidgets(
+      'operations dashboard renders enterprise metrics and truthful labels',
       (tester) async {
     SharedPreferences.setMockInitialValues({'auth_token': 'session'});
     await tester.pumpWidget(
       MaterialApp(home: OperationsManagerDashboard(api: _WorkspaceApi())),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Operations overview'), findsOneWidget);
-    expect(find.textContaining('₦26490.00'), findsOneWidget);
-    expect(find.textContaining('not net profit'), findsOneWidget);
-    expect(find.text('No operational records to show.'), findsWidgets);
+    expect(find.text('ServicePay operations'), findsOneWidget);
+    expect(find.text('Executive overview'), findsOneWidget);
+    expect(find.textContaining('₦26,490.00'), findsOneWidget);
+    expect(find.textContaining('not net income'), findsOneWidget);
+    expect(find.text('Transactions'), findsWidgets);
   });
 
   testWidgets('customer support workspace opens with real first-page records',

@@ -20,6 +20,82 @@ class AdminStaffWorkspaceApi {
   final String _baseUrl;
 
   Future<Map<String, dynamic>> overview() => _request('GET', 'overview');
+  Future<Map<String, dynamic>> enterprise({String period = 'day'}) =>
+      _request('GET', 'enterprise', query: {'period': period});
+
+  Future<Map<String, dynamic>> transactionDetail(String id) =>
+      _request('GET', 'transactions/${Uri.encodeComponent(id)}/detail');
+
+  Future<Map<String, dynamic>> updateCustomerStatus(
+    String id, {
+    required String status,
+    required String reason,
+  }) =>
+      _request(
+        'POST',
+        'customers/${Uri.encodeComponent(id)}/status',
+        payload: {'status': status, 'reason': reason},
+      );
+
+  Future<Map<String, dynamic>> updateServiceStatus(
+    String key, {
+    required bool enabled,
+    required String reason,
+  }) =>
+      _request(
+        'POST',
+        'services/${Uri.encodeComponent(key)}/status',
+        payload: {'enabled': enabled, 'reason': reason},
+      );
+
+  Future<WorkspaceExport> export({
+    required String period,
+    required String format,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String token =
+        (prefs.getString('auth_token') ?? prefs.getString('token') ?? '')
+            .trim()
+            .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
+    if (token.isEmpty) {
+      throw Exception(
+          'Your login session was not found. Please sign in again.');
+    }
+    final Uri uri = Uri.parse('$_baseUrl/enterprise/export').replace(
+      queryParameters: {'period': period, 'format': format},
+    );
+    final http.Response response = await _client.get(
+      uri,
+      headers: {
+        'Accept': '*/*',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(const Duration(seconds: 60));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = null;
+      }
+      final message = decoded is Map ? decoded['message']?.toString() : null;
+      throw Exception(message?.isNotEmpty == true
+          ? message!
+          : 'Report export failed (${response.statusCode}).');
+    }
+    final String disposition = response.headers['content-disposition'] ?? '';
+    final RegExpMatch? match =
+        RegExp(r'filename="?([^";]+)"?', caseSensitive: false)
+            .firstMatch(disposition);
+    final String filename = match?.group(1) ?? 'servicepay-operations.$format';
+    return WorkspaceExport(
+      bytes: response.bodyBytes,
+      contentType:
+          response.headers['content-type'] ?? 'application/octet-stream',
+      filename: filename,
+    );
+  }
+
   Future<Map<String, dynamic>> supportSummary() =>
       _request('GET', 'support-summary');
 
@@ -75,6 +151,10 @@ class AdminStaffWorkspaceApi {
     String type = '',
     String query = '',
     String customerId = '',
+    String from = '',
+    String to = '',
+    String minAmount = '',
+    String maxAmount = '',
     int page = 1,
     int limit = 20,
   }) =>
@@ -83,6 +163,10 @@ class AdminStaffWorkspaceApi {
         if (type.isNotEmpty) 'type': type,
         if (query.trim().isNotEmpty) 'q': query.trim(),
         if (customerId.isNotEmpty) 'customerId': customerId,
+        if (from.isNotEmpty) 'from': from,
+        if (to.isNotEmpty) 'to': to,
+        if (minAmount.isNotEmpty) 'minAmount': minAmount,
+        if (maxAmount.isNotEmpty) 'maxAmount': maxAmount,
         'page': '$page',
         'limit': '$limit',
       });
@@ -168,4 +252,15 @@ class AdminStaffWorkspaceApi {
   void close() {
     if (_ownsClient) _client.close();
   }
+}
+
+class WorkspaceExport {
+  const WorkspaceExport({
+    required this.bytes,
+    required this.contentType,
+    required this.filename,
+  });
+  final List<int> bytes;
+  final String contentType;
+  final String filename;
 }

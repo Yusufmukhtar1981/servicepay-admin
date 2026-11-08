@@ -47,6 +47,7 @@ import 'admin_staff_workspace_screens.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'admin_transaction_intelligence_screen.dart';
+import 'pending_resolution_screen.dart';
 import 'admin_organizations_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
@@ -134,6 +135,18 @@ bool canAccessFinancialControlNavigation({required String role}) {
 }
 
 @visibleForTesting
+bool canAccessPendingResolutionNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+  return access.isHeadOffice ||
+      permissions
+          .map((String permission) => permission.trim().toLowerCase())
+          .contains(AdminPermissions.operationsWorkspaceView);
+}
+
+@visibleForTesting
 bool canAccessCustomerWithdrawalsNavigation({
   required String role,
   required Set<String> permissions,
@@ -183,6 +196,12 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.has(AdminPermissions.logisticsView)) {
       labels.add('Interstate Logistics');
+    }
+    if (canAccessPendingResolutionNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Pending Resolution');
     }
     if (access.hasBusinessPartnerAdmin(AdminPermissions.businessPartnersView)) {
       labels.add('Business Partners');
@@ -340,7 +359,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     // workflows. Do not infer Head Office rights from their workspace access.
     if (!isHeadOffice &&
         const <String>{'CUSTOMER_SUPPORT', 'SUPPORT_MANAGER'}
-        .contains(normalizeRole(staffRoleName))) {
+            .contains(normalizeRole(staffRoleName))) {
       addNavigationPage(
         page: const CustomerSupportDashboard(),
         icon: Icons.manage_search_outlined,
@@ -513,6 +532,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.insights_outlined,
         activeIcon: Icons.insights_rounded,
         label: 'Transaction Intelligence',
+      );
+    }
+
+    if (canAccessPendingResolutionNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: const PendingResolutionScreen(),
+        icon: Icons.fact_check_outlined,
+        activeIcon: Icons.fact_check_rounded,
+        label: 'Pending Resolution',
       );
     }
 

@@ -7,8 +7,15 @@ import 'admin_staff_workspace_api.dart';
 /// Read-only customer and payment investigation paired with the established
 /// ticket workflow. This workspace intentionally exposes no money controls.
 class CustomerSupportOperationsCenter extends StatefulWidget {
-  const CustomerSupportOperationsCenter({super.key, this.api});
+  const CustomerSupportOperationsCenter({
+    super.key,
+    this.api,
+    this.profileEditAllowed = false,
+    this.onEditCustomerProfile,
+  });
   final AdminStaffWorkspaceApi? api;
+  final bool profileEditAllowed;
+  final ValueChanged<Map<String, dynamic>>? onEditCustomerProfile;
 
   @override
   State<CustomerSupportOperationsCenter> createState() =>
@@ -769,6 +776,14 @@ class _CustomerSupportOperationsCenterState
                   icon: const Icon(Icons.add_comment_outlined),
                   label: const Text('Create support case'),
                 ),
+                if (widget.profileEditAllowed)
+                  OutlinedButton.icon(
+                    onPressed: widget.onEditCustomerProfile == null
+                        ? null
+                        : () => widget.onEditCustomerProfile!(customer),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit profile'),
+                  ),
               ]),
           Card(
             child: Padding(

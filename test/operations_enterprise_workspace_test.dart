@@ -14,6 +14,18 @@ class _EnterpriseFixtureApi extends AdminStaffWorkspaceApi {
   final bool refundPermission;
 
   @override
+  Future<Map<String, dynamic>> operationalHub() async => {
+    'success': true,
+    'data': {
+      'customers': {'total': 0, 'active': 0, 'inactive': 0},
+      'deliveries': <String, dynamic>{},
+      'products': <String, dynamic>{},
+      'staff': <String, dynamic>{},
+      'permissions': <String, dynamic>{},
+    },
+  };
+
+  @override
   Future<Map<String, dynamic>> enterprise({String period = 'day'}) async => {
         'success': true,
         'data': {
@@ -121,6 +133,16 @@ class _EnterpriseFixtureApi extends AdminStaffWorkspaceApi {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  Future<void> navigate(WidgetTester tester, String destination) async {
+    final menu = find.byTooltip('Open navigation');
+    if (menu.evaluate().isNotEmpty) {
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(find.text(destination).first);
+    await tester.tap(find.text(destination).first);
+    await tester.pumpAndSettle();
+  }
 
   test('enterprise API uses the selected day/week/month period', () async {
     SharedPreferences.setMockInitialValues({'auth_token': 'ops-session'});
@@ -295,9 +317,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('ServicePay operations'), findsOneWidget);
-    expect(find.text('Executive overview'), findsOneWidget);
-    await tester.tap(find.text('Transactions').first);
-    await tester.pumpAndSettle();
+    expect(find.text('Operations overview'), findsOneWidget);
+    await navigate(tester, 'Transactions');
     expect(find.text('Transaction reliability'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -309,12 +330,12 @@ void main() {
       home: OperationsManagerDashboard(api: _EnterpriseFixtureApi()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Transactions').first);
-    await tester.pumpAndSettle();
+    await navigate(tester, 'Transactions');
     await tester.scrollUntilVisible(
       find.text('SP-001'),
       300,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find.byWidgetPredicate(
+          (widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).last,
     );
     await tester.tap(find.text('SP-001'));
     await tester.pumpAndSettle();
@@ -333,12 +354,12 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Transactions').first);
-    await tester.pumpAndSettle();
+    await navigate(tester, 'Transactions');
     await tester.scrollUntilVisible(
       find.text('SP-001'),
       300,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find.byWidgetPredicate(
+          (widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).last,
     );
     await tester.tap(find.text('SP-001'));
     await tester.pumpAndSettle();
@@ -355,8 +376,7 @@ void main() {
       home: OperationsManagerDashboard(api: _EnterpriseFixtureApi()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Customers').first);
-    await tester.pumpAndSettle();
+    await navigate(tester, 'Customer Management');
     expect(
       find.textContaining('Customer status controls are unavailable'),
       findsOneWidget,

@@ -5,7 +5,11 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminMarketplaceScreen extends StatefulWidget {
-  const AdminMarketplaceScreen({super.key});
+  const AdminMarketplaceScreen({
+    super.key,
+    this.requireReason = false,
+  });
+  final bool requireReason;
 
   @override
   State<AdminMarketplaceScreen> createState() => _AdminMarketplaceScreenState();
@@ -221,12 +225,13 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
       return;
     }
 
-    final confirmed = await _confirmAction(
+    final reason = await _confirmAction(
       action,
       _title(product),
+      required: widget.requireReason,
     );
 
-    if (!confirmed) {
+    if (reason == null) {
       return;
     }
 
@@ -244,6 +249,10 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
       final response = await http.patch(
         uri,
         headers: _headers(token),
+        body: jsonEncode({
+          'expectedStatus': _status(product),
+          if (reason.isNotEmpty) 'reason': reason,
+        }),
       );
 
       dynamic body;
@@ -280,10 +289,8 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
     }
   }
 
-  Future<bool> _confirmAction(
-    String action,
-    String title,
-  ) async {
+  Future<String?> _confirmAction(String action, String title,
+      {required bool required}) async {
     final label = switch (action) {
       'approve' => 'Approve',
       'reject' => 'Reject',
@@ -291,29 +298,59 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
       _ => 'Update',
     };
 
-    final result = await showDialog<bool>(
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final result = await showDialog<String>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('$label Product'),
-          content: Text(
-            'Are you sure you want to $label "$title"?',
+      builder: (context) => AlertDialog(
+        title: Text('$label Product'),
+        content: Form(
+          key: formKey,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Are you sure you want to $label "$title"?'),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: reasonController,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: 500,
+                  decoration: InputDecoration(
+                    labelText:
+                        required ? 'Reason (required)' : 'Reason (optional)',
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    final length = value?.trim().length ?? 0;
+                    if (required && length < 10) {
+                      return 'Enter at least 10 characters.';
+                    }
+                    if (length > 500) return 'Use no more than 500 characters.';
+                    return null;
+                  },
+                ),
+              ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(label),
-            ),
-          ],
-        );
-      },
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, reasonController.text.trim());
+              }
+            },
+            child: Text(label),
+          ),
+        ],
+      ),
     );
-
-    return result ?? false;
+    reasonController.dispose();
+    return result;
   }
 
   void _showMessage(

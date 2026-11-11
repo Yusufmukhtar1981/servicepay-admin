@@ -301,4 +301,155 @@ void main() {
     expect(find.text('Unavailable'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('officers can advance own tasks and edit submitted reports',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final transitions = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/schema')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'role': 'MARKETING_OFFICER',
+              'actorId': 'fixture-user',
+              'manager': false,
+              'headOffice': false,
+              'permissions': ['marketing.view', 'marketing.reports.manage'],
+              'fields': <String, dynamic>{},
+            }
+          }),
+          200,
+        );
+      }
+      if (request.url.path.endsWith('/performance/context')) {
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'role': 'MARKETING_OFFICER',
+                'manager': false,
+                'headOffice': false,
+                'superAdmin': false,
+                'actorId': 'fixture-user',
+                'periods': ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']
+              }
+            }),
+            200);
+      }
+      if (request.url.path.endsWith('/performance/me')) {
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'staff': {'id': 'fixture-user', 'name': 'Marketing officer'},
+                'periods': [],
+                'tasks': [],
+                'reports': [],
+                'history': [],
+                'feedback': []
+              }
+            }),
+            200);
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/records/task/t-own/transition')) {
+        transitions.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+            jsonEncode({'success': true, 'data': {'status': 'IN_PROGRESS'}}),
+            200);
+      }
+      if (request.url.path.endsWith('/records/task')) {
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'items': [
+                  {
+                    '_id': 't-own',
+                    'title': 'Call market association',
+                    'status': 'TODO',
+                    'revision': 1,
+                    'officerId': 'fixture-user',
+                    'createdBy': 'manager-1',
+                    'data': {'dueAt': '2025-12-31T00:00:00Z'}
+                  }
+                ],
+                'total': 1
+              }
+            }),
+            200);
+      }
+      if (request.url.path.endsWith('/records/report')) {
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'items': [
+                  {
+                    '_id': 'r-own',
+                    'title': 'Daily field report',
+                    'status': 'SUBMITTED',
+                    'revision': 1,
+                    'officerId': 'fixture-user',
+                    'createdBy': 'fixture-user',
+                    'data': {
+                      'period': 'DAILY',
+                      'startsAt': '2025-06-01T00:00:00Z',
+                      'endsAt': '2025-06-02T00:00:00Z',
+                      'activities': 'Market visits'
+                    }
+                  }
+                ],
+                'total': 1
+              }
+            }),
+            200);
+      }
+      return http.Response(
+          jsonEncode({'success': true, 'data': {'items': [], 'total': 0}}), 200);
+    });
+
+    await tester.pumpWidget(MaterialApp(
+      home: MarketingDepartmentScreen(
+        permissions: const {'marketing.view', 'marketing.reports.manage'},
+        isHeadOffice: false,
+        api: MarketingApi(client: client),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final nav = find.byWidgetPredicate((widget) =>
+        widget is ListView && widget.scrollDirection == Axis.horizontal);
+    final tasksChip = find.widgetWithText(ChoiceChip, 'Tasks');
+    for (var i = 0; i < 8 && tasksChip.evaluate().isEmpty; i++) {
+      await tester.drag(nav, const Offset(-220, 0));
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(tasksChip);
+    await tester.tap(tasksChip);
+    await tester.pumpAndSettle();
+    expect(find.text('Call market association'), findsOneWidget);
+    await tester.tap(find.byTooltip('Record actions').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Progress').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+    expect(transitions, hasLength(1));
+    expect(transitions.single['status'], 'IN_PROGRESS');
+
+    final reportsChip = find.widgetWithText(ChoiceChip, 'Reports');
+    await tester.tap(reportsChip);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Record actions').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Edit'), findsOneWidget);
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit record'), findsOneWidget);
+  });
 }

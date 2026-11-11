@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'marketing_api.dart';
+import 'marketing_performance_screen.dart';
 
 class MarketingDepartmentScreen extends StatefulWidget {
   const MarketingDepartmentScreen({
@@ -386,6 +387,10 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
   Set<String> _schemaPermissions = <String>{};
   bool _schemaLoaded = false;
   String _currentUserId = '';
+  bool get _isOfficer =>
+      '${_schema['role'] ?? ''}'.toUpperCase().contains('OFFICER') &&
+      !'${_schema['role'] ?? ''}'.toUpperCase().contains('HEAD');
+  bool get _isManager => _schema['manager'] == true || widget.isHeadOffice;
   String? _recordCreateIdempotencyKey;
   final Map<String, String> _assetIdempotencyKeys = <String, String>{};
   Map<String, dynamic> _overview = {};
@@ -418,6 +423,9 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
 
   bool _writeAllowed(String kind) {
     if (kind == 'material') return false;
+    if (kind == 'target') {
+      return _isManager && _can('marketing.targets.manage');
+    }
     final permission = switch (kind) {
       'campaign' => 'marketing.campaigns.manage',
       'task' => 'marketing.team.manage',
@@ -436,17 +444,68 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
       'attendance' => 'marketing.team.manage',
       _ => 'marketing.audit',
     };
-    return _can(permission) && (kind != 'target' || widget.isHeadOffice);
+    return _can(permission);
+  }
+
+  bool _isOwnRecord(Map<String, dynamic> record) {
+    final createdBy = record['createdBy'] is Map
+        ? (record['createdBy'] as Map)['_id'] ?? (record['createdBy'] as Map)['id']
+        : record['createdBy'];
+    final owner = record['officerId'] ?? createdBy;
+    final actorId = _currentUserId.isNotEmpty
+        ? _currentUserId
+        : '${_schema['actorId'] ?? ''}';
+    return actorId.isNotEmpty && '$owner' == actorId;
+  }
+
+  bool _canEditRecord(Map<String, dynamic> record) {
+    if (!_writeAllowed(_section)) return false;
+    if (_section == 'report') {
+      final status = '${record['status'] ?? ''}'.toUpperCase();
+      return _isOwnRecord(record) &&
+          {'DRAFT', 'SUBMITTED', 'REJECTED', 'CORRECTIONS_REQUESTED'}
+              .contains(status);
+    }
+    return true;
+  }
+
+  bool _canTransitionRecord(Map<String, dynamic> record, String next) {
+    if (_section == 'report') {
+      final status = '${record['status'] ?? ''}'.toUpperCase();
+      if (next == 'SUBMITTED') {
+        return _isOwnRecord(record) &&
+            {'DRAFT', 'REJECTED', 'CORRECTIONS_REQUESTED'}.contains(status);
+      }
+      return status == 'SUBMITTED' && _canApprove(record) &&
+          {'APPROVED', 'REJECTED', 'CORRECTIONS_REQUESTED'}.contains(next);
+    }
+    if (_section == 'task' &&
+        {'IN_PROGRESS', 'SUBMITTED'}.contains(next)) {
+      final status = '${record['status'] ?? ''}'.toUpperCase();
+      final allowed = (status == 'TODO' && next == 'IN_PROGRESS') ||
+          (status == 'IN_PROGRESS' && next == 'SUBMITTED');
+      return allowed &&
+          _isOwnRecord(record) &&
+          _can('marketing.reports.manage');
+    }
+    return next == 'APPROVED' || next == 'REJECTED'
+        ? _canApprove(record)
+        : _writeAllowed(_section);
   }
 
   bool _canApprove(Map<String, dynamic> record) {
+    if (_section == 'report') {
+      return _isManager && !_isOwnRecord(record);
+    }
     if (['content', 'report'].contains(_section) &&
         !_can('marketing.content.approve')) {
       return false;
     }
     if (['strategy', 'proposal', 'partnership', 'contribution', 'campaign']
             .contains(_section) &&
-        !widget.isHeadOffice) return false;
+        !widget.isHeadOffice) {
+      return false;
+    }
     if (['budget', 'expense'].contains(_section) &&
         !(widget.isHeadOffice && _can('marketing.budgets.approve'))) {
       return false;
@@ -500,6 +559,13 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
           _ => [],
         };
       case 'report':
+        candidates = switch (status) {
+          'DRAFT' => ['SUBMITTED'],
+          'REJECTED' || 'CORRECTIONS_REQUESTED' => ['SUBMITTED'],
+          'SUBMITTED' => ['APPROVED', 'REJECTED', 'CORRECTIONS_REQUESTED'],
+          _ => [],
+        };
+        break;
       case 'budget':
       case 'expense':
       case 'proposal':
@@ -512,6 +578,7 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
             ],
           _ => [],
         };
+        break;
       default:
         return const [];
     }
@@ -561,7 +628,12 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
               .toSet()
           : <String>{};
       _schemaLoaded = true;
-      if (_section == 'overview') {
+      if (_isOfficer && _section == 'overview') {
+        _section = 'performance';
+      }
+      if (_section == 'performance') {
+        // The dedicated screen loads only the viewer's permitted performance scope.
+      } else if (_section == 'overview') {
         _overview = await _api.overview(_dateQuery);
       } else if (_section == 'team') {
         final data = await _api.team();
@@ -639,6 +711,8 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                         ? _errorPanel()
                         : _section == 'overview'
                             ? _overviewView()
+                            : _section == 'performance'
+                                ? MarketingPerformanceScreen(api: _api)
                             : _section == 'team'
                                 ? _teamView()
                                 : _recordsView()),
@@ -674,8 +748,11 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
               child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
-                _navItem('overview', 'Overview', Icons.grid_view_rounded),
-                if (_can('marketing.team.manage'))
+                if (!_isOfficer)
+                  _navItem('overview', 'Overview', Icons.grid_view_rounded),
+                _navItem('performance', 'My performance',
+                    Icons.insights_outlined),
+                if (!_isOfficer && _can('marketing.team.manage'))
                   _navItem('team', 'Team', Icons.groups_2_outlined),
                 for (final entry in _groups.entries) ...[
                   Padding(
@@ -703,7 +780,9 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
       );
 
   bool _canForView(String kind) =>
-      _can('marketing.view') || _writeAllowed(kind);
+      _can('marketing.view') ||
+      _writeAllowed(kind) ||
+      (kind == 'task' && _can('marketing.reports.manage'));
   IconData _icon(String kind) => switch (kind) {
         'campaign' => Icons.campaign_outlined,
         'attribution' => Icons.link_outlined,
@@ -743,15 +822,18 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         children: [
           for (final key in [
-            'overview',
+            if (!_isOfficer) 'overview',
             ..._titles.keys.where((k) => _canForView(k)),
-            if (_can('marketing.team.manage')) 'team'
+            if (!_isOfficer && _can('marketing.team.manage')) 'team',
+            'performance'
           ])
             Padding(
                 padding: const EdgeInsets.only(right: 7),
                 child: ChoiceChip(
-                  label: Text(key == 'overview'
+                   label: Text(key == 'overview'
                       ? 'Overview'
+                       : key == 'performance'
+                           ? 'Performance'
                       : key == 'team'
                           ? 'Team'
                           : _titles[key]!),
@@ -761,6 +843,7 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
         ],
       ));
   void _changeSection(String key) {
+    if (_isOfficer && (key == 'overview' || key == 'team')) return;
     setState(() {
       _section = key;
       _page = 1;
@@ -785,6 +868,8 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                 Text(
                     _section == 'overview'
                         ? 'Acquisition, with receipts.'
+                        : _section == 'performance'
+                            ? 'Performance & reporting'
                         : _section == 'team'
                             ? 'Marketing team'
                             : _titles[_section] ?? _section,
@@ -1259,8 +1344,14 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
         ]),
       );
   String _pretty(String value) => value
-      .replaceAllMapped(RegExp(r'([A-Z])'), (m) => ' ${m[1]}')
-      .replaceFirstMapped(RegExp(r'^[a-z]'), (m) => m[0]!.toUpperCase());
+      .replaceAll('_', ' ')
+      .replaceAllMapped(
+          RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+      .toLowerCase()
+      .split(' ')
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
 
   String _singularTitle(String kind) => switch (kind) {
         'partnership' => 'Partnership',
@@ -1334,7 +1425,10 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                             _load();
                           })),
                   if (_section != 'audit') _recordDateFilter(),
-                  DropdownButton<String>(
+                  SizedBox(
+                      width: 140,
+                      child: DropdownButton<String>(
+                       isExpanded: true,
                       value: _status,
                       hint: const Text('Any status'),
                       items: [
@@ -1347,7 +1441,7 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                       onChanged: (v) {
                         setState(() => _status = v ?? '');
                         _load();
-                      }),
+                      })),
                   if (_writeAllowed(_section))
                     FilledButton.icon(
                         onPressed: () => _editRecord(),
@@ -1416,7 +1510,10 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     ];
   }
 
-  Widget _recordDateFilter() => DropdownButton<String>(
+  Widget _recordDateFilter() => SizedBox(
+      width: 150,
+      child: DropdownButton<String>(
+        isExpanded: true,
         value: _preset,
         underline: const SizedBox(),
         items: const [
@@ -1457,7 +1554,7 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
           _page = 1;
           _load();
         },
-      );
+      ));
 
   Widget _recordTile(Map<String, dynamic> record) {
     final data = record['data'] is Map
@@ -1547,14 +1644,10 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
             tooltip: 'Record actions',
             onSelected: (action) => _recordAction(action, record),
             itemBuilder: (_) => [
-                  if (_writeAllowed(_section))
+                  if (_canEditRecord(record))
                     const PopupMenuItem(value: 'edit', child: Text('Edit')),
                   for (final next in _nextStatuses(status))
-                    if (next == 'APPROVED' || next == 'REJECTED'
-                        ? _canApprove(record)
-                        : (next == 'PUBLISHED'
-                            ? _writeAllowed(_section)
-                            : _writeAllowed(_section)))
+                    if (_canTransitionRecord(record, next))
                       PopupMenuItem(
                         value: 'status:$next',
                         child: Text(_pretty(next)),
@@ -1693,6 +1786,11 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     final nextStatus =
         action.startsWith('status:') ? action.substring('status:'.length) : '';
     if (nextStatus.isEmpty) return;
+    if (!_canTransitionRecord(record, nextStatus)) {
+      _message('You do not have permission for this report transition.',
+          failure: true);
+      return;
+    }
     if (nextStatus == 'PUBLISHED' && _section == 'content') {
       final data = record['data'] is Map
           ? Map<String, dynamic>.from(record['data'])
@@ -1716,14 +1814,20 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(nextStatus == 'REJECTED'
+                Text(nextStatus == 'REJECTED' ||
+                        nextStatus == 'CORRECTIONS_REQUESTED'
                     ? 'A reason is required. The submitter cannot approve this record.'
                     : 'Move ${_str(record['title'])} to ${_pretty(nextStatus)}?'),
-                if (nextStatus == 'REJECTED')
+                if (nextStatus == 'REJECTED' ||
+                    nextStatus == 'CORRECTIONS_REQUESTED' ||
+                    (_section == 'report' && nextStatus == 'APPROVED'))
                   TextField(
                       controller: reason,
                       onChanged: (_) => setDialog(() {}),
-                      decoration: const InputDecoration(labelText: 'Reason'),
+                      decoration: InputDecoration(
+                          labelText: nextStatus == 'APPROVED'
+                              ? 'Manager feedback (optional)'
+                              : 'Reason *'),
                       maxLines: 3),
                 if (nextStatus == 'PAID')
                   TextField(
@@ -1743,7 +1847,9 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                 child: const Text('Cancel')),
             FilledButton(
                 onPressed: () =>
-                    ((nextStatus == 'REJECTED' && reason.text.trim().isEmpty) ||
+                    ((['REJECTED', 'CORRECTIONS_REQUESTED']
+                                .contains(nextStatus) &&
+                            reason.text.trim().isEmpty) ||
                             (nextStatus == 'PAID' &&
                                 paymentEvidence.text.trim().isEmpty))
                         ? null
@@ -1764,6 +1870,7 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
             'Only Head Office may approve budget or expense records.');
       }
       if (['content', 'report', 'strategy', 'proposal'].contains(_section) &&
+          _section != 'report' &&
           !_can('marketing.content.approve')) {
         throw Exception('Content approval permission is required.');
       }
@@ -1783,7 +1890,16 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
         throw Exception(
             'Head Office payment evidence is required for bookkeeping.');
       }
-      if (nextStatus == 'APPROVED' && !_canApprove(record)) {
+      if (_section == 'report' &&
+          ['APPROVED', 'REJECTED', 'CORRECTIONS_REQUESTED']
+              .contains(nextStatus) &&
+          !_canApprove(record)) {
+        throw Exception(
+            'A manager may review only a different staff member’s submitted report.');
+      }
+      if (nextStatus == 'APPROVED' &&
+          _section != 'report' &&
+          !_canApprove(record)) {
         throw Exception(
             'You cannot approve your own record or lack approval permission.');
       }
@@ -1804,6 +1920,37 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
 
   Future<void> _editRecord([Map<String, dynamic>? existing]) async {
     if (!_writeAllowed(_section)) return;
+    if (existing != null && !_canEditRecord(existing)) return;
+    var assignmentOptions = <Map<String, dynamic>>[];
+    if (_section == 'task' || _section == 'target') {
+      try {
+        final teamData = await _api.team();
+        assignmentOptions = _maps(teamData['items']);
+        if (_section == 'target' &&
+            !(widget.isHeadOffice || _schema['headOffice'] == true)) {
+          assignmentOptions = assignmentOptions
+              .where((member) =>
+                  _staffRoleName(member).contains('MARKETING_OFFICER'))
+              .toList();
+        } else if (_section == 'target') {
+          assignmentOptions = assignmentOptions
+              .where((member) =>
+                  _staffRoleName(member).contains('HEAD_OF_MARKETING') ||
+                  _staffRoleName(member).contains('MARKETING_OFFICER'))
+              .toList();
+        }
+        assignmentOptions = assignmentOptions
+            .where((member) =>
+                '${member['status'] ?? 'ACTIVE'}'.toUpperCase() == 'ACTIVE')
+            .toList();
+      } catch (error) {
+        if (!mounted) return;
+        _message('Could not load permitted staff assignments: $error',
+            failure: true);
+        return;
+      }
+      if (!mounted) return;
+    }
     final recordData = existing?['data'] is Map
         ? Map<String, dynamic>.from(existing!['data'])
         : <String, dynamic>{};
@@ -1817,7 +1964,10 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     final campaignId =
         TextEditingController(text: _str(existing?['campaignId'], ''));
     final officerId =
-        TextEditingController(text: _str(existing?['officerId'], ''));
+        TextEditingController(
+            text: _section == 'report'
+                ? ''
+                : _str(existing?['officerId'], ''));
     String? selectedReceiptAsset;
     final controllers = <String, TextEditingController>{
       for (final f in fields)
@@ -1860,11 +2010,40 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                                   labelText:
                                       'Campaign ID (required for campaign source)')),
                         ],
-                        if (_section == 'task' || _section == 'report')
-                          TextField(
-                              controller: officerId,
-                              decoration: const InputDecoration(
-                                  labelText: 'Officer ID (optional)')),
+                        if (_section == 'task' || _section == 'target')
+                          DropdownButtonFormField<String>(
+                            value: assignmentOptions.any((member) =>
+                                    _str(member['_id'] ?? member['id'], '') ==
+                                    officerId.text)
+                                ? officerId.text
+                                : null,
+                            decoration: InputDecoration(
+                              labelText:
+                                  _section == 'target' ? 'Assign to staff *' : 'Assign task to staff *',
+                              helperText: _section == 'target' &&
+                                      !(widget.isHeadOffice ||
+                                          _schema['headOffice'] == true)
+                                  ? 'Head of Marketing may assign targets to Marketing Officers.'
+                                  : 'Choose from staff available to your role.',
+                            ),
+                            items: assignmentOptions
+                                .map((member) {
+                                  final id = _str(
+                                      member['_id'] ?? member['id'], '');
+                                  final role = _staffRoleName(member);
+                                  final name = _str(
+                                      member['fullName'] ?? member['name'],
+                                      'Marketing staff');
+                                  return DropdownMenuItem(
+                                      value: id,
+                                      child: Text('$name · ${_pretty(role)}',
+                                          overflow: TextOverflow.ellipsis));
+                                })
+                                .where((item) => item.value?.isNotEmpty == true)
+                                .toList(),
+                            onChanged: (value) =>
+                                officerId.text = value ?? '',
+                          ),
                         for (final field in fields)
                           _recordFieldInput(field, controllers[field]!),
                         if (_section == 'attribution')
@@ -1980,7 +2159,9 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                             }
                           }
                           if (_section == 'campaign' ||
-                              _section == 'partnership') {
+                              _section == 'partnership' ||
+                              _section == 'target' ||
+                              _section == 'report') {
                             final start =
                                 DateTime.tryParse('${data['startsAt']}');
                             final end = DateTime.tryParse('${data['endsAt']}');
@@ -1989,6 +2170,36 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                                 !end.isAfter(start)) {
                               setDialog(() => validationError =
                                   'Use valid ISO dates; the end must be after the start.');
+                              return;
+                            }
+                          }
+                          if (_section == 'task' &&
+                              officerId.text.trim().isEmpty) {
+                            setDialog(() => validationError =
+                                'Choose a permitted staff member for this task.');
+                            return;
+                          }
+                          if (_section == 'target') {
+                            if (officerId.text.trim().isEmpty) {
+                              setDialog(() => validationError =
+                                  'An officer assignment is required.');
+                              return;
+                            }
+                            if ((num.tryParse('${data['value']}') ?? 0) <= 0) {
+                              setDialog(() => validationError =
+                                  'Target quantity must be greater than zero.');
+                              return;
+                            }
+                            if (_str(data['objective'], '').trim().isEmpty) {
+                              setDialog(() => validationError =
+                                  'A target objective is required.');
+                              return;
+                            }
+                            data['value'] = num.parse('${data['value']}');
+                            if ('${data['metric']}'.toUpperCase() == 'CUSTOM' &&
+                                _str(data['customMetric'], '').trim().isEmpty) {
+                              setDialog(() => validationError =
+                                  'Name the custom KPI when using the CUSTOM metric.');
                               return;
                             }
                           }
@@ -2041,7 +2252,8 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
                               payload['campaignId'] = campaignId.text.trim();
                             }
                           }
-                          if (officerId.text.trim().isNotEmpty) {
+                          if (_section != 'report' &&
+                              officerId.text.trim().isNotEmpty) {
                             payload['officerId'] = officerId.text.trim();
                           }
                           Navigator.pop(ctx, payload);
@@ -2095,7 +2307,8 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
             campaignId.text.trim() != _str(existing['campaignId'], '')) {
           payload['campaignId'] = campaignId.text.trim();
         }
-        if (officerId.text.trim().isNotEmpty &&
+        if (_section != 'report' &&
+            officerId.text.trim().isNotEmpty &&
             officerId.text.trim() != _str(existing['officerId'], '')) {
           payload['officerId'] = officerId.text.trim();
         }
@@ -2116,10 +2329,32 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     ]);
   }
 
+  String _staffRoleName(Map<String, dynamic> member) {
+    final role = member['staffRoleId'] ?? member['role'];
+    if (role is Map) {
+      return '${role['name'] ?? role['displayName'] ?? ''}'
+          .toUpperCase()
+          .replaceAll(' ', '_');
+    }
+    return '$role'.toUpperCase().replaceAll(' ', '_');
+  }
+
   Widget _recordFieldInput(String field, TextEditingController controller) {
     final List<String> options = switch (field) {
       'source' => const ['CAMPAIGN', 'REFERRAL'],
-      'period' => const ['DAILY', 'WEEKLY', 'MONTHLY'],
+      'period' => const ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'],
+      'metric' => const [
+          'ACQUISITIONS',
+          'FIRST_TRANSACTIONS',
+          'TASKS',
+          'REPORTS',
+          'CONTENT',
+          'ATTENDANCE',
+          'CAMPAIGNS',
+          'ENGAGEMENT',
+          'PARTNERSHIPS',
+          'CUSTOM'
+        ],
       'channel' when _schema['channels'] is List =>
         (_schema['channels'] as List).map((value) => '$value').toList(),
       _ => const <String>[],
@@ -2139,6 +2374,18 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     }
     return TextField(
       controller: controller,
+      maxLines: const {
+        'objective',
+        'activities',
+        'campaigns',
+        'socialActivities',
+        'meetings',
+        'challenges',
+        'nextSteps',
+        'evidence'
+      }.contains(field)
+          ? 3
+          : 1,
       keyboardType: _numericFields.contains(field)
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
@@ -2160,8 +2407,26 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     'impressions',
     'engagements',
     'targetValue',
-    'value'
+    'value',
+    'activated',
+    'firstTransactions'
   };
+  static const _reportFields = [
+    'period',
+    'startsAt',
+    'endsAt',
+    'activities',
+    'acquired',
+    'activated',
+    'firstTransactions',
+    'campaigns',
+    'socialActivities',
+    'meetings',
+    'completedTasks',
+    'challenges',
+    'nextSteps',
+    'evidence'
+  ];
   static const _dateFields = {
     'startsAt',
     'endsAt',
@@ -2178,7 +2443,18 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
     final dynamic fields = _schema['fields'];
     final dynamic schemaFields = fields is Map ? fields[kind] : null;
     if (schemaFields is List) {
-      return schemaFields.map((e) => '$e').toList();
+      final fields = schemaFields.map((e) => '$e').toList();
+      if (kind == 'target') {
+        for (final field in ['metric', 'value', 'period', 'startsAt', 'endsAt', 'objective', 'customMetric']) {
+          if (!fields.contains(field)) fields.add(field);
+        }
+      }
+      if (kind == 'report') {
+        for (final field in _reportFields) {
+          if (!fields.contains(field)) fields.add(field);
+        }
+      }
+      return fields;
     }
     if (schemaKind is Map && schemaKind['fields'] is List) {
       return (schemaKind['fields'] as List).map((e) => '$e').toList();
@@ -2193,14 +2469,7 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
           'budgetNaira'
         ],
       'task' => ['dueAt', 'responsibility'],
-      'report' => [
-          'period',
-          'startsAt',
-          'endsAt',
-          'acquired',
-          'completedTasks',
-          'evidence'
-        ],
+      'report' => _reportFields,
       'budget' => ['amountNaira', 'category', 'evidence'],
       'expense' => [
           'amountNaira',
@@ -2235,7 +2504,15 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
           'reportedAt'
         ],
       'strategy' || 'proposal' => ['evidence'],
-      'target' => ['metric', 'value', 'period', 'startsAt', 'endsAt'],
+      'target' => [
+          'metric',
+          'value',
+          'period',
+          'startsAt',
+          'endsAt',
+          'objective',
+          'customMetric'
+        ],
       'attendance' => ['occurredAt', 'evidence'],
       _ => [],
     };
@@ -2251,13 +2528,20 @@ class _MarketingDepartmentScreenState extends State<MarketingDepartmentScreen> {
             'incurredAt',
           },
         'attribution' => {'source', 'evidence'},
-        'report' => {'period', 'startsAt', 'endsAt', 'acquired', 'evidence'},
+        'report' => {'period', 'startsAt', 'endsAt', 'activities'},
+        'target' => {
+          'metric',
+          'value',
+          'period',
+          'startsAt',
+          'endsAt',
+          'objective'
+        },
         'strategy' || 'proposal' => {'evidence'},
         'social' => {'channel', 'evidence', 'reportedAt'},
         'attendance' => {'occurredAt', 'evidence'},
         'partnership' => {'organization', 'evidence', 'startsAt', 'endsAt'},
         'contribution' => {'transactionId', 'evidence'},
-        'target' => {'metric', 'value', 'period', 'startsAt', 'endsAt'},
         _ => <String>{},
       };
 

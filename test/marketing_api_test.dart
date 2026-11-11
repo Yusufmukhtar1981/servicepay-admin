@@ -153,4 +153,49 @@ void main() {
     expect(body, contains('name="file"'));
     api.close();
   });
+
+  test('performance archive and ranking policy use authenticated routes', () async {
+    final calls = <http.Request>[];
+    final api = MarketingApi(
+      client: MockClient((request) async {
+        calls.add(request);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': request.method == 'GET'
+                ? {'items': [], 'total': 0, 'revision': 4}
+                : {'revision': 5}
+          }),
+          200,
+        );
+      }),
+    );
+    await api.performanceArchive(
+      kind: 'report',
+      period: 'YEARLY',
+      status: 'REJECTED',
+      search: 'Kano',
+      page: 2,
+      archived: false,
+    );
+    await api.updateRankingPolicy({
+      'revision': 4,
+      'reason': 'Quarterly methodology review',
+      'weights': {
+        'achievement': 40,
+        'acquisitions': 15,
+        'firstTransactions': 15,
+        'tasks': 10,
+        'reportCompliance': 10,
+        'campaigns': 10,
+      },
+    });
+    expect(calls.first.url.path, endsWith('/performance/archive'));
+    expect(calls.first.url.queryParameters['period'], 'YEARLY');
+    expect(calls.first.url.queryParameters['archived'], 'false');
+    expect(calls.last.method, 'PATCH');
+    expect(calls.last.url.path, endsWith('/performance/ranking-policy'));
+    expect(jsonDecode(calls.last.body)['revision'], 4);
+    api.close();
+  });
 }

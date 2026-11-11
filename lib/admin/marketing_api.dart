@@ -74,6 +74,96 @@ class MarketingApi {
       _json('POST', 'team/${Uri.encodeComponent(id)}/status',
           payload: {'status': status});
 
+  Future<Map<String, dynamic>> performanceContext() =>
+      _json('GET', 'performance/context');
+  Future<Map<String, dynamic>> performanceMe() =>
+      _json('GET', 'performance/me');
+  Future<Map<String, dynamic>> performanceStaff(String id) =>
+      _json('GET', 'performance/staff/${Uri.encodeComponent(id)}');
+  Future<Map<String, dynamic>> performanceDepartment(
+          {String period = 'MONTHLY',
+          String? from,
+          String? to,
+          int page = 1,
+          int limit = 20,
+          String search = ''}) =>
+      _json('GET', 'performance/department', query: {
+        'period': period,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+        'page': '$page',
+        'limit': '$limit',
+        if (search.isNotEmpty) 'search': search,
+      });
+  Future<Map<String, dynamic>> performanceArchive(
+          {String? kind,
+          String? period,
+          String? status,
+          String search = '',
+          String? from,
+          String? to,
+          int page = 1,
+          int limit = 20,
+          bool archived = true}) =>
+      _json('GET', 'performance/archive', query: {
+        if (kind != null && kind.isNotEmpty) 'kind': kind,
+        if (period != null && period.isNotEmpty) 'period': period,
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (search.isNotEmpty) 'search': search,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+        'page': '$page',
+        'limit': '$limit',
+        'archived': '$archived',
+      });
+  Future<Map<String, dynamic>> archivePerformanceRecord(
+          String kind, String id, Map<String, dynamic> payload) =>
+      _json('POST',
+          'performance/archive/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}',
+          payload: payload);
+  Future<Map<String, dynamic>> performanceHistory(String kind, String id) =>
+      _json('GET',
+          'performance/history/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}');
+  Future<Map<String, dynamic>> capturePerformanceSnapshot(
+          Map<String, dynamic> payload) =>
+      _json('POST', 'performance/snapshot', payload: payload);
+  Future<Map<String, dynamic>> performanceNotifications() =>
+      _json('GET', 'performance/notifications');
+  Future<Map<String, dynamic>> markPerformanceNotificationRead(String id) =>
+      _json('POST',
+          'performance/notifications/${Uri.encodeComponent(id)}/read',
+          payload: {});
+  Future<Map<String, dynamic>> rankingPolicy() =>
+      _json('GET', 'performance/ranking-policy');
+  Future<Map<String, dynamic>> updateRankingPolicy(
+          Map<String, dynamic> payload) =>
+      _json('PATCH', 'performance/ranking-policy', payload: payload);
+  Future<http.Response> exportPerformance(
+          {required String format,
+          String period = 'MONTHLY',
+          String? from,
+          String? to,
+          String? officerId,
+          bool department = false}) async {
+    final response = await _client
+        .get(
+          Uri.parse('$baseUrl/performance/export').replace(queryParameters: {
+            'format': format,
+            'period': period,
+            if (from != null) 'from': from,
+            if (to != null) 'to': to,
+            if (officerId != null) 'officerId': officerId,
+            if (department) 'department': 'true',
+          }),
+          headers: await _headers(),
+        )
+        .timeout(const Duration(seconds: 60));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Performance export failed (${response.statusCode}).');
+    }
+    return response;
+  }
+
   Future<Map<String, dynamic>> _json(
     String method,
     String path, {

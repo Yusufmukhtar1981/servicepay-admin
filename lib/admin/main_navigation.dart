@@ -50,6 +50,7 @@ import 'admin_transaction_intelligence_screen.dart';
 import 'pending_resolution_screen.dart';
 import 'admin_organizations_screen.dart';
 import 'admin_permissions.dart';
+import 'marketing_department_screen.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
 import 'svp_management_screen.dart';
@@ -135,6 +136,34 @@ bool canAccessFinancialControlNavigation({required String role}) {
 }
 
 @visibleForTesting
+int preferredMarketingWorkspaceIndex({
+  required List<String> labels,
+  required String role,
+  required Set<String> permissions,
+  String staffRoleName = '',
+  String staffDepartment = '',
+}) {
+  final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+  if (access.isHeadOffice) return 0;
+  if (const <String>{'HEAD_OF_MARKETING', 'MARKETING_OFFICER'}
+          .contains(AdminAccess.normalizeRole(staffRoleName)) ||
+      AdminAccess.normalizeRole(staffDepartment) == 'MARKETING' ||
+      permissions.contains('marketing.view')) {
+    final int marketingIndex = labels.indexOf('Marketing');
+    if (marketingIndex >= 0) return marketingIndex;
+  }
+  final String? preferred =
+      access.permissions.contains(AdminPermissions.operationsWorkspaceView)
+          ? 'Operations overview'
+          : access.permissions.contains(AdminPermissions.supportWorkspaceView)
+              ? 'Customer support desk'
+              : null;
+  if (preferred == null) return 0;
+  final int index = labels.indexOf(preferred);
+  return index < 0 ? 0 : index;
+}
+
+@visibleForTesting
 bool canAccessPendingResolutionNavigation({
   required String role,
   required Set<String> permissions,
@@ -194,6 +223,12 @@ class AdminMainNavigation extends StatefulWidget {
     if (access.isHeadOffice) {
       labels.add('Staff Management');
     }
+    if (access.isHeadOffice ||
+        access.permissions.contains('marketing.view') ||
+        const <String>{'HEAD_OF_MARKETING', 'MARKETING_OFFICER'}
+            .contains(staffRole)) {
+      labels.add('Marketing');
+    }
     if (access.has(AdminPermissions.logisticsView)) {
       labels.add('Interstate Logistics');
     }
@@ -243,28 +278,18 @@ class AdminMainNavigation extends StatefulWidget {
     return labels;
   }
 
+  @override
+  State<AdminMainNavigation> createState() => _AdminMainNavigationState();
+
+  // Preserve the existing navigation test/API contract for other departments.
   @visibleForTesting
   static int preferredWorkspaceIndex({
     required List<String> labels,
     required String role,
     required Set<String> permissions,
-  }) {
-    final AdminAccess access =
-        AdminAccess(role: role, permissions: permissions);
-    if (access.isHeadOffice) return 0;
-    final String? preferred =
-        access.permissions.contains(AdminPermissions.operationsWorkspaceView)
-            ? 'Operations overview'
-            : access.permissions.contains(AdminPermissions.supportWorkspaceView)
-                ? 'Customer support desk'
-                : null;
-    if (preferred == null) return 0;
-    final int index = labels.indexOf(preferred);
-    return index < 0 ? 0 : index;
-  }
-
-  @override
-  State<AdminMainNavigation> createState() => _AdminMainNavigationState();
+  }) => preferredMarketingWorkspaceIndex(
+    labels: labels, role: role, permissions: permissions,
+  );
 }
 
 class _AdminMainNavigationState extends State<AdminMainNavigation> {
@@ -376,6 +401,30 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       return;
     }
 
+    final bool marketingRole = const <String>{
+          'HEAD_OF_MARKETING',
+          'MARKETING_OFFICER',
+        }.contains(normalizeRole(staffRoleName)) ||
+        normalizeRole(staffDepartment) == 'MARKETING';
+    if (!isHeadOffice && marketingRole) {
+      if (permissions.contains('marketing.view') ||
+          permissions
+              .any((permission) => permission.startsWith('marketing.')) ||
+          normalizeRole(staffRoleName) == 'HEAD_OF_MARKETING') {
+        addNavigationPage(
+          page: MarketingDepartmentScreen(
+            permissions: permissions,
+            isHeadOffice: false,
+          ),
+          icon: Icons.insights_outlined,
+          activeIcon: Icons.insights_rounded,
+          label: 'Marketing',
+        );
+      }
+      currentIndex = 0;
+      return;
+    }
+
     if (canAccessEduPayNavigation(role: adminRole, permissions: permissions)) {
       addNavigationPage(
         page: const EduPayControlCenterScreen(),
@@ -408,6 +457,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.monitor_heart_outlined,
         activeIcon: Icons.monitor_heart_rounded,
         label: 'Operations overview',
+      );
+    }
+
+    if (isHeadOffice || permissions.contains('marketing.view')) {
+      addNavigationPage(
+        page: MarketingDepartmentScreen(
+          permissions: permissions,
+          isHeadOffice: isHeadOffice,
+        ),
+        icon: Icons.insights_outlined,
+        activeIcon: Icons.insights_rounded,
+        label: 'Marketing',
       );
     }
 
@@ -1099,12 +1160,14 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         permissions = normalizedPermissions;
 
         configureNavigation();
-        currentIndex = AdminMainNavigation.preferredWorkspaceIndex(
+        currentIndex = preferredMarketingWorkspaceIndex(
           labels: items
               .map((BottomNavigationBarItem item) => item.label ?? '')
               .toList(),
           role: adminRole,
           permissions: permissions,
+          staffRoleName: staffRoleName,
+          staffDepartment: staffDepartment,
         );
         if (isStaff && pages.isNotEmpty) {
           _visitedStaffPageIndices

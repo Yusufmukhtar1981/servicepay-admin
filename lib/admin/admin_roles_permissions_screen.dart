@@ -893,6 +893,7 @@ class _RoleEditorDialogState extends State<_RoleEditorDialog> {
                             'AUDIT',
                             'COMPLIANCE',
                             'CUSTOMER_SUPPORT',
+                            'MARKETING',
                           ]
                               .map((String value) => DropdownMenuItem<String>(
                                     value: value,
@@ -930,6 +931,17 @@ class _RoleEditorDialogState extends State<_RoleEditorDialog> {
                     ],
                   ),
                   const SizedBox(height: 20),
+                  if (department == 'MARKETING')
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Suggested role names: Head of Marketing (campaign and team leadership), Marketing Officer (assigned acquisition work), or Content & Social (evidence-based content operations). Grant marketing.view plus only the workflows this person needs. Head Office keeps target configuration, approval and role assignment.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xff526b5e),
+                        ),
+                      ),
+                    ),
                   Text(
                     'Permissions',
                     style: Theme.of(context).textTheme.titleLarge,

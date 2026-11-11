@@ -51,6 +51,7 @@ import 'pending_resolution_screen.dart';
 import 'admin_organizations_screen.dart';
 import 'admin_permissions.dart';
 import 'marketing_department_screen.dart';
+import 'marketing_management_screen.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_privacy_requests_screen.dart';
 import 'svp_management_screen.dart';
@@ -229,6 +230,9 @@ class AdminMainNavigation extends StatefulWidget {
             .contains(staffRole)) {
       labels.add('Marketing');
     }
+    if (access.isHeadOffice) {
+      labels.add('Marketing Management');
+    }
     if (access.has(AdminPermissions.logisticsView)) {
       labels.add('Interstate Logistics');
     }
@@ -287,9 +291,12 @@ class AdminMainNavigation extends StatefulWidget {
     required List<String> labels,
     required String role,
     required Set<String> permissions,
-  }) => preferredMarketingWorkspaceIndex(
-    labels: labels, role: role, permissions: permissions,
-  );
+  }) =>
+      preferredMarketingWorkspaceIndex(
+        labels: labels,
+        role: role,
+        permissions: permissions,
+      );
 }
 
 class _AdminMainNavigationState extends State<AdminMainNavigation> {
@@ -469,6 +476,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.insights_outlined,
         activeIcon: Icons.insights_rounded,
         label: 'Marketing',
+      );
+    }
+
+    if (isHeadOffice) {
+      addNavigationPage(
+        page: const MarketingManagementScreen(),
+        icon: Icons.query_stats_outlined,
+        activeIcon: Icons.query_stats_rounded,
+        label: 'Marketing Management',
       );
     }
 

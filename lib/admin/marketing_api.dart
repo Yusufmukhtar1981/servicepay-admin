@@ -19,6 +19,8 @@ class MarketingApi {
   Future<Map<String, dynamic>> schema() => _json('GET', 'schema');
   Future<Map<String, dynamic>> overview(Map<String, String> query) =>
       _json('GET', 'overview', query: query);
+  Future<Map<String, dynamic>> management(Map<String, String> query) =>
+      _json('GET', 'management', query: query);
   Future<Map<String, dynamic>> records(
     String kind, {
     int page = 1,
@@ -121,17 +123,17 @@ class MarketingApi {
       _json('POST',
           'performance/archive/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}',
           payload: payload);
-  Future<Map<String, dynamic>> performanceHistory(String kind, String id) =>
-      _json('GET',
-          'performance/history/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}');
+  Future<
+      Map<String,
+          dynamic>> performanceHistory(String kind, String id) => _json('GET',
+      'performance/history/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}');
   Future<Map<String, dynamic>> capturePerformanceSnapshot(
           Map<String, dynamic> payload) =>
       _json('POST', 'performance/snapshot', payload: payload);
   Future<Map<String, dynamic>> performanceNotifications() =>
       _json('GET', 'performance/notifications');
   Future<Map<String, dynamic>> markPerformanceNotificationRead(String id) =>
-      _json('POST',
-          'performance/notifications/${Uri.encodeComponent(id)}/read',
+      _json('POST', 'performance/notifications/${Uri.encodeComponent(id)}/read',
           payload: {});
   Future<Map<String, dynamic>> rankingPolicy() =>
       _json('GET', 'performance/ranking-policy');
@@ -139,12 +141,12 @@ class MarketingApi {
           Map<String, dynamic> payload) =>
       _json('PATCH', 'performance/ranking-policy', payload: payload);
   Future<http.Response> exportPerformance(
-          {required String format,
-          String period = 'MONTHLY',
-          String? from,
-          String? to,
-          String? officerId,
-          bool department = false}) async {
+      {required String format,
+      String period = 'MONTHLY',
+      String? from,
+      String? to,
+      String? officerId,
+      bool department = false}) async {
     final response = await _client
         .get(
           Uri.parse('$baseUrl/performance/export').replace(queryParameters: {

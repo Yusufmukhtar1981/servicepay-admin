@@ -1,18 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
 import 'marketing_api.dart';
 
 class MarketingPerformanceScreen extends StatefulWidget {
-  const MarketingPerformanceScreen({super.key, required this.api});
+  const MarketingPerformanceScreen({
+    super.key,
+    required this.api,
+    this.initialView,
+    this.initialStaffId,
+    this.initialPeriod,
+    this.initialFrom,
+    this.initialTo,
+  });
   final MarketingApi api;
+  final String? initialView;
+  final String? initialStaffId;
+  final String? initialPeriod;
+  final DateTime? initialFrom;
+  final DateTime? initialTo;
 
   @override
   State<MarketingPerformanceScreen> createState() =>
       _MarketingPerformanceScreenState();
 }
 
-class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen> {
+class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
+    with WidgetsBindingObserver {
   static const _green = Color(0xff173c35);
   static const _mint = Color(0xffe8f0e9);
   static const _periods = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'];
@@ -34,6 +50,9 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   DateTime? _to;
   int _page = 1;
   bool _busy = true;
+  bool _requestInFlight = false;
+  bool _refreshPending = false;
+  Timer? _refreshTimer;
   bool _showArchived = true;
   String? _error;
   Map<String, dynamic> _context = {};
@@ -42,6 +61,9 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   Map<String, dynamic> _archive = {};
   Map<String, dynamic> _policy = {};
   List<Map<String, dynamic>> _notifications = [];
+  bool _openedInitialStaff = false;
+  List<Map<String, dynamic>> _departmentTargets = [];
+  List<Map<String, dynamic>> _personalDepartmentTargets = [];
 
   bool get _manager => _context['manager'] == true;
   bool get _superAdmin => _context['superAdmin'] == true;
@@ -57,12 +79,44 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.initialView != null) _view = widget.initialView!;
+    if (_periods.contains(widget.initialPeriod)) {
+      _period = widget.initialPeriod!;
+    }
+    _from = widget.initialFrom;
+    _to = widget.initialTo;
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_isVisible) _load(quiet: true);
+    });
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isVisible) _load(quiet: true);
+  }
+
+  bool get _isVisible =>
+      mounted &&
+      TickerMode.of(context) &&
+      (ModalRoute.of(context)?.isCurrent ?? true);
+
+  Future<void> _load({bool quiet = false}) async {
+    if (_requestInFlight) {
+      _refreshPending = true;
+      return;
+    }
+    _requestInFlight = true;
     setState(() {
-      _busy = true;
+      if (!quiet) _busy = true;
       _error = null;
     });
     try {
@@ -70,13 +124,16 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       if (_headOffice && _view == 'personal') _view = 'department';
       switch (_view) {
         case 'department':
-          if (!_canViewDepartment) throw Exception('Department performance is manager-only.');
+          if (!_canViewDepartment) {
+            throw Exception('Department performance is manager-only.');
+          }
           _department = await widget.api.performanceDepartment(
               period: _period,
               from: _from?.toUtc().toIso8601String(),
               to: _exclusiveTo?.toUtc().toIso8601String(),
               page: _page,
               search: _search);
+          _departmentTargets = _maps(_department['departmentTargets']);
           break;
         case 'archive':
           _archive = await widget.api.performanceArchive(
@@ -94,16 +151,34 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
               _maps((await widget.api.performanceNotifications())['items']);
           break;
         case 'methodology':
-          if (!_superAdmin) throw Exception('Only Super Admin can configure ranking methodology.');
+          if (!_superAdmin) {
+            throw Exception(
+                'Only Super Admin can configure ranking methodology.');
+          }
           _policy = await widget.api.rankingPolicy();
           break;
         default:
           _dashboard = await widget.api.performanceMe();
+          _personalDepartmentTargets = _maps(_dashboard['departmentTargets']);
       }
     } catch (error) {
       _error = error.toString().replaceFirst('Exception: ', '');
     } finally {
+      _requestInFlight = false;
       if (mounted) setState(() => _busy = false);
+      if (_refreshPending && mounted) {
+        _refreshPending = false;
+        scheduleMicrotask(() => _load(quiet: true));
+      }
+    }
+    if (mounted &&
+        !_busy &&
+        widget.initialStaffId != null &&
+        widget.initialStaffId!.isNotEmpty &&
+        !_openedInitialStaff &&
+        _view == 'department') {
+      _openedInitialStaff = true;
+      await _openStaff(widget.initialStaffId!);
     }
   }
 
@@ -111,7 +186,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   Widget build(BuildContext context) {
     final tabs = <(String, String, IconData)>[
       if (!_headOffice) ('personal', 'My performance', Icons.person_outline),
-      if (_canViewDepartment) ('department', 'Department', Icons.groups_outlined),
+      if (_canViewDepartment)
+        ('department', 'Department', Icons.groups_outlined),
       ('archive', 'Archive', Icons.inventory_2_outlined),
       ('notifications', 'Notifications', Icons.notifications_none),
       if (_superAdmin) ('methodology', 'Ranking policy', Icons.tune),
@@ -121,19 +197,24 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         Container(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
           color: const Color(0xfff9fbf8),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               const Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Performance & reporting',
-                      style: TextStyle(
-                          color: _green,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20)),
-                  SizedBox(height: 3),
-                  Text('Private targets. Clear evidence. No financial authority.',
-                      style: TextStyle(color: Color(0xff718178), fontSize: 12)),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Performance & reporting',
+                          style: TextStyle(
+                              color: _green,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 20)),
+                      SizedBox(height: 3),
+                      Text(
+                          'Private targets. Clear evidence. No financial authority.',
+                          style: TextStyle(
+                              color: Color(0xff718178), fontSize: 12)),
+                    ]),
               ),
               IconButton(
                   tooltip: 'Refresh',
@@ -229,30 +310,49 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
             width: 48,
             height: 48,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: _mint, borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(
+                color: _mint, borderRadius: BorderRadius.circular(14)),
             child: const Icon(Icons.insights_outlined, color: _green),
           ),
           const SizedBox(width: 13),
           Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_text((_dashboard['staff'] is Map)
-                ? (_dashboard['staff'] as Map)['name']
-                : null,
-                'Your private dashboard'),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: _green)),
-            Text(_text((_dashboard['staff'] is Map)
-                ? (_dashboard['staff'] as Map)['role']
-                : null, 'Marketing staff'),
-                style: const TextStyle(color: Color(0xff75847b), fontSize: 12)),
-          ])),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(
+                    _text(
+                        (_dashboard['staff'] is Map)
+                            ? (_dashboard['staff'] as Map)['name']
+                            : null,
+                        'Your private dashboard'),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: _green)),
+                Text(
+                    _text(
+                        (_dashboard['staff'] is Map)
+                            ? (_dashboard['staff'] as Map)['role']
+                            : null,
+                        'Marketing staff'),
+                    style: const TextStyle(
+                        color: Color(0xff75847b), fontSize: 12)),
+              ])),
         ]),
       ),
       const SizedBox(height: 12),
-      _heading('Targets by period', 'Daily, weekly, monthly and yearly goals stay independent.'),
+      _heading('Targets by period',
+          'Daily, weekly, monthly and yearly goals stay independent.'),
       if (periods.isEmpty)
         _empty('No period summaries are available.')
       else
         for (final period in periods) _periodSummary(period),
+      if (_personalDepartmentTargets.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _heading('Department targets',
+            'Shared targets assigned to the whole marketing team.'),
+        for (final target in _personalDepartmentTargets) _targetCard(target),
+      ],
       const SizedBox(height: 16),
       _heading('Tasks', 'Assignments from your marketing workspace'),
       if (tasks.isEmpty)
@@ -263,34 +363,50 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
             title: _text(task['title'], 'Task'),
             subtitle:
                 '${_text(task['status'])}${task['overdue'] == true ? ' · OVERDUE' : ''} · Due ${_text((task['data'] is Map) ? (task['data'] as Map)['dueAt'] : null)}',
-            icon: task['overdue'] == true ? Icons.warning_amber_rounded : Icons.checklist_outlined,
+            icon: task['overdue'] == true
+                ? Icons.warning_amber_rounded
+                : Icons.checklist_outlined,
           ),
       const SizedBox(height: 16),
       Wrap(spacing: 8, runSpacing: 8, children: [
         const Text('Export period'),
         _periodPicker(),
-        _exportButton('PDF', 'pdf', officerId: _text(
-            (_dashboard['staff'] is Map) ? (_dashboard['staff'] as Map)['id'] : null, '')),
-        _exportButton('Excel', 'xlsx', officerId: _text(
-            (_dashboard['staff'] is Map) ? (_dashboard['staff'] as Map)['id'] : null, '')),
+        _exportButton('PDF', 'pdf',
+            officerId: _text(
+                (_dashboard['staff'] is Map)
+                    ? (_dashboard['staff'] as Map)['id']
+                    : null,
+                '')),
+        _exportButton('Excel', 'xlsx',
+            officerId: _text(
+                (_dashboard['staff'] is Map)
+                    ? (_dashboard['staff'] as Map)['id']
+                    : null,
+                '')),
       ]),
       const SizedBox(height: 12),
-      _heading('Recent reports', 'Self-reported activity counts are never verified achievements.'),
+      _heading('Recent reports',
+          'Self-reported activity counts are never verified achievements.'),
       if (reports.isEmpty)
         _empty('Your reports will appear here.')
       else
         for (final report in reports.take(8))
-          _simpleRow(title: _text(report['title'], 'Activity report'),
-              subtitle: '${_text(report['status'])} · ${_text((report['data'] is Map) ? (report['data'] as Map)['startsAt'] : null)}',
+          _simpleRow(
+              title: _text(report['title'], 'Activity report'),
+              subtitle:
+                  '${_text(report['status'])} · ${_text((report['data'] is Map) ? (report['data'] as Map)['startsAt'] : null)}',
               icon: Icons.description_outlined),
       const SizedBox(height: 16),
-      _heading('Manager feedback', 'Review notes stay attached to the report history.'),
+      _heading('Manager feedback',
+          'Review notes stay attached to the report history.'),
       if (feedback.isEmpty)
         _empty('No manager feedback yet.')
       else
         for (final item in feedback.take(10))
-          _simpleRow(title: _text(item['reportTitle'], 'Report review'),
-              subtitle: '${_text(item['status'], 'Feedback')} · ${_text(item['comment'] ?? item['reason'], 'No comment provided')}',
+          _simpleRow(
+              title: _text(item['reportTitle'], 'Report review'),
+              subtitle:
+                  '${_text(item['status'], 'Feedback')} · ${_text(item['comment'] ?? item['reason'], 'No comment provided')}',
               icon: Icons.chat_bubble_outline),
       const SizedBox(height: 16),
       _heading('Performance history', 'Immutable captured observations.'),
@@ -298,8 +414,10 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         _empty('No historical snapshots have been captured.')
       else
         for (final item in history.take(10))
-          _simpleRow(title: _text(item['title'], 'Performance snapshot'),
-              subtitle: '${_text(item['status'])} · ${_text(item['createdAt'])}',
+          _simpleRow(
+              title: _text(item['title'], 'Performance snapshot'),
+              subtitle:
+                  '${_text(item['status'])} · ${_text(item['createdAt'])}',
               icon: Icons.history),
       if (_manager)
         Padding(
@@ -321,8 +439,7 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         .toList();
     final ratio = values.isEmpty
         ? null
-        : (values.fold<num>(
-                    0, (total, value) => total + value.clamp(0, 100)) /
+        : (values.fold<num>(0, (total, value) => total + value.clamp(0, 100)) /
                 values.length /
                 100)
             .clamp(0.0, 1.0)
@@ -336,7 +453,9 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
                 style: const TextStyle(
                     fontWeight: FontWeight.w800, color: _green)),
           ),
-          _status(periodTargets.isEmpty ? 'NO TARGET' : '${periodTargets.length} TARGETS'),
+          _status(periodTargets.isEmpty
+              ? 'NO TARGET'
+              : '${periodTargets.length} TARGETS'),
         ]),
         const SizedBox(height: 4),
         Text('${_text(period['from'])} — ${_text(period['to'])} · UTC',
@@ -371,35 +490,55 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
 
   Widget _targetCard(Map<String, dynamic> target) {
     final actual = _number(target['actual']);
-    final goal = _number((target['data'] is Map) ? (target['data'] as Map)['value'] : null);
+    final goal = _number(
+        (target['data'] is Map) ? (target['data'] as Map)['value'] : null);
     final percent = _number(target['achievementPercent']);
-    final progress = percent == null ? null : (percent / 100).clamp(0.0, 1.0).toDouble();
+    final progress =
+        percent == null ? null : (percent / 100).clamp(0.0, 1.0).toDouble();
     final remaining = target['remaining'];
     final data = target['data'] is Map ? target['data'] as Map : const {};
     return _panel(
       margin: const EdgeInsets.only(top: 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text(_text(target['title'], _pretty(_text(data['metric'], 'Target'))),
-              style: const TextStyle(fontWeight: FontWeight.w800, color: _green))),
+          Expanded(
+              child: Text(
+                  _text(target['title'],
+                      _pretty(_text(data['metric'], 'Target'))),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, color: _green))),
           _status(target['outcome'] ?? target['status']),
         ]),
         const SizedBox(height: 6),
-        Text('${_pretty(_text(data['metric'], 'Metric'))} · ${_text(data['startsAt'])} — ${_text(data['endsAt'])}',
+        Text(
+            '${_pretty(_text(data['metric'], 'Metric'))} · ${_text(data['startsAt'])} — ${_text(data['endsAt'])}',
             style: const TextStyle(fontSize: 11, color: Color(0xff748279))),
         const SizedBox(height: 10),
-        LinearProgressIndicator(value: progress ?? 0, minHeight: 7, backgroundColor: _mint, color: const Color(0xff438466)),
+        LinearProgressIndicator(
+            value: progress ?? 0,
+            minHeight: 7,
+            backgroundColor: _mint,
+            color: const Color(0xff438466)),
         const SizedBox(height: 8),
         Row(children: [
-          Expanded(child: Text('Actual ${actual?.toString() ?? 'Unavailable'} / ${goal ?? 'Unavailable'}',
-              style: const TextStyle(fontWeight: FontWeight.w700, color: _green))),
-          Text(percent == null ? 'Unavailable' : '${percent.toStringAsFixed(1)}%',
-              style: const TextStyle(fontWeight: FontWeight.w800, color: _green)),
+          Expanded(
+              child: Text(
+                  'Actual ${actual?.toString() ?? 'Unavailable'} / ${goal ?? 'Unavailable'}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: _green))),
+          Text(
+              percent == null
+                  ? 'Unavailable'
+                  : '${percent.toStringAsFixed(1)}%',
+              style:
+                  const TextStyle(fontWeight: FontWeight.w800, color: _green)),
         ]),
-        Text('Remaining ${_text(remaining, 'Unavailable')} · ${_text(data['objective'], 'No objective supplied')}',
+        Text(
+            'Remaining ${_text(remaining, 'Unavailable')} · ${_text(data['objective'], 'No objective supplied')}',
             style: const TextStyle(fontSize: 11, color: Color(0xff748279))),
         const SizedBox(height: 6),
-        const Text('Progress is based on verified records; custom and self-reported counts remain unavailable.',
+        const Text(
+            'Progress is based on verified records; custom and self-reported counts remain unavailable.',
             style: TextStyle(fontSize: 10, color: Color(0xff7d8b83))),
       ]),
     );
@@ -412,7 +551,9 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         : <String, dynamic>{};
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: _heading('Department ranking', 'Only permitted staff · verified measures only.')),
+        Expanded(
+            child: _heading('Department ranking',
+                'Only permitted staff · verified measures only.')),
         _periodPicker(),
       ]),
       Align(alignment: Alignment.centerLeft, child: _dateFilter()),
@@ -431,11 +572,19 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       _panel(
         child: Text(
             'Weights: ${method['weights'] is Map ? (method['weights'] as Map).entries.map((e) => '${_pretty('${e.key}')} ${e.value}%').join(' · ') : 'Methodology unavailable'}\n${_text(_department['comparisonNote'], 'Ranking does not add customers across periods.')}\n${_strings(method['methodology']).join(' ')}',
-            style: const TextStyle(fontSize: 11, height: 1.5, color: Color(0xff65776d))),
+            style: const TextStyle(
+                fontSize: 11, height: 1.5, color: Color(0xff65776d))),
       ),
-      if (rows.isEmpty) _empty('No staff ranking data is available for this period.')
+      if (rows.isEmpty)
+        _empty('No staff ranking data is available for this period.')
       else
         for (final row in rows) _rankCard(row),
+      if (_departmentTargets.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        _heading('Department targets',
+            'Shared targets for the whole marketing team.'),
+        for (final target in _departmentTargets) _targetCard(target),
+      ],
       _pager(_int(_department['total'])),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
@@ -452,13 +601,24 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       margin: const EdgeInsets.only(top: 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 36, height: 36, alignment: Alignment.center,
-              decoration: BoxDecoration(color: _mint, borderRadius: BorderRadius.circular(11)),
-              child: Text(rank == null ? '—' : '#$rank', style: const TextStyle(fontWeight: FontWeight.w800, color: _green))),
+          Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: _mint, borderRadius: BorderRadius.circular(11)),
+              child: Text(rank == null ? '—' : '#$rank',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, color: _green))),
           const SizedBox(width: 10),
-          Expanded(child: Text(_text(row['name'], 'Marketing staff'),
-              style: const TextStyle(fontWeight: FontWeight.w800, color: _green))),
-          Text(score == null ? 'Not ranked' : '${score.toStringAsFixed(1)} score',
+          Expanded(
+              child: Text(_text(row['name'], 'Marketing staff'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, color: _green))),
+          Text(
+              score == null
+                  ? 'Not ranked'
+                  : '${score.toStringAsFixed(1)} score',
               style: const TextStyle(fontWeight: FontWeight.w700)),
         ]),
         const SizedBox(height: 10),
@@ -468,16 +628,20 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
           _metricChip('First transactions', row['firstTransactions']),
           _metricChip('Verified tasks', row['tasks']),
           _metricChip('Campaigns', row['campaigns']),
-          _metricChip('Report compliance', row['reportCompliance'], suffix: '%'),
+          _metricChip('Report compliance', row['reportCompliance'],
+              suffix: '%'),
           _metricChip('Reports outstanding', row['outstandingReports']),
           _metricChip('Submitted for review', row['submittedReports']),
         ]),
         if (_maps(row['targets']).isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(_maps(row['targets']).map((t) =>
-              '${_text(t['title'], 'Target')}: ${_text(t['outcome'])} (${_text(t['achievementPercent'], 'Unavailable')}%)').join(' · '),
-              style: const TextStyle(fontSize: 11, color: Color(0xff697970))),
+            child: Text(
+                _maps(row['targets'])
+                    .map((t) =>
+                        '${_text(t['title'], 'Target')}: ${_text(t['outcome'])} (${_text(t['achievementPercent'], 'Unavailable')}%)')
+                    .join(' · '),
+                style: const TextStyle(fontSize: 11, color: Color(0xff697970))),
           ),
         Align(
           alignment: Alignment.centerRight,
@@ -503,9 +667,11 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(_text((detail['staff'] is Map)
-              ? (detail['staff'] as Map)['name']
-              : null, 'Staff performance')),
+          title: Text(_text(
+              (detail['staff'] is Map)
+                  ? (detail['staff'] as Map)['name']
+                  : null,
+              'Staff performance')),
           content: SizedBox(
             width: 540,
             child: SingleChildScrollView(
@@ -520,7 +686,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
                   ],
                   _heading('Targets', 'Complete target record list.'),
                   for (final target in targets.take(12)) _targetCard(target),
-                  _heading('Tasks', 'Assignment state; completion requires manager review.'),
+                  _heading('Tasks',
+                      'Assignment state; completion requires manager review.'),
                   if (tasks.isEmpty)
                     _empty('No task records.')
                   else
@@ -538,7 +705,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
                     for (final report in reports.take(10))
                       _simpleRow(
                         title: _text(report['title'], 'Report'),
-                        subtitle: '${_text(report['status'])} · ${_text(report['createdAt'])}',
+                        subtitle:
+                            '${_text(report['status'])} · ${_text(report['createdAt'])}',
                         icon: Icons.description_outlined,
                       ),
                 ],
@@ -578,7 +746,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   Widget _archiveView() {
     final rows = _maps(_archive['items']);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _heading('Historical records', 'Archive and restore preserve the source record and audit trail.'),
+      _heading('Historical records',
+          'Archive and restore preserve the source record and audit trail.'),
       Align(alignment: Alignment.centerLeft, child: _dateFilter()),
       SegmentedButton<bool>(
         segments: const [
@@ -596,18 +765,39 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       ),
       const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 8, children: [
-        _filterMenu('Record type', _archiveKind,
-            const ['', 'target', 'report', 'task', 'campaign', 'content', 'performance'],
+        _filterMenu(
+            'Record type',
+            _archiveKind,
+            const [
+              '',
+              'target',
+              'report',
+              'task',
+              'campaign',
+              'content',
+              'performance'
+            ],
             (value) => _archiveKind = value),
         _filterMenu('Period', _archivePeriod, const ['', ..._periods],
             (value) => _archivePeriod = value),
-        _filterMenu('Status', _archiveStatus,
-            const ['', 'DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CORRECTIONS_REQUESTED'],
+        _filterMenu(
+            'Status',
+            _archiveStatus,
+            const [
+              '',
+              'DRAFT',
+              'SUBMITTED',
+              'APPROVED',
+              'REJECTED',
+              'CORRECTIONS_REQUESTED'
+            ],
             (value) => _archiveStatus = value),
       ]),
       const SizedBox(height: 9),
       TextField(
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search archived records'),
+        decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.search),
+            hintText: 'Search archived records'),
         onSubmitted: (value) {
           setState(() {
             _search = value.trim();
@@ -617,8 +807,10 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         },
       ),
       const SizedBox(height: 9),
-      if (rows.isEmpty) _empty('No archived records match these filters.')
-      else for (final record in rows) _archiveCard(record),
+      if (rows.isEmpty)
+        _empty('No archived records match these filters.')
+      else
+        for (final record in rows) _archiveCard(record),
       _pager(_int(_archive['total'])),
     ]);
   }
@@ -632,16 +824,24 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Icon(Icons.inventory_2_outlined, color: _green),
         const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(_text(record['title'], _pretty(kind)),
-              style: const TextStyle(fontWeight: FontWeight.w800, color: _green)),
-          Text('$kind · ${_text(record['status'])} · ${_text(record['createdAt'])}',
+              style:
+                  const TextStyle(fontWeight: FontWeight.w800, color: _green)),
+          Text(
+              '$kind · ${_text(record['status'])} · ${_text(record['createdAt'])}',
               style: const TextStyle(fontSize: 11, color: Color(0xff75847b))),
           Wrap(spacing: 3, children: [
-            TextButton(onPressed: () => _showHistory(kind, _text(record['_id'])),
+            TextButton(
+                onPressed: () => _showHistory(kind, _text(record['_id'])),
                 child: const Text('History')),
-            if (_manager || (kind == 'report' && _ownedByCurrentUser(record)))
-              TextButton(onPressed: () => _archiveAction(record, !isArchived),
+            if ((_manager &&
+                    !(kind == 'target' && _isAdminAssignedTarget(record))) ||
+                (kind == 'report' && _ownedByCurrentUser(record)))
+              TextButton(
+                  onPressed: () => _archiveAction(record, !isArchived),
                   child: Text(isArchived ? 'Restore' : 'Archive')),
           ]),
         ])),
@@ -655,17 +855,35 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
     return actor.isNotEmpty && actor == owner;
   }
 
+  bool _isAdminAssignedTarget(Map<String, dynamic> record) {
+    final data = record['data'] is Map ? record['data'] as Map : const {};
+    final creator =
+        record['createdBy'] is Map ? record['createdBy'] as Map : const {};
+    final authority = '${data['authority'] ?? record['authority'] ?? ''}'
+        .trim()
+        .toUpperCase();
+    final creatorRole =
+        '${creator['role'] ?? creator['staffRole'] ?? creator['department'] ?? ''}'
+            .trim()
+            .toUpperCase();
+    return authority == 'ADMIN' ||
+        creatorRole.contains('ADMIN') ||
+        creatorRole.contains('HEAD_OFFICE');
+  }
+
   Widget _notificationView() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _heading('Notifications', 'Assignments, deadlines, report decisions and period summaries.'),
+          _heading('Notifications',
+              'Assignments, deadlines, report decisions and period summaries.'),
           if (_notifications.isEmpty)
             _empty('You are up to date.')
           else
             for (final item in _notifications)
               _simpleRow(
                 title: _text(item['title'], 'Marketing update'),
-                subtitle: '${_text(item['status'])} · ${_text(item['createdAt'])}',
+                subtitle:
+                    '${_text(item['status'])} · ${_text(item['createdAt'])}',
                 icon: Icons.notifications_none,
                 trailing: '${item['status']}'.toUpperCase() == 'UNREAD'
                     ? TextButton(
@@ -681,17 +899,19 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         ? Map<String, dynamic>.from(_policy['weights'])
         : <String, dynamic>{};
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _heading('Ranking methodology', 'Super Admin only · weights must total 100.'),
+      _heading(
+          'Ranking methodology', 'Super Admin only · weights must total 100.'),
       _panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Revision ${_text(_policy['revision'], '0')}',
-              style: const TextStyle(fontWeight: FontWeight.w800, color: _green)),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w800, color: _green)),
           const SizedBox(height: 7),
           for (final item in _strings(_policy['methodology']))
             Padding(
               padding: const EdgeInsets.only(bottom: 7),
-              child: Text(item,
-                  style: const TextStyle(fontSize: 12, height: 1.4)),
+              child:
+                  Text(item, style: const TextStyle(fontSize: 12, height: 1.4)),
             ),
           const SizedBox(height: 8),
           FilledButton.icon(
@@ -707,13 +927,17 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   Widget _heading(String title, String subtitle) => Padding(
         padding: const EdgeInsets.only(bottom: 9),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, color: _green, fontSize: 17)),
+          Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w800, color: _green, fontSize: 17)),
           const SizedBox(height: 3),
-          Text(subtitle, style: const TextStyle(color: Color(0xff748279), fontSize: 11)),
+          Text(subtitle,
+              style: const TextStyle(color: Color(0xff748279), fontSize: 11)),
         ]),
       );
 
-  Widget _panel({required Widget child, EdgeInsetsGeometry? margin}) => Container(
+  Widget _panel({required Widget child, EdgeInsetsGeometry? margin}) =>
+      Container(
         margin: margin,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -729,7 +953,9 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         child: Row(children: [
           const Icon(Icons.inbox_outlined, color: Color(0xff668173)),
           const SizedBox(width: 10),
-          Expanded(child: Text(message, style: const TextStyle(color: Color(0xff718178)))),
+          Expanded(
+              child: Text(message,
+                  style: const TextStyle(color: Color(0xff718178)))),
         ]),
       );
 
@@ -743,27 +969,39 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         child: Row(children: [
           Icon(icon, color: const Color(0xff47745e), size: 20),
           const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: _green)),
-            const SizedBox(height: 3),
-            Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xff738178))),
-          ])),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, color: _green)),
+                const SizedBox(height: 3),
+                Text(subtitle,
+                    style: const TextStyle(
+                        fontSize: 11, color: Color(0xff738178))),
+              ])),
           if (trailing != null) trailing,
         ]),
       );
 
   Widget _status(dynamic value) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(color: _mint, borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(
+            color: _mint, borderRadius: BorderRadius.circular(20)),
         child: Text(_pretty(_text(value, 'UNAVAILABLE')),
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: _green)),
+            style: const TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w800, color: _green)),
       );
 
-  Widget _metricChip(String label, dynamic value, {String suffix = ''}) => Container(
+  Widget _metricChip(String label, dynamic value, {String suffix = ''}) =>
+      Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(color: _mint, borderRadius: BorderRadius.circular(9)),
+        decoration:
+            BoxDecoration(color: _mint, borderRadius: BorderRadius.circular(9)),
         child: Text('$label · ${_text(value, 'Unavailable')}$suffix',
-            style: const TextStyle(fontSize: 10, color: _green, fontWeight: FontWeight.w600)),
+            style: const TextStyle(
+                fontSize: 10, color: _green, fontWeight: FontWeight.w600)),
       );
 
   Widget _filterMenu(String label, String value, List<String> values,
@@ -773,7 +1011,9 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         value: value.isEmpty ? '' : value,
         items: [
           for (final item in values)
-            DropdownMenuItem(value: item, child: Text(item.isEmpty ? 'Any $label' : _pretty(item)))
+            DropdownMenuItem(
+                value: item,
+                child: Text(item.isEmpty ? 'Any $label' : _pretty(item)))
         ],
         onChanged: (next) {
           if (next == null) return;
@@ -815,7 +1055,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
         label: Text('Export $label'),
       );
 
-  Future<void> _export(String format, bool department, String? officerId) async {
+  Future<void> _export(
+      String format, bool department, String? officerId) async {
     try {
       final result = await widget.api.exportPerformance(
           format: format,
@@ -889,7 +1130,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
           );
           if (range == null) return;
           setState(() {
-            _from = DateTime(range.start.year, range.start.month, range.start.day);
+            _from =
+                DateTime(range.start.year, range.start.month, range.start.day);
             _to = DateTime(range.end.year, range.end.month, range.end.day);
             _page = 1;
           });
@@ -910,7 +1152,8 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
     }
   }
 
-  Future<void> _archiveAction(Map<String, dynamic> record, bool archived) async {
+  Future<void> _archiveAction(
+      Map<String, dynamic> record, bool archived) async {
     final reason = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -920,12 +1163,16 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
           controller: reason,
           maxLines: 3,
           decoration: const InputDecoration(
-              labelText: 'Reason *', helperText: 'This action is recorded in history.'),
+              labelText: 'Reason *',
+              helperText: 'This action is recorded in history.'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, reason.text.trim().isNotEmpty),
+            onPressed: () =>
+                Navigator.pop(dialogContext, reason.text.trim().isNotEmpty),
             child: Text(archived ? 'Archive' : 'Restore'),
           )
         ],
@@ -936,12 +1183,14 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
       return;
     }
     try {
-      await widget.api.archivePerformanceRecord(_text(record['kind']), _text(record['_id']), {
+      await widget.api.archivePerformanceRecord(
+          _text(record['kind']), _text(record['_id']), {
         'revision': _int(record['revision']),
         'archived': archived,
         'reason': reason.text.trim(),
       });
-      _message(archived ? 'Record archived; source preserved.' : 'Record restored.');
+      _message(
+          archived ? 'Record archived; source preserved.' : 'Record restored.');
       await _load();
     } catch (error) {
       _message('$error');
@@ -967,12 +1216,17 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
                     for (final row in rows)
                       ListTile(
                         dense: true,
-                        title: Text(_text(row['title'] ?? row['status'], 'Record event')),
-                        subtitle: Text('${_text(row['createdAt'])} · ${_text(row['createdBy'])}'),
+                        title: Text(_text(
+                            row['title'] ?? row['status'], 'Record event')),
+                        subtitle: Text(
+                            '${_text(row['createdAt'])} · ${_text(row['createdBy'])}'),
                       )
                   ]),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Close'))
+          ],
         ),
       );
     } catch (error) {
@@ -996,40 +1250,48 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
             width: 420,
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                if (errorText != null) Text(errorText!, style: const TextStyle(color: Colors.red)),
+                if (errorText != null)
+                  Text(errorText!, style: const TextStyle(color: Colors.red)),
                 for (final key in _weights)
                   TextField(
                     controller: controllers[key],
                     keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: _pretty(key), suffixText: '%'),
+                    decoration: InputDecoration(
+                        labelText: _pretty(key), suffixText: '%'),
                   ),
                 TextField(
                   controller: reason,
                   maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Change reason *'),
+                  decoration:
+                      const InputDecoration(labelText: 'Change reason *'),
                 ),
               ]),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 final values = <String, int>{};
                 for (final key in _weights) {
                   final value = int.tryParse(controllers[key]!.text);
                   if (value == null || value < 0 || value > 100) {
-                    setDialog(() => errorText = 'Each weight must be a whole number from 0 to 100.');
+                    setDialog(() => errorText =
+                        'Each weight must be a whole number from 0 to 100.');
                     return;
                   }
                   values[key] = value;
                 }
                 if (values.values.fold<int>(0, (a, b) => a + b) != 100 ||
                     reason.text.trim().isEmpty) {
-                  setDialog(() => errorText = 'Weights must total 100 and a reason is required.');
+                  setDialog(() => errorText =
+                      'Weights must total 100 and a reason is required.');
                   return;
                 }
-                Navigator.pop(ctx, {'weights': values, 'reason': reason.text.trim()});
+                Navigator.pop(
+                    ctx, {'weights': values, 'reason': reason.text.trim()});
               },
               child: const Text('Save policy'),
             )
@@ -1056,19 +1318,20 @@ class _MarketingPerformanceScreenState extends State<MarketingPerformanceScreen>
   }
 
   int _int(dynamic value) => int.tryParse('$value') ?? 0;
-  List<String> _strings(dynamic value) => value is List
-      ? value.map((item) => '$item').toList()
-      : <String>[];
+  List<String> _strings(dynamic value) =>
+      value is List ? value.map((item) => '$item').toList() : <String>[];
   String _pretty(String value) => value
       .replaceAll('_', ' ')
       .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}')
       .toLowerCase()
       .split(' ')
-      .map((word) => word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}')
+      .map((word) =>
+          word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}')
       .join(' ');
 
   void _message(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'customer_intelligence_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,6 +35,9 @@ class ServicepayAdminApp extends StatelessWidget {
           ? const SchoolSessionGate()
           : const AdminSessionGate(),
       routes: <String, WidgetBuilder>{
+        '/customer-intelligence': (_) => const AdminSessionGate(
+              fallback: CustomerIntelligenceScreen(),
+            ),
         '/school': (_) => const SchoolSessionGate(),
         '/edupay': (_) => const AdminSessionGate(
               fallback: _EduPayRouteGate(),

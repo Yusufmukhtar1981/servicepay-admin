@@ -47,6 +47,7 @@ import 'admin_staff_workspace_screens.dart';
 import 'admin_customer_360_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'admin_transaction_intelligence_screen.dart';
+import 'customer_intelligence_screen.dart';
 import 'pending_resolution_screen.dart';
 import 'admin_organizations_screen.dart';
 import 'admin_permissions.dart';
@@ -639,6 +640,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.person_search_outlined,
         activeIcon: Icons.person_search_rounded,
         label: 'Customer 360',
+      );
+    }
+
+    if (isHeadOffice ||
+        (hasPermission(AdminPermissions.usersView) &&
+            hasPermission(AdminPermissions.transactionsView)) ||
+        hasPermission('marketing.customer_intelligence.view')) {
+      addNavigationPage(
+        page: const CustomerIntelligenceScreen(),
+        icon: Icons.query_stats_outlined,
+        activeIcon: Icons.query_stats_rounded,
+        label: 'Customer Intelligence',
       );
     }
 

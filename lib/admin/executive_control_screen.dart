@@ -530,6 +530,38 @@ class _ExecutiveControlScreenState extends State<ExecutiveControlScreen> {
         true,
         'SUCCESSFUL'
       ),
+      (
+        'New customers',
+        _count(overview['newCustomers']),
+        'Registered in the selected period',
+        Icons.person_add_alt,
+        false,
+        null
+      ),
+      (
+        'Inactive customers',
+        _count(overview['inactiveCustomers']),
+        'Beyond the configured inactivity window',
+        Icons.person_outline,
+        false,
+        null
+      ),
+      (
+        'Never-transacted customers',
+        _count(overview['neverCustomers']),
+        'No unreversed successful activity',
+        Icons.person_search_outlined,
+        false,
+        null
+      ),
+      (
+        'Refunded',
+        _count(overview['refunded']),
+        'Canonical records with reversal evidence',
+        Icons.undo_outlined,
+        false,
+        'REFUNDED'
+      ),
     ];
     final finance = _map(_sections['Finance']);
     final financeTotals = _map(finance['totals']);

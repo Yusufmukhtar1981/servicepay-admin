@@ -62,6 +62,7 @@ import 'hierarchy_management_screen.dart';
 import 'provider_management_screen.dart';
 import 'revenue_account_screen.dart';
 import 'financial_control_screen.dart';
+import 'executive_control_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -135,6 +136,18 @@ bool canAccessRevenueAccountNavigation({
 @visibleForTesting
 bool canAccessFinancialControlNavigation({required String role}) {
   return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE';
+}
+
+@visibleForTesting
+bool canAccessExecutiveControlNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final access = AdminAccess(role: role, permissions: permissions);
+  return access.isHeadOffice ||
+      (permissions.contains('executive.control_center.view') &&
+          access.has(AdminPermissions.usersView) &&
+          access.has(AdminPermissions.transactionsView));
 }
 
 @visibleForTesting
@@ -224,6 +237,12 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.isHeadOffice) {
       labels.add('Staff Management');
+    }
+    if (canAccessExecutiveControlNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Executive Control Center');
     }
     if (access.isHeadOffice ||
         access.permissions.contains('marketing.view') ||
@@ -455,6 +474,20 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.dashboard_outlined,
         activeIcon: Icons.dashboard_rounded,
         label: 'Dashboard',
+      );
+    }
+
+    if (canAccessExecutiveControlNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: ExecutiveControlScreen(
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+        ),
+        icon: Icons.assessment_outlined,
+        activeIcon: Icons.assessment_rounded,
+        label: 'Executive Control Center',
       );
     }
 

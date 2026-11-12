@@ -13,6 +13,7 @@ import 'admin_theme.dart';
 import 'edupay_control_center_screen.dart';
 import '../school/school_session_gate.dart';
 import 'staff_management_screen.dart';
+import 'executive_control_screen.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -37,6 +38,9 @@ class ServicepayAdminApp extends StatelessWidget {
       routes: <String, WidgetBuilder>{
         '/customer-intelligence': (_) => const AdminSessionGate(
               fallback: CustomerIntelligenceScreen(),
+            ),
+        '/executive-control': (_) => const AdminSessionGate(
+              fallback: ExecutiveControlRoute(),
             ),
         '/school': (_) => const SchoolSessionGate(),
         '/edupay': (_) => const AdminSessionGate(

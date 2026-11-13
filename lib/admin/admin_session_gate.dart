@@ -28,7 +28,9 @@ class AdminSessionGate extends StatefulWidget {
 class _AdminSessionGateState extends State<AdminSessionGate> {
   late final http.Client _client;
   late final bool _ownsClient;
-  late final Future<bool> _forcedChange;
+  late Future<bool> _forcedChange;
+  bool _requiresSignin = false;
+  bool _verificationUnavailable = false;
 
   @override
   void initState() {
@@ -39,6 +41,8 @@ class _AdminSessionGateState extends State<AdminSessionGate> {
   }
 
   Future<bool> _checkTemporarySession() async {
+    _requiresSignin = false;
+    _verificationUnavailable = false;
     final SharedPreferences preferences = await widget.preferencesLoader();
     final bool mustChange = preferences.getBool('must_change_password') == true;
     String token = (preferences.getString('auth_token') ??
@@ -49,14 +53,14 @@ class _AdminSessionGateState extends State<AdminSessionGate> {
     token = token.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
     if (token.isEmpty) {
       if (mustChange) await preferences.remove('must_change_password');
+      _requiresSignin = true;
       return false;
     }
-    if (mustChange) return true;
 
     // Deep links can outlive an older app version that did not persist the
     // temporary-password flag. Verify those routes before mounting their
     // protected screens so PASSWORD_CHANGE_REQUIRED always opens this gate.
-    if (widget.fallback == null) return false;
+    if (!mustChange && widget.fallback == null) return false;
     try {
       final http.Response response = await _client.get(
         Uri.parse('${AdminApiConfiguration.baseUrl}/auth/profile'),
@@ -66,6 +70,13 @@ class _AdminSessionGateState extends State<AdminSessionGate> {
         },
       ).timeout(const Duration(seconds: 12));
       final Map<String, dynamic> result = _decodeMap(response.body);
+      if (response.statusCode == 401) {
+        await AdminSessionStore.clearSession();
+        await preferences.remove('must_change_password');
+        await preferences.remove('forced_password_user_context');
+        _requiresSignin = true;
+        return false;
+      }
       if (response.statusCode == 403 &&
           result['code']?.toString().trim().toUpperCase() ==
               'PASSWORD_CHANGE_REQUIRED') {
@@ -75,6 +86,8 @@ class _AdminSessionGateState extends State<AdminSessionGate> {
       final Map<String, dynamic> profile = _profileFrom(result);
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
+          result['success'] == true &&
+          profile.isNotEmpty &&
           profile['mustChangePassword'] == true) {
         final String role =
             (profile['role'] ?? profile['effectiveRole'] ?? '').toString();
@@ -85,8 +98,18 @@ class _AdminSessionGateState extends State<AdminSessionGate> {
         await preferences.setBool('must_change_password', true);
         return true;
       }
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          result['success'] == true &&
+          profile.isNotEmpty) {
+        if (mustChange) await preferences.remove('must_change_password');
+        return false;
+      }
+      _verificationUnavailable = true;
     } catch (_) {
-      // Existing route authorization checks handle transient profile errors.
+      // Do not mount a privileged fallback or discard a potentially valid
+      // session when the server could not be reached.
+      _verificationUnavailable = true;
     }
     return false;
   }
@@ -133,6 +156,33 @@ class _AdminSessionGateState extends State<AdminSessionGate> {
             );
           }
           if (snapshot.data != true) {
+            if (_requiresSignin) return const AdminLoginScreen();
+            if (_verificationUnavailable || snapshot.hasError) {
+              return Scaffold(
+                body: SafeArea(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'Unable to verify your session. Check your connection and try again.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            _forcedChange = _checkTemporarySession();
+                          }),
+                          child: const Text('Retry session verification'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
             return widget.fallback ?? const AdminLoginScreen();
           }
           return AdminChangePasswordScreen(

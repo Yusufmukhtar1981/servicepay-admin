@@ -75,7 +75,6 @@ class _AdminChangePasswordScreenState extends State<AdminChangePasswordScreen> {
       _error = null;
       _needsRelogin = false;
     });
-    bool serverChangedPassword = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = (prefs.getString('auth_token') ??
@@ -117,13 +116,36 @@ class _AdminChangePasswordScreenState extends State<AdminChangePasswordScreen> {
       if (response.statusCode < 200 ||
           response.statusCode >= 300 ||
           result['success'] != true) {
+        final String code =
+            result['code']?.toString().trim().toUpperCase() ?? '';
+        final String message = result['message']?.toString().trim() ?? '';
+        const authCodes = <String>{
+          'TOKEN_REVOKED',
+          'TOKEN_EXPIRED',
+          'TOKEN_INVALID',
+          'INVALID_TOKEN',
+          'SESSION_EXPIRED',
+          'TEMPORARY_PASSWORD_EXPIRED',
+        };
+        const legacyAuthMessages = <String>{
+          'invalid or expired token.',
+          'invalid access token.',
+          'invalid authentication token.',
+          'unauthorized.',
+          'user not found.',
+        };
+        if (response.statusCode == 401 &&
+            (authCodes.contains(code) ||
+                legacyAuthMessages.contains(message.toLowerCase()))) {
+          throw const _ReloginRequiredException(
+              'Your sign-in session is no longer valid. Sign in again using your latest temporary password. If Head Office regenerated it, use the newest one.');
+        }
         throw Exception(
           result['message']?.toString().trim().isNotEmpty == true
               ? result['message'].toString()
               : 'Password change failed. Check your current password and try again.',
         );
       }
-      serverChangedPassword = true;
       final Map<String, dynamic> data = result['data'] is Map
           ? Map<String, dynamic>.from(result['data'] as Map)
           : <String, dynamic>{};
@@ -166,9 +188,7 @@ class _AdminChangePasswordScreenState extends State<AdminChangePasswordScreen> {
         (Route<dynamic> route) => false,
       );
     } on _ReloginRequiredException catch (error) {
-      if (serverChangedPassword) {
-        await _clearChangedSession();
-      }
+      await _clearChangedSession();
       if (mounted) {
         setState(() {
           _error = error.message;

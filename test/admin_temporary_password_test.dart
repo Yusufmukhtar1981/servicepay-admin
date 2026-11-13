@@ -76,7 +76,11 @@ void main() {
       'auth_token': 'temporary-admin-token',
       'must_change_password': true,
     });
-    await tester.pumpWidget(const MaterialApp(home: AdminSessionGate()));
+    final client = MockClient((request) async => http.Response(
+        jsonEncode({'success': false, 'code': 'PASSWORD_CHANGE_REQUIRED'}),
+        403));
+    await tester
+        .pumpWidget(MaterialApp(home: AdminSessionGate(client: client)));
     await tester.pumpAndSettle();
 
     expect(find.byType(AdminChangePasswordScreen), findsOneWidget);
@@ -278,6 +282,125 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('admin-password-relogin')));
     expect(reloginCalled, isTrue);
+  });
+
+  for (final code in ['', 'TOKEN_REVOKED', 'TOKEN_EXPIRED']) {
+    testWidgets('rejected temporary session offers re-login: $code',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'stale-token',
+        'token': 'stale-token',
+        'access_token': 'stale-token',
+        'must_change_password': true,
+      });
+      final client = MockClient((request) async {
+        expect(request.method, 'PUT');
+        expect(request.headers['authorization'], 'Bearer stale-token');
+        return http.Response(
+            jsonEncode({
+              'success': false,
+              'code': code,
+              'message': 'Invalid or expired token.',
+            }),
+            401);
+      });
+      var relogin = false;
+      await tester.pumpWidget(MaterialApp(
+          home: AdminChangePasswordScreen(
+        client: client,
+        onRelogin: () => relogin = true,
+      )));
+      await enterValidValues(tester);
+      await tapSubmit(tester);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Sign in again using your latest'),
+          findsOneWidget);
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in ['auth_token', 'token', 'access_token']) {
+        expect(prefs.getString(key), isNull);
+      }
+      expect(prefs.getBool('must_change_password'), isNull);
+      await tester
+          .ensureVisible(find.byKey(const Key('admin-password-relogin')));
+      await tester.tap(find.byKey(const Key('admin-password-relogin')));
+      expect(relogin, isTrue);
+    });
+  }
+
+  testWidgets('cached temporary flag cannot authorize an invalid session',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'invalid-token',
+      'must_change_password': true,
+    });
+    var requests = 0;
+    final client = MockClient((request) async {
+      requests++;
+      expect(request.url.path, '/api/auth/profile');
+      return http.Response(
+          '{"success":false,"message":"Invalid or expired token."}', 401);
+    });
+    await tester.pumpWidget(MaterialApp(
+        home: AdminSessionGate(
+      client: client,
+      fallback: const Text('Privileged fallback'),
+    )));
+    await tester.pumpAndSettle();
+    expect(requests, 1);
+    expect(find.byType(AdminLoginScreen), findsOneWidget);
+    expect(find.byType(AdminChangePasswordScreen), findsNothing);
+    expect(find.text('Privileged fallback'), findsNothing);
+    expect((await SharedPreferences.getInstance()).getString('auth_token'),
+        isNull);
+  });
+
+  testWidgets('unreachable verification blocks fallback and permits retry',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'valid-temporary',
+      'must_change_password': true,
+    });
+    var calls = 0;
+    final client = MockClient((request) async {
+      if (++calls == 1) throw http.ClientException('offline');
+      return http.Response(
+          '{"success":false,"code":"PASSWORD_CHANGE_REQUIRED"}', 403);
+    });
+    await tester.pumpWidget(MaterialApp(
+        home: AdminSessionGate(
+      client: client,
+      fallback: const Text('Privileged fallback'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Privileged fallback'), findsNothing);
+    expect(find.byType(AdminChangePasswordScreen), findsNothing);
+    expect((await SharedPreferences.getInstance()).getString('auth_token'),
+        'valid-temporary');
+    await tester.tap(find.text('Retry session verification'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AdminChangePasswordScreen), findsOneWidget);
+  });
+
+  testWidgets('server-confirmed completed setup clears a stale local flag',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'auth_token': 'current-token',
+      'must_change_password': true,
+    });
+    final client = MockClient((request) async => http.Response(
+        '{"success":true,"user":{"role":"STAFF","mustChangePassword":false}}',
+        200));
+    await tester.pumpWidget(MaterialApp(
+        home: AdminSessionGate(
+      client: client,
+      fallback: const Text('Authorized fallback'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Authorized fallback'), findsOneWidget);
+    expect(find.byType(AdminChangePasswordScreen), findsNothing);
+    expect(
+        (await SharedPreferences.getInstance()).getBool('must_change_password'),
+        isNull);
   });
 
   testWidgets('password page fits a short mobile viewport and desktop',

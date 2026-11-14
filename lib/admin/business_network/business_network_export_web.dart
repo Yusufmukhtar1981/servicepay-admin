@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import 'dart:js_util' as js_util;
 
 import '../admin_control_center_download.dart';
 
@@ -46,8 +47,13 @@ Future<bool> printBusinessNetworkReport(
     'text/html;charset=utf-8',
   );
   final objectUrl = html.Url.createObjectUrlFromBlob(blob);
-  final openedWindow = html.window.open(objectUrl, '_blank');
-  if (openedWindow is! html.Window) {
+  final openedWindow = js_util.callMethod<Object?>(
+    html.window,
+    'open',
+    <Object?>[objectUrl, '_blank'],
+  );
+  if (openedWindow == null ||
+      js_util.getProperty<Object?>(openedWindow, 'closed') == true) {
     html.Url.revokeObjectUrl(objectUrl);
     return false;
   }

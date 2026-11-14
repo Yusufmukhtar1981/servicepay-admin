@@ -109,8 +109,8 @@ Widget _input(
 
 String _human(String value) => value
     .replaceAllMapped(RegExp(r'([A-Z])'), (match) => ' ${match[1]}')
-    .replaceAll('Kobo', 'kobo')
     .replaceAll('_', ' ')
+    .replaceFirst(RegExp(r'\s+kobo$', caseSensitive: false), '')
     .trim();
 
 String _moneyIfKobo(String key, dynamic value) {

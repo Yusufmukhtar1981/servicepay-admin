@@ -273,6 +273,7 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
           title: const Text('BUSINESS NETWORK',
               style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
           backgroundColor: const Color(0xFFF4F7F5),
+          foregroundColor: const Color(0xFF18372A),
           actions: [
             IconButton(
                 onPressed: _load,

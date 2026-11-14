@@ -154,4 +154,68 @@ void main() {
     expect((result['totals'] as Map)['earnedKobo'], 99000);
     client.close();
   });
+
+  test('profile decision posts only decision fields when no optional settings',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path,
+          '/api/business-network/admin/profiles/profile-42/review');
+      expect(jsonDecode(request.body), {
+        'status': 'APPROVED',
+        'revision': 7,
+      });
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {'profile': {}}
+        }),
+        200,
+      );
+    });
+    final api = BusinessNetworkAdminApi(
+      client: client,
+      tokenProvider: () async => 'head-office-token',
+      baseUrl: 'https://test.servicepay.invalid/api',
+    );
+
+    await api.post('profiles/profile-42/review', {
+      'status': 'APPROVED',
+      'revision': 7,
+    });
+    client.close();
+  });
+
+  test('profile rejection permits an optional reason and retains revision',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path,
+          '/api/business-network/admin/profiles/profile-42/review');
+      expect(jsonDecode(request.body), {
+        'status': 'REJECTED',
+        'reason': 'Document image is unreadable',
+        'revision': 8,
+      });
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {'profile': {}}
+        }),
+        200,
+      );
+    });
+    final api = BusinessNetworkAdminApi(
+      client: client,
+      tokenProvider: () async => 'head-office-token',
+      baseUrl: 'https://test.servicepay.invalid/api',
+    );
+
+    await api.post('profiles/profile-42/review', {
+      'status': 'REJECTED',
+      'reason': 'Document image is unreadable',
+      'revision': 8,
+    });
+    client.close();
+  });
 }

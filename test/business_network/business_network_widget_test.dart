@@ -671,4 +671,239 @@ void main() {
     expect(find.text('₦0.00'), findsOneWidget);
     client.close();
   });
+
+  testWidgets(
+      'application rows expose customer business data and approve without configuration',
+      (tester) async {
+    final bodies = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/admin/profiles')) {
+        expect(request.url.queryParameters['status'], 'SUBMITTED');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'items': [
+                {
+                  '_id': 'agent-app-42',
+                  'kind': 'AGENT',
+                  'status': 'SUBMITTED',
+                  'revision': 9,
+                  'submittedAt': '2026-02-14T12:00:00.000Z',
+                  'details': {
+                    'ownerName': 'Amina Yusuf',
+                    'phone': '08031234567',
+                    'businessName': 'Amina Stores',
+                  },
+                }
+              ],
+            },
+          }),
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/admin/profiles/agent-app-42/review')) {
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'profile': {}}
+            }),
+            200);
+      }
+      return http.Response(
+          jsonEncode({'success': false, 'message': 'Unexpected route'}), 404);
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessNetworkScreen(
+        initialSection: 1,
+        api: BusinessNetworkAdminApi(
+          client: client,
+          tokenProvider: () async => 'head-office-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Amina Stores'), findsOneWidget);
+    expect(find.textContaining('Amina Yusuf · 08031234567'), findsOneWidget);
+    expect(find.textContaining('AGENT · 14/02/2026'), findsOneWidget);
+    await tester.tap(find.text('Approve'));
+    await tester.pumpAndSettle();
+    expect(bodies, [
+      {'status': 'APPROVED', 'revision': 9}
+    ]);
+    client.close();
+  });
+
+  testWidgets(
+      'unavailable catalogue does not block explicit under-review decision',
+      (tester) async {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/admin/profiles')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'items': [
+                {
+                  '_id': 'merchant-app-5',
+                  'kind': 'MERCHANT',
+                  'status': 'UNDER_REVIEW',
+                  'revision': 3,
+                  'details': {
+                    'ownerName': 'Chika Okafor',
+                    'phone': '08020000000',
+                    'businessName': 'Chika Foods',
+                  },
+                }
+              ],
+            },
+          }),
+          200,
+        );
+      }
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/admin/profiles/merchant-app-5')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'profile': {
+                '_id': 'merchant-app-5',
+                'kind': 'MERCHANT',
+                'status': 'UNDER_REVIEW',
+                'revision': 3,
+                'details': {
+                  'ownerName': 'Chika Okafor',
+                  'phone': '08020000000',
+                  'businessName': 'Chika Foods',
+                },
+              }
+            }
+          }),
+          200,
+        );
+      }
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/admin/premium')) {
+        return http.Response(
+          jsonEncode({'success': false, 'message': 'Catalogue unavailable'}),
+          503,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/admin/profiles/merchant-app-5/review')) {
+        expect(jsonDecode(request.body), {
+          'status': 'UNDER_REVIEW',
+          'revision': 3,
+        });
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'profile': {}}
+            }),
+            200);
+      }
+      return http.Response(
+          jsonEncode({'success': false, 'message': 'Unexpected route'}), 404);
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessNetworkScreen(
+        initialSection: 4,
+        api: BusinessNetworkAdminApi(
+          client: client,
+          tokenProvider: () async => 'head-office-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review'));
+    await tester.pumpAndSettle();
+    expect(find.text('Owner: Chika Okafor'), findsOneWidget);
+    expect(find.text('Mark under review'), findsOneWidget);
+    expect(requests.where((r) => r.url.path.endsWith('/premium')), isEmpty);
+    await tester.tap(find.text('Advanced controls'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Catalogue unavailable'), findsOneWidget);
+    await tester.tap(find.text('Mark under review'));
+    await tester.pumpAndSettle();
+    expect(
+      requests.where((r) =>
+          r.method == 'POST' &&
+          r.url.path.endsWith('/admin/profiles/merchant-app-5/review')),
+      hasLength(1),
+    );
+    client.close();
+  });
+
+  testWidgets('rejection accepts a reason and sends the current revision',
+      (tester) async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/admin/profiles')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'items': [
+                {
+                  '_id': 'agent-app-3',
+                  'kind': 'AGENT',
+                  'status': 'SUBMITTED',
+                  'revision': 4,
+                  'details': {'businessName': 'North Gate Kiosk'},
+                }
+              ],
+            },
+          }),
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/admin/profiles/agent-app-3/review')) {
+        expect(jsonDecode(request.body), {
+          'status': 'REJECTED',
+          'reason': 'Please upload a clear ID',
+          'revision': 4,
+        });
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'profile': {}}
+            }),
+            200);
+      }
+      return http.Response(
+          jsonEncode({'success': false, 'message': 'Unexpected route'}), 404);
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessNetworkScreen(
+        initialSection: 1,
+        api: BusinessNetworkAdminApi(
+          client: client,
+          tokenProvider: () async => 'head-office-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reject'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byType(TextField).last, 'Please upload a clear ID');
+    await tester.tap(find.text('Reject application').last);
+    await tester.pumpAndSettle();
+    client.close();
+  });
 }

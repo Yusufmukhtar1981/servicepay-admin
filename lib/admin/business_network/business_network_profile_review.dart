@@ -16,14 +16,14 @@ class _ReviewDialog extends StatefulWidget {
 }
 
 class _ReviewDialogState extends State<_ReviewDialog> {
-  final reason = TextEditingController();
   final group = TextEditingController();
   final Set<String> services = {};
   List<Map<String, dynamic>> serviceCatalogue = [];
   bool serviceCatalogueLoading = true;
+  bool serviceCatalogueRequested = false;
   String? serviceCatalogueError;
-  String status = 'UNDER_REVIEW';
   bool busy = false;
+  bool configurationBusy = false;
 
   @override
   void initState() {
@@ -31,10 +31,11 @@ class _ReviewDialogState extends State<_ReviewDialog> {
     group.text = widget.profile['group']?.toString() ?? '';
     services.addAll((widget.profile['services'] as List? ?? const [])
         .map((value) => value.toString()));
-    _loadServiceCatalogue();
   }
 
   Future<void> _loadServiceCatalogue() async {
+    if (serviceCatalogueLoading && serviceCatalogueRequested) return;
+    serviceCatalogueRequested = true;
     setState(() {
       serviceCatalogueLoading = true;
       serviceCatalogueError = null;
@@ -59,7 +60,18 @@ class _ReviewDialogState extends State<_ReviewDialog> {
       if (!mounted) return;
       setState(() {
         serviceCatalogue = processable;
-        services.removeWhere((code) => !allowed.contains(code));
+        // Keep existing selections visible even if the current catalogue no
+        // longer offers them. They are preserved unless an administrator
+        // explicitly edits and saves this advanced configuration.
+        for (final code in services.toList()) {
+          if (!allowed.contains(code)) {
+            serviceCatalogue.add({
+              'code': code,
+              'label': '$code (existing selection)',
+              'category': 'Existing setting',
+            });
+          }
+        }
         serviceCatalogueLoading = false;
       });
     } catch (error) {
@@ -74,7 +86,6 @@ class _ReviewDialogState extends State<_ReviewDialog> {
 
   @override
   void dispose() {
-    reason.dispose();
     group.dispose();
     super.dispose();
   }
@@ -82,95 +93,29 @@ class _ReviewDialogState extends State<_ReviewDialog> {
   @override
   Widget build(BuildContext context) {
     final id = widget.profile['_id']?.toString() ?? '';
+    final kind = widget.profile['kind']?.toString() ?? 'Business';
+    final status = (widget.profile['status'] ?? '').toString().toUpperCase();
     final details = widget.profile['details'] is Map
         ? Map<String, dynamic>.from(widget.profile['details'] as Map)
         : <String, dynamic>{};
     return AlertDialog(
-      title: Text(details['businessName']?.toString() ??
-          details['ownerName']?.toString() ??
-          'Profile review'),
+      title: Text(details['businessName']?.toString() ?? 'Business review'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Network ID: ${widget.profile['networkId'] ?? id}'),
-            Text('Status: ${widget.profile['status'] ?? ''}'),
+            Text('Owner: ${details['ownerName'] ?? 'Not provided'}'),
+            Text('Business type: $kind'),
+            Text('Phone: ${details['phone'] ?? 'Not provided'}'),
             Text(
-                'Contact: ${details['phone'] ?? ''} · ${details['email'] ?? ''}'),
+                'Submission date: ${_reviewDate(widget.profile['submittedAt'] ?? widget.profile['createdAt'])}'),
+            Text('Network ID: ${widget.profile['networkId'] ?? id}'),
+            Text('Status: ${status.replaceAll('_', ' ')}'),
+            if ((details['email'] ?? '').toString().isNotEmpty)
+              Text('Email: ${details['email']}'),
             Text('Location: ${details['state'] ?? ''} ${details['lga'] ?? ''}'),
             Text('Address: ${details['address'] ?? ''}'),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: status,
-              items: const [
-                'UNDER_REVIEW',
-                'APPROVED',
-                'REJECTED',
-                'SUSPENDED',
-              ]
-                  .map((value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value.replaceAll('_', ' ')),
-                      ))
-                  .toList(),
-              onChanged: (value) =>
-                  setState(() => status = value ?? 'UNDER_REVIEW'),
-            ),
-            TextField(
-              controller: reason,
-              decoration: const InputDecoration(
-                  labelText: 'Decision reason / feedback'),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Enabled bill services',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const Text(
-              'Only processable, globally available bill services can be approved. Product/logistics-only profiles may be approved with no bill services; that grants no bill-payment or commission authority.',
-              style: TextStyle(fontSize: 12),
-            ),
-            if (serviceCatalogueLoading)
-              const LinearProgressIndicator()
-            else if (serviceCatalogueError != null)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Service catalogue could not be loaded: $serviceCatalogueError',
-                    style: const TextStyle(color: Color(0xFF9A4F31)),
-                  ),
-                  TextButton(
-                    onPressed: _loadServiceCatalogue,
-                    child: const Text('Retry catalogue'),
-                  ),
-                ],
-              )
-            else if (serviceCatalogue.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'No processable bill services are available. Approval, if selected, is products/logistics only.',
-                ),
-              )
-            else
-              ...serviceCatalogue.map((service) {
-                final code = service['code']?.toString() ?? '';
-                return CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(service['label']?.toString() ?? code),
-                  subtitle: Text(service['category']?.toString() ?? ''),
-                  value: services.contains(code),
-                  onChanged: (value) => setState(() {
-                    if (value == true) {
-                      services.add(code);
-                    } else {
-                      services.remove(code);
-                    }
-                  }),
-                );
-              }),
             if (details['preferredServices'] is List &&
                 (details['preferredServices'] as List).isNotEmpty)
               Padding(
@@ -180,14 +125,110 @@ class _ReviewDialogState extends State<_ReviewDialog> {
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
-            TextField(
-              controller: group,
-              decoration: const InputDecoration(labelText: 'Commission group'),
+            const SizedBox(height: 8),
+            const Text(
+              'Reviewing does not grant services or change this application.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF53645B)),
             ),
-            if (widget.profile['kind'] == 'MERCHANT') ...[
-              const SizedBox(height: 16),
-              _AdminMerchantAccessPanel(api: widget.api, profileId: id),
-            ],
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Advanced controls'),
+              subtitle:
+                  const Text('Service access, commission group and status'),
+              onExpansionChanged: (expanded) {
+                if (expanded && serviceCatalogueLoading) {
+                  _loadServiceCatalogue();
+                }
+              },
+              children: [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'These settings are separate from application approval. No services are granted by approving.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Configured bill services',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+                if (serviceCatalogueLoading)
+                  const LinearProgressIndicator()
+                else if (serviceCatalogueError != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Catalogue unavailable: $serviceCatalogueError',
+                          style: const TextStyle(color: Color(0xFF9A4F31))),
+                      TextButton(
+                        onPressed: _loadServiceCatalogue,
+                        child: const Text('Retry catalogue'),
+                      ),
+                    ],
+                  )
+                else if (serviceCatalogue.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text('No bill services are currently available.'),
+                  )
+                else
+                  ...serviceCatalogue.map((service) {
+                    final code = service['code']?.toString() ?? '';
+                    return CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(service['label']?.toString() ?? code),
+                      subtitle: Text(service['category']?.toString() ?? ''),
+                      value: services.contains(code),
+                      onChanged: configurationBusy
+                          ? null
+                          : (value) => setState(() {
+                                if (value == true) {
+                                  services.add(code);
+                                } else {
+                                  services.remove(code);
+                                }
+                              }),
+                    );
+                  }),
+                TextField(
+                  controller: group,
+                  decoration:
+                      const InputDecoration(labelText: 'Commission group'),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: configurationBusy ||
+                            serviceCatalogueLoading ||
+                            serviceCatalogueError != null
+                        ? null
+                        : _saveConfiguration,
+                    child: configurationBusy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Save advanced settings'),
+                  ),
+                ),
+                if (status == 'APPROVED' || status == 'SUSPENDED')
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton(
+                      onPressed: busy ? null : _toggleSuspension,
+                      child: Text(status == 'SUSPENDED'
+                          ? 'Reactivate profile'
+                          : 'Suspend profile'),
+                    ),
+                  ),
+                if (kind.toUpperCase() == 'MERCHANT') ...[
+                  const SizedBox(height: 8),
+                  _AdminMerchantAccessPanel(api: widget.api, profileId: id),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -196,42 +237,86 @@ class _ReviewDialogState extends State<_ReviewDialog> {
           onPressed: busy ? null : () => Navigator.pop(context),
           child: const Text('Close'),
         ),
-        FilledButton(
-          onPressed:
-              busy || serviceCatalogueLoading || serviceCatalogueError != null
-                  ? null
-                  : () async {
-                      setState(() => busy = true);
-                      try {
-                        await widget.api.post('profiles/$id/review', {
-                          'status': status,
-                          'reason': reason.text.trim(),
-                          'services': services.toList(),
-                          'group': group.text.trim(),
-                          'revision': widget.profile['revision'] ?? 0,
-                        });
-                        if (!mounted) return;
-                        Navigator.of(this.context).pop();
-                        widget.onDone();
-                      } catch (error) {
-                        if (mounted) {
-                          setState(() => busy = false);
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            SnackBar(content: Text(error.toString())),
-                          );
-                        }
-                      }
-                    },
-          child: busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save review'),
-        ),
+        if (status == 'SUBMITTED' || status == 'UNDER_REVIEW')
+          FilledButton(
+            onPressed: busy ? null : _markUnderReview,
+            child: busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Mark under review'),
+          ),
       ],
     );
+  }
+
+  String _reviewDate(dynamic value) {
+    if (value == null) return 'Not available';
+    final date = DateTime.tryParse(value.toString());
+    if (date == null) return value.toString();
+    final local = date.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year}';
+  }
+
+  Future<void> _markUnderReview() =>
+      _updateStatus('UNDER_REVIEW', closeAfter: true);
+
+  Future<void> _toggleSuspension() {
+    final current = (widget.profile['status'] ?? '').toString().toUpperCase();
+    return _updateStatus(
+      current == 'SUSPENDED' ? 'APPROVED' : 'SUSPENDED',
+      closeAfter: true,
+    );
+  }
+
+  Future<void> _updateStatus(String nextStatus,
+      {required bool closeAfter}) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await widget.api.post('profiles/${widget.profile['_id']}/review', {
+        'status': nextStatus,
+        'revision': widget.profile['revision'] ?? 0,
+      });
+      if (!mounted) return;
+      if (closeAfter) Navigator.of(context).pop();
+      widget.onDone();
+    } catch (error) {
+      if (mounted) {
+        setState(() => busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString())),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveConfiguration() async {
+    if (configurationBusy) return;
+    setState(() => configurationBusy = true);
+    try {
+      final body = <String, dynamic>{
+        'status': widget.profile['status'] ?? 'SUBMITTED',
+        'revision': widget.profile['revision'] ?? 0,
+        'services': services.toList(),
+      };
+      if (group.text.trim().isNotEmpty) body['group'] = group.text.trim();
+      await widget.api.post('profiles/${widget.profile['_id']}/review', body);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Advanced settings saved.')),
+      );
+      widget.onDone();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => configurationBusy = false);
+    }
   }
 }
 

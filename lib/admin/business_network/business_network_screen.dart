@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../admin_referrals_api.dart';
 import 'business_network_admin_api.dart';
 import 'business_network_export.dart';
+import 'business_pricing_management.dart';
+import 'business_feature_controls.dart';
 
 part 'business_network_profile_review.dart';
 part 'business_network_settings_editor.dart';
@@ -69,6 +71,7 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
   String _profileStatus = 'SUBMITTED';
   int _page = 1;
   Map<String, dynamic>? _settings;
+  final Set<String> _profileActionsInFlight = {};
 
   @override
   void initState() {
@@ -420,6 +423,18 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
             _settingsView()
           else if (_index == 14)
             _commissionManagement()
+          else if (_section == 'Agent Pricing' || _section == 'Merchant Pricing')
+            BusinessPricingManagement(api: _api)
+          else if (_section == 'Feature Controls')
+            Column(children: [
+              BusinessFeatureControls(api: _api),
+              const SizedBox(height: 16),
+              _BusinessNetworkPremiumPanel(
+                api: _api,
+                section: _section,
+                onOpenCommissionRules: () => _select(9),
+              ),
+            ])
           else if (_index >= 15)
             _BusinessNetworkPremiumPanel(
               api: _api,
@@ -605,24 +620,146 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
     final details = item['details'] is Map
         ? Map<String, dynamic>.from(item['details'] as Map)
         : <String, dynamic>{};
+    final id = (item['_id'] ?? '').toString();
+    final status = (item['status'] ?? '').toString().toUpperCase();
+    final isApplication = _index == 1 || _index == 4;
+    final busy = _profileActionsInFlight.contains(id);
+    final canDecide = status == 'SUBMITTED' || status == 'UNDER_REVIEW';
+    final submitted = item['submittedAt'] ?? item['createdAt'];
     return Card(
         color: Colors.white,
         elevation: 0,
-        child: ListTile(
-            onTap: () => _profileDetail(item),
-            leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE8F3EC),
-                child: Icon(Icons.business_outlined, color: Color(0xFF08783E))),
-            title: Text(
-                details['businessName']?.toString() ??
-                    details['ownerName']?.toString() ??
-                    'Business profile',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(
-                '${item['networkId'] ?? item['_id'] ?? ''} · ${details['phone'] ?? ''}\\n${details['state'] ?? ''} ${details['lga'] ?? ''}'),
-            isThreeLine: true,
-            trailing:
-                Text((item['status'] ?? '').toString().replaceAll('_', ' '))));
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const CircleAvatar(
+                    radius: 19,
+                    backgroundColor: Color(0xFFE8F3EC),
+                    child: Icon(Icons.business_outlined,
+                        size: 20, color: Color(0xFF08783E))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        details['businessName']?.toString() ??
+                            'Business name unavailable',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        '${details['ownerName'] ?? 'Owner unavailable'} · ${details['phone'] ?? 'Phone unavailable'}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      Text(
+                        '${item['kind'] ?? 'Business'} · ${submitted == null ? 'Submission date unavailable' : _displayDate(submitted)}',
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF53645B)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _statusChip(status),
+              ]),
+              if (isApplication) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 4, children: [
+                  FilledButton.tonal(
+                    onPressed: busy || id.isEmpty || !canDecide
+                        ? null
+                        : () => _approveProfile(item),
+                    child: const Text('Approve'),
+                  ),
+                  OutlinedButton(
+                    onPressed: busy || id.isEmpty || !canDecide
+                        ? null
+                        : () => _rejectProfile(item),
+                    child: const Text('Reject'),
+                  ),
+                  TextButton(
+                    onPressed:
+                        busy || id.isEmpty ? null : () => _profileDetail(item),
+                    child: const Text('Review'),
+                  ),
+                ]),
+              ] else ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => _profileDetail(item),
+                    child: const Text('Manage'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ));
+  }
+
+  String _displayDate(dynamic value) {
+    final parsed = DateTime.tryParse(value.toString());
+    if (parsed == null) return value.toString();
+    final local = parsed.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year}';
+  }
+
+  Widget _statusChip(String status) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: status == 'SUBMITTED' || status == 'UNDER_REVIEW'
+              ? const Color(0xFFFFF2D8)
+              : const Color(0xFFE8F3EC),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          status.isEmpty ? 'UNKNOWN' : status.replaceAll('_', ' '),
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+        ),
+      );
+
+  Future<void> _submitProfileAction(
+      Map<String, dynamic> item, Map<String, dynamic> body) async {
+    final id = (item['_id'] ?? '').toString();
+    if (id.isEmpty || _profileActionsInFlight.contains(id)) return;
+    setState(() => _profileActionsInFlight.add(id));
+    try {
+      await _api.post('profiles/$id/review', body);
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _profileActionsInFlight.remove(id));
+    }
+  }
+
+  Future<void> _approveProfile(Map<String, dynamic> item) =>
+      _submitProfileAction(item, {
+        'status': 'APPROVED',
+        'revision': item['revision'] ?? 0,
+      });
+
+  Future<void> _rejectProfile(Map<String, dynamic> item) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _RejectReasonDialog(),
+    );
+    if (reason != null && mounted) {
+      final body = <String, dynamic>{
+        'status': 'REJECTED',
+        'revision': item['revision'] ?? 0,
+      };
+      if (reason.trim().isNotEmpty) body['reason'] = reason.trim();
+      await _submitProfileAction(item, body);
+    }
   }
 
   Widget _transactionRow(Map<String, dynamic> item) => Card(
@@ -1065,6 +1202,46 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
                 borderRadius: BorderRadius.circular(13),
               ),
             ),
+          ),
+        ],
+      );
+}
+
+class _RejectReasonDialog extends StatefulWidget {
+  const _RejectReasonDialog();
+
+  @override
+  State<_RejectReasonDialog> createState() => _RejectReasonDialogState();
+}
+
+class _RejectReasonDialogState extends State<_RejectReasonDialog> {
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Reject application'),
+        content: TextField(
+          controller: _reason,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Reason (optional)',
+            hintText: 'Add a short explanation for the business owner',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _reason.text.trim()),
+            child: const Text('Reject application'),
           ),
         ],
       );

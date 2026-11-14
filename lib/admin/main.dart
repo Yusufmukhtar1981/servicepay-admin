@@ -14,6 +14,7 @@ import 'edupay_control_center_screen.dart';
 import '../school/school_session_gate.dart';
 import 'staff_management_screen.dart';
 import 'executive_control_screen.dart';
+import 'business_network/business_network_screen.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -55,6 +56,9 @@ class ServicepayAdminApp extends StatelessWidget {
         '/phone-financing': (_) => const AdminSessionGate(
               fallback: _PhoneFinancingRouteGate(),
             ),
+        '/business-network': (_) => const AdminSessionGate(
+              fallback: _BusinessNetworkRouteGate(),
+            ),
         '/control-center/audit-logs': (_) => const AdminSessionGate(
               fallback: _ControlCenterRouteGate(moduleId: 'audit-logs'),
             ),
@@ -91,6 +95,62 @@ class ServicepayAdminApp extends StatelessWidget {
       },
     );
   }
+}
+
+class _BusinessNetworkRouteGate extends StatefulWidget {
+  const _BusinessNetworkRouteGate();
+  @override
+  State<_BusinessNetworkRouteGate> createState() =>
+      _BusinessNetworkRouteGateState();
+}
+
+class _BusinessNetworkRouteGateState extends State<_BusinessNetworkRouteGate> {
+  late final Future<String> _access = _checkAccess();
+
+  Future<String> _checkAccess() async {
+    final preferences = await SharedPreferences.getInstance();
+    final token = (preferences.getString('auth_token') ??
+            preferences.getString('token') ??
+            preferences.getString('access_token') ??
+            '')
+        .trim();
+    if (token.isEmpty) return 'UNAUTHENTICATED';
+    final access = await AdminSessionStore.loadAccess();
+    return access.isHeadOffice ||
+            access.permissions.contains('business_network.view')
+        ? 'AUTHORIZED'
+        : 'FORBIDDEN';
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String>(
+        future: _access,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.data == 'AUTHORIZED') {
+            return const BusinessNetworkScreen();
+          }
+          if (snapshot.data == 'UNAUTHENTICATED') {
+            return const AdminLoginScreen();
+          }
+          return Scaffold(
+            appBar: AppBar(title: const Text('Access denied')),
+            body: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'This account does not have Business Network access.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        },
+      );
 }
 
 @visibleForTesting

@@ -63,6 +63,7 @@ import 'provider_management_screen.dart';
 import 'revenue_account_screen.dart';
 import 'financial_control_screen.dart';
 import 'executive_control_screen.dart';
+import 'business_network/business_network_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -1060,6 +1061,17 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.domain_outlined,
         activeIcon: Icons.domain_rounded,
         label: 'ServicePay Business Partner',
+      );
+    }
+
+    // Business Network capabilities are separate from legacy staff/Agent
+    // identities. Backend permissions remain authoritative for every request.
+    if (isHeadOffice || permissions.contains('business_network.view')) {
+      addNavigationPage(
+        page: const BusinessNetworkScreen(),
+        icon: Icons.hub_outlined,
+        activeIcon: Icons.hub_rounded,
+        label: 'BUSINESS NETWORK',
       );
     }
 

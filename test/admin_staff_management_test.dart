@@ -182,7 +182,8 @@ void main() {
       expect(find.text('Create Staff'), findsNothing);
     });
 
-    testWidgets('named route checks the saved session rather than URL input',
+    testWidgets(
+        'named route verifies the saved session before showing protected staff',
         (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         'auth_token': 'ops-session',
@@ -199,9 +200,12 @@ void main() {
       Navigator.of(loginContext).pushNamed('/staff-management');
       await tester.pumpAndSettle();
       expect(
-        find.textContaining('Staff Management requires a Head Office session'),
+        find.textContaining(
+          'Unable to verify your session. Check your connection and try again.',
+        ),
         findsOneWidget,
       );
+      expect(find.text('Create Staff'), findsNothing);
     });
   });
 

@@ -72,6 +72,25 @@ class _WorkspaceApi extends AdminStaffWorkspaceApi {
       };
 
   @override
+  Future<Map<String, dynamic>> operationalHub() async => {
+        'success': true,
+        'data': {
+          'customers': {'total': 18, 'active': 15, 'inactive': 3},
+          'deliveries': {'PENDING': 2, 'DELIVERED': 9},
+          'products': {'ACTIVE': 7, 'PENDING': 1},
+          'staff': {
+            'ZONAL_MANAGER': 2,
+            'STATE_MANAGER': 4,
+            'AGGREGATOR': 3,
+          },
+          'permissions': {
+            'supportManage': false,
+            'reportExport': false,
+          },
+        },
+      };
+
+  @override
   Future<Map<String, dynamic>> enterprise({String period = 'day'}) async => {
         'success': true,
         'data': {
@@ -216,18 +235,30 @@ void main() {
   });
 
   testWidgets(
-      'operations dashboard renders enterprise metrics and truthful labels',
+      'operations dashboard renders live operational counts and truthful labels',
       (tester) async {
     SharedPreferences.setMockInitialValues({'auth_token': 'session'});
     await tester.pumpWidget(
       MaterialApp(home: OperationsManagerDashboard(api: _WorkspaceApi())),
     );
     await tester.pumpAndSettle();
-    expect(find.text('ServicePay operations'), findsOneWidget);
-    expect(find.text('Executive overview'), findsOneWidget);
-    expect(find.textContaining('₦26,490.00'), findsOneWidget);
-    expect(find.textContaining('not net income'), findsOneWidget);
-    expect(find.text('Transactions'), findsWidgets);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.data == 'Operations overview' &&
+            widget.style?.fontWeight == FontWeight.w800,
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Live counts returned by the operational hub.'),
+        findsOneWidget);
+    expect(find.text('Customers'), findsOneWidget);
+    expect(find.text('Active customers'), findsOneWidget);
+    expect(find.text('18'), findsOneWidget);
+    expect(find.text('15'), findsOneWidget);
+    expect(find.text('Executive overview'), findsNothing);
+    expect(find.textContaining('not net income'), findsNothing);
   });
 
   testWidgets('customer support workspace opens with real first-page records',

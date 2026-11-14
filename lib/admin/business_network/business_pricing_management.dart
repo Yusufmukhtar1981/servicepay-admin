@@ -38,6 +38,9 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
       <String, TextEditingController>{};
   final Map<String, bool> _enabled = <String, bool>{};
   final Set<String> _saving = <String>{};
+  final Map<String, _PricingSnapshot> _loadedRules =
+      <String, _PricingSnapshot>{};
+  bool _savingAll = false;
   final Map<String, TextEditingController> _airtimeMarkup =
       <String, TextEditingController>{};
   final Map<String, bool> _airtimeEnabled = <String, bool>{};
@@ -112,6 +115,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
       _prices.clear();
       _ceilings.clear();
       _enabled.clear();
+      _loadedRules.clear();
       for (final Map<String, dynamic> item in next) {
         final String code = (item['code'] ?? '').toString();
         final double? providerCost = _number(item['providerCost']);
@@ -130,6 +134,11 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
           _prices[key] = TextEditingController(text: _amount(sellingPrice));
           _ceilings[key] = TextEditingController(text: _amount(maximum));
           _enabled[key] = rule['enabled'] == true;
+          _loadedRules[key] = _PricingSnapshot(
+            sellingPrice: _number(sellingPrice),
+            maximumProviderCost: _number(maximum),
+            enabled: rule['enabled'] == true,
+          );
         }
       }
       if (!mounted) return;
@@ -238,6 +247,137 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
   String _errorMessage(Object error) =>
       error.toString().replaceFirst('BusinessNetworkAdminException: ', '');
 
+  bool get _dataSaveBusy => _savingAll || _saving.isNotEmpty;
+
+  List<_PricingDraft> get _changedDrafts {
+    final List<_PricingDraft> changed = <_PricingDraft>[];
+    for (final Map<String, dynamic> item in _items) {
+      final dynamic categories = item['categories'];
+      if (categories is! Map) continue;
+      final String code = (item['code'] ?? '').toString();
+      for (final String category in <String>['AGENT', 'MERCHANT']) {
+        final String key = _key(code, category);
+        final _PricingSnapshot? original = _loadedRules[key];
+        if (original == null) continue;
+        final bool priceChanged =
+            _amountChanged(_prices[key]?.text, original.sellingPrice);
+        final bool ceilingChanged = _amountChanged(
+            _ceilings[key]?.text, original.maximumProviderCost);
+        final bool enabledChanged = _enabled[key] != original.enabled;
+        if (priceChanged || ceilingChanged || enabledChanged) {
+          changed.add(_PricingDraft(
+            item: item,
+            category: category,
+            key: key,
+          ));
+        }
+      }
+    }
+    return changed;
+  }
+
+  bool _amountChanged(String? raw, double? original) {
+    final String text = (raw ?? '').trim();
+    if (text.isEmpty) return original != null;
+    final double? current = _number(text);
+    return current == null || current != original;
+  }
+
+  String? _validateDraft(_PricingDraft draft) {
+    final double? sellingPrice = _number(_prices[draft.key]?.text);
+    final double? maximumProviderCost = _number(_ceilings[draft.key]?.text);
+    final double? providerCost = _number(draft.item['providerCost']);
+    final String name =
+        '${draft.category} · ${draft.item['name'] ?? draft.item['code']}';
+    if (_revisionOf(draft.item['revision']) == null) {
+      return '$name has no valid pricing revision.';
+    }
+    if (sellingPrice == null || sellingPrice <= 0) {
+      return '$name needs a selling price greater than zero.';
+    }
+    if (maximumProviderCost == null || maximumProviderCost <= 0) {
+      return '$name needs a provider-cost ceiling greater than zero.';
+    }
+    if (providerCost == null || maximumProviderCost < providerCost) {
+      return '$name ceiling must cover the current provider cost '
+          '(${_money(draft.item['providerCost'])}).';
+    }
+    if (sellingPrice < maximumProviderCost) {
+      return '$name selling price must cover its provider-cost ceiling.';
+    }
+    return null;
+  }
+
+  int? _revisionOf(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Future<void> _saveAll() async {
+    if (_dataSaveBusy || _loading) return;
+    final String reason = _reason.text.trim();
+    if (reason.isEmpty) {
+      _notice('Add a reason before saving pricing.', isError: true);
+      return;
+    }
+    final List<_PricingDraft> changes = _changedDrafts;
+    if (changes.isEmpty) {
+      _notice('There are no changed Data rules to save.');
+      return;
+    }
+    if (changes.length > 50) {
+      _notice(
+        'This batch has ${changes.length} changes. Save no more than 50 at a time.',
+        isError: true,
+      );
+      return;
+    }
+    final List<String> invalid = <String>[];
+    for (final _PricingDraft draft in changes) {
+      final String? error = _validateDraft(draft);
+      if (error != null) invalid.add(error);
+    }
+    if (invalid.isNotEmpty) {
+      final String details = invalid.take(3).join(' ');
+      _notice(
+        invalid.length > 3
+            ? '$details ${invalid.length - 3} more change(s) need attention.'
+            : details,
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() => _savingAll = true);
+    try {
+      await widget.api.put('pricing', <String, dynamic>{
+        'network': _network,
+        'reason': reason,
+        'changes': changes.map((_PricingDraft draft) {
+          return <String, dynamic>{
+            'code': (draft.item['code'] ?? '').toString(),
+            'category': draft.category,
+            'revision': _revisionOf(draft.item['revision']),
+            'rule': <String, dynamic>{
+              'enabled': _enabled[draft.key] == true,
+              'sellingPrice': _number(_prices[draft.key]?.text),
+              'maximumProviderCost':
+                  _number(_ceilings[draft.key]?.text),
+            },
+          };
+        }).toList(),
+      });
+      _notice('Saved ${changes.length} Data pricing '
+          '${changes.length == 1 ? 'change' : 'changes'}.');
+      await _load();
+    } catch (error) {
+      _notice(_errorMessage(error), isError: true);
+    } finally {
+      if (mounted) setState(() => _savingAll = false);
+    }
+  }
+
   void _notice(String text, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -250,6 +390,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
 
   Future<void> _save(
       Map<String, dynamic> item, String category) async {
+    if (_dataSaveBusy || _loading) return;
     final String reason = _reason.text.trim();
     if (reason.isEmpty) {
       _notice('Add a reason before saving pricing.', isError: true);
@@ -257,29 +398,11 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
     }
     final String code = (item['code'] ?? '').toString();
     final String key = _key(code, category);
-    final double? sellingPrice = _number(_prices[key]?.text);
-    final double? maximumProviderCost = _number(_ceilings[key]?.text);
-    final double? providerCost = _number(item['providerCost']);
-    if (sellingPrice == null || sellingPrice <= 0) {
-      _notice('Enter a selling price greater than zero.', isError: true);
-      return;
-    }
-    if (maximumProviderCost == null || maximumProviderCost <= 0) {
-      _notice('Enter a provider-cost ceiling greater than zero.',
-          isError: true);
-      return;
-    }
-    if (providerCost == null || maximumProviderCost < providerCost) {
-      _notice(
-        'The provider-cost ceiling must cover the current provider cost '
-        '(${_money(item['providerCost'])}).',
-        isError: true,
-      );
-      return;
-    }
-    if (sellingPrice < maximumProviderCost) {
-      _notice('Selling price must cover the provider-cost ceiling.',
-          isError: true);
+    final _PricingDraft draft =
+        _PricingDraft(item: item, category: category, key: key);
+    final String? validationError = _validateDraft(draft);
+    if (validationError != null) {
+      _notice(validationError, isError: true);
       return;
     }
     setState(() => _saving.add(key));
@@ -291,11 +414,11 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
           <String, dynamic>{
             'code': code,
             'category': category,
-            'revision': item['revision'],
+            'revision': _revisionOf(item['revision']),
             'rule': <String, dynamic>{
               'enabled': _enabled[key] == true,
-              'sellingPrice': sellingPrice,
-              'maximumProviderCost': maximumProviderCost,
+              'sellingPrice': _number(_prices[key]?.text),
+              'maximumProviderCost': _number(_ceilings[key]?.text),
             },
           },
         ],
@@ -347,6 +470,8 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 2),
+            _bulkSaveBar(),
             const SizedBox(height: 8),
             if (_loading)
               ...List<Widget>.generate(3, (_) => _skeleton())
@@ -358,6 +483,48 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
           ],
         ),
       );
+
+  Widget _bulkSaveBar() {
+    final int changedCount = _changedDrafts.length;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF3EC),
+        border: Border.all(color: const Color(0xFFD4E5D8)),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: <Widget>[
+          Text(
+            '$changedCount unsaved Data ${changedCount == 1 ? 'change' : 'changes'}',
+            style: const TextStyle(
+                color: Color(0xFF355844), fontWeight: FontWeight.w700),
+          ),
+          FilledButton.icon(
+            key: const ValueKey<String>('business-pricing-save-all'),
+            onPressed: _loading ||
+                    _error != null ||
+                    changedCount == 0 ||
+                    _dataSaveBusy
+                ? null
+                : _saveAll,
+            icon: _savingAll
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.save_outlined),
+            label: Text(_savingAll ? 'Saving batch…' : 'Save all Data edits'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _heading() => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -826,6 +993,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
                   controller: _ceilings[key],
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     labelText: 'Provider ceiling',
                     prefixText: '₦ ',
@@ -868,7 +1036,9 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
                   ),
                   FilledButton(
                     key: ValueKey<String>('pricing-save-$code-$category'),
-                    onPressed: saving ? null : () => _save(item, category),
+                    onPressed: _dataSaveBusy || _loading
+                        ? null
+                        : () => _save(item, category),
                     child: saving
                         ? const SizedBox(
                             width: 16,
@@ -964,4 +1134,28 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
       ]),
     );
   }
+}
+
+class _PricingSnapshot {
+  const _PricingSnapshot({
+    required this.sellingPrice,
+    required this.maximumProviderCost,
+    required this.enabled,
+  });
+
+  final double? sellingPrice;
+  final double? maximumProviderCost;
+  final bool enabled;
+}
+
+class _PricingDraft {
+  const _PricingDraft({
+    required this.item,
+    required this.category,
+    required this.key,
+  });
+
+  final Map<String, dynamic> item;
+  final String category;
+  final String key;
 }

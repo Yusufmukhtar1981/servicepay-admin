@@ -103,6 +103,44 @@ void main() {
     client.close();
   });
 
+  testWidgets('Merchant report selection requests Merchant CSV',
+      (tester) async {
+    final reportRequests = <Uri>[];
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/reports')) {
+        reportRequests.add(request.url);
+        return http.Response('service,status\nDATA,SUCCESSFUL\n', 200);
+      }
+      return http.Response(
+        jsonEncode({'success': true, 'data': {}}),
+        200,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessNetworkScreen(
+        initialSection: 11,
+        api: BusinessNetworkAdminApi(
+          client: client,
+          tokenProvider: () async => 'admin-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('business-network-report-kind')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Merchant').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Print Merchant report'));
+    await tester.pumpAndSettle();
+
+    expect(reportRequests, hasLength(1));
+    expect(reportRequests.single.queryParameters['format'], 'csv');
+    expect(reportRequests.single.queryParameters['kind'], 'MERCHANT');
+    client.close();
+  });
+
   testWidgets(
       'commission history pages summaries and displays public references',
       (tester) async {

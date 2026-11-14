@@ -37,6 +37,7 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
   bool _loading = true;
   bool _exporting = false;
   bool _printing = false;
+  String _reportKind = 'AGENT';
   String? _error;
   Map<String, dynamic>? _overview;
   List<dynamic> _rows = [];
@@ -76,6 +77,8 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
   }
 
   String get _section => _sections[_index];
+  String get _reportKindLabel =>
+      _reportKind == 'MERCHANT' ? 'Merchant' : 'Agent';
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -207,16 +210,21 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      final csv = await _api.csv('reports', query: const {'format': 'csv'});
+      final reportKind = _reportKind;
+      final reportLabel = _reportKindLabel;
+      final csv = await _api.csv('reports', query: {
+        'format': 'csv',
+        'kind': reportKind,
+      });
       final downloaded = await downloadBusinessNetworkCsv(
         csv,
-        'servicepay-business-network-${DateTime.now().toIso8601String().substring(0, 10)}.csv',
+        'servicepay-business-network-${reportKind.toLowerCase()}-${DateTime.now().toIso8601String().substring(0, 10)}.csv',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(
           downloaded
-              ? 'Business Network CSV downloaded.'
+              ? 'Business Network $reportLabel CSV downloaded.'
               : 'Download cancelled.',
         )));
       }
@@ -230,25 +238,26 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
     }
   }
 
-  Future<void> _printAgentReport() async {
+  Future<void> _printReport() async {
     if (_printing) return;
     setState(() => _printing = true);
     try {
+      final reportLabel = _reportKindLabel;
       final csv = await _api.csv(
         'reports',
-        query: const {'format': 'csv', 'kind': 'AGENT'},
+        query: {'format': 'csv', 'kind': _reportKind},
       );
       final opened = await printBusinessNetworkReport(
         csv,
-        title: 'ServicePay Agent Report',
+        title: 'ServicePay $reportLabel Report',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               opened
-                  ? 'Agent report opened in the browser print dialog.'
-                  : 'Direct printing is unavailable on this platform. Use Download Business Network CSV instead.',
+                  ? '$reportLabel report opened in the browser print dialog.'
+                  : 'Direct printing is unavailable on this platform. Use Download $reportLabel CSV instead.',
             ),
           ),
         );
@@ -366,7 +375,7 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
             if (_index == 11)
               IconButton(
                   onPressed: _exporting ? null : _export,
-                  tooltip: 'Download CSV',
+                  tooltip: 'Download $_reportKindLabel CSV',
                   icon: _exporting
                       ? const SizedBox(
                           width: 20,
@@ -919,22 +928,36 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
             'Download the actual CSV returned by the Business Network API. Web downloads use ServicePay’s existing browser export helper; Android and iOS save through the existing file picker.',
             style: TextStyle(height: 1.5)),
         const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          key: const ValueKey('business-network-report-kind'),
+          value: _reportKind,
+          decoration: const InputDecoration(labelText: 'Report type'),
+          items: const [
+            DropdownMenuItem(value: 'AGENT', child: Text('Agent')),
+            DropdownMenuItem(value: 'MERCHANT', child: Text('Merchant')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => _reportKind = value);
+          },
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
             onPressed: _exporting ? null : _export,
             icon: const Icon(Icons.download_outlined),
             label: Text(_exporting
-                ? 'Preparing report'
-                : 'Download Business Network CSV')),
+                ? 'Preparing $_reportKindLabel report'
+                : 'Download $_reportKindLabel CSV')),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: _printing ? null : _printAgentReport,
+          onPressed: _printing ? null : _printReport,
           icon: const Icon(Icons.print_outlined),
-          label:
-              Text(_printing ? 'Preparing Agent report' : 'Print Agent report'),
+          label: Text(_printing
+              ? 'Preparing $_reportKindLabel report'
+              : 'Print $_reportKindLabel report'),
         ),
         const SizedBox(height: 14),
-        const Text(
-            'Printing uses the API-provided Agent CSV in a browser print window. Native platforms report direct printing as unavailable; download the CSV there. No generated totals or client-side data are substituted.')
+        Text(
+            'Printing uses the API-provided $_reportKindLabel CSV in a browser print window. Native platforms report direct printing as unavailable; download the CSV there. No generated totals or client-side data are substituted.')
       ]);
   Widget _settingsView() {
     final categories = (_settings?['categories'] as List? ?? const [])

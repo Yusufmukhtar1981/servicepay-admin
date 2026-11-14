@@ -18,7 +18,10 @@ class _ReviewDialog extends StatefulWidget {
 class _ReviewDialogState extends State<_ReviewDialog> {
   final reason = TextEditingController();
   final group = TextEditingController();
-  final services = TextEditingController();
+  final Set<String> services = {};
+  List<Map<String, dynamic>> serviceCatalogue = [];
+  bool serviceCatalogueLoading = true;
+  String? serviceCatalogueError;
   String status = 'UNDER_REVIEW';
   bool busy = false;
 
@@ -26,14 +29,53 @@ class _ReviewDialogState extends State<_ReviewDialog> {
   void initState() {
     super.initState();
     group.text = widget.profile['group']?.toString() ?? '';
-    services.text = (widget.profile['services'] as List? ?? const []).join(',');
+    services.addAll((widget.profile['services'] as List? ?? const [])
+        .map((value) => value.toString()));
+    _loadServiceCatalogue();
+  }
+
+  Future<void> _loadServiceCatalogue() async {
+    setState(() {
+      serviceCatalogueLoading = true;
+      serviceCatalogueError = null;
+    });
+    try {
+      final settings = await widget.api.get('premium') as Map;
+      final catalogue = settings['serviceCatalogue'];
+      final kind = widget.profile['kind']?.toString().toUpperCase();
+      final rows = catalogue is Map && catalogue[kind] is List
+          ? (catalogue[kind] as List)
+          : const [];
+      final processable = rows
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .where(
+              (row) => row['available'] == true && row['processable'] == true)
+          .toList();
+      final allowed = processable
+          .map((row) => row['code']?.toString() ?? '')
+          .where((code) => code.isNotEmpty)
+          .toSet();
+      if (!mounted) return;
+      setState(() {
+        serviceCatalogue = processable;
+        services.removeWhere((code) => !allowed.contains(code));
+        serviceCatalogueLoading = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          serviceCatalogueError = error.toString();
+          serviceCatalogueLoading = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     reason.dispose();
     group.dispose();
-    services.dispose();
     super.dispose();
   }
 
@@ -80,11 +122,64 @@ class _ReviewDialogState extends State<_ReviewDialog> {
               decoration: const InputDecoration(
                   labelText: 'Decision reason / feedback'),
             ),
-            TextField(
-              controller: services,
-              decoration: const InputDecoration(
-                  labelText: 'Services (comma separated)'),
+            const SizedBox(height: 10),
+            const Text(
+              'Enabled bill services',
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
+            const Text(
+              'Only processable, globally available bill services can be approved. Product/logistics-only profiles may be approved with no bill services; that grants no bill-payment or commission authority.',
+              style: TextStyle(fontSize: 12),
+            ),
+            if (serviceCatalogueLoading)
+              const LinearProgressIndicator()
+            else if (serviceCatalogueError != null)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Service catalogue could not be loaded: $serviceCatalogueError',
+                    style: const TextStyle(color: Color(0xFF9A4F31)),
+                  ),
+                  TextButton(
+                    onPressed: _loadServiceCatalogue,
+                    child: const Text('Retry catalogue'),
+                  ),
+                ],
+              )
+            else if (serviceCatalogue.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'No processable bill services are available. Approval, if selected, is products/logistics only.',
+                ),
+              )
+            else
+              ...serviceCatalogue.map((service) {
+                final code = service['code']?.toString() ?? '';
+                return CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(service['label']?.toString() ?? code),
+                  subtitle: Text(service['category']?.toString() ?? ''),
+                  value: services.contains(code),
+                  onChanged: (value) => setState(() {
+                    if (value == true) {
+                      services.add(code);
+                    } else {
+                      services.remove(code);
+                    }
+                  }),
+                );
+              }),
+            if (details['preferredServices'] is List &&
+                (details['preferredServices'] as List).isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Customer preferences (not authority): ${(details['preferredServices'] as List).join(', ')}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
             TextField(
               controller: group,
               decoration: const InputDecoration(labelText: 'Commission group'),
@@ -102,34 +197,31 @@ class _ReviewDialogState extends State<_ReviewDialog> {
           child: const Text('Close'),
         ),
         FilledButton(
-          onPressed: busy
-              ? null
-              : () async {
-                  setState(() => busy = true);
-                  try {
-                    await widget.api.post('profiles/$id/review', {
-                      'status': status,
-                      'reason': reason.text.trim(),
-                      'services': services.text
-                          .split(',')
-                          .map((value) => value.trim())
-                          .where((value) => value.isNotEmpty)
-                          .toList(),
-                      'group': group.text.trim(),
-                      'revision': widget.profile['revision'] ?? 0,
-                    });
-                    if (!mounted) return;
-                    Navigator.of(this.context).pop();
-                    widget.onDone();
-                  } catch (error) {
-                    if (mounted) {
-                      setState(() => busy = false);
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(content: Text(error.toString())),
-                      );
-                    }
-                  }
-                },
+          onPressed:
+              busy || serviceCatalogueLoading || serviceCatalogueError != null
+                  ? null
+                  : () async {
+                      setState(() => busy = true);
+                      try {
+                        await widget.api.post('profiles/$id/review', {
+                          'status': status,
+                          'reason': reason.text.trim(),
+                          'services': services.toList(),
+                          'group': group.text.trim(),
+                          'revision': widget.profile['revision'] ?? 0,
+                        });
+                        if (!mounted) return;
+                        Navigator.of(this.context).pop();
+                        widget.onDone();
+                      } catch (error) {
+                        if (mounted) {
+                          setState(() => busy = false);
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(content: Text(error.toString())),
+                          );
+                        }
+                      }
+                    },
           child: busy
               ? const SizedBox(
                   width: 18,

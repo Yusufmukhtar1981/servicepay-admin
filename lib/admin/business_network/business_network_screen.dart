@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../admin_referrals_api.dart';
 import 'business_network_admin_api.dart';
 import 'business_network_export.dart';
 
 part 'business_network_profile_review.dart';
 part 'business_network_settings_editor.dart';
+part 'business_network_premium.dart';
 
 class BusinessNetworkScreen extends StatefulWidget {
   const BusinessNetworkScreen({super.key, this.api, this.initialSection});
@@ -32,6 +34,16 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
     'Business Network Reports',
     'Network Settings',
     'Audit Logs',
+    'Commission Ledger',
+    'Agent Pricing',
+    'Merchant Pricing',
+    'Recharge Voucher Inventory',
+    'Data Voucher Inventory',
+    'Agent Performance',
+    'Merchant Performance',
+    'Loyalty & Goals',
+    'Referral Management',
+    'Feature Controls',
   ];
   int _index = 0;
   bool _loading = true;
@@ -112,7 +124,7 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
           'page': '$_page'
         });
         _rows = (data as Map)['items'] as List? ?? [];
-      } else if (_index == 9) {
+      } else if (_index == 9 || _index == 14) {
         _rules = ((await _api.get('rules') as Map)['items'] as List? ?? []);
         final data = await _api.get('commissions', query: {
           if (_commissionProfileId.text.trim().isNotEmpty)
@@ -348,7 +360,17 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
     Icons.payments_outlined,
     Icons.download_outlined,
     Icons.settings_outlined,
-    Icons.fact_check_outlined
+    Icons.fact_check_outlined,
+    Icons.account_balance_wallet_outlined,
+    Icons.price_change_outlined,
+    Icons.price_change_outlined,
+    Icons.confirmation_number_outlined,
+    Icons.confirmation_number_outlined,
+    Icons.leaderboard_outlined,
+    Icons.leaderboard_outlined,
+    Icons.loyalty_outlined,
+    Icons.people_outline,
+    Icons.tune_outlined,
   ];
   Widget _content() {
     if (_loading) return _skeleton();
@@ -396,6 +418,14 @@ class _BusinessNetworkScreenState extends State<BusinessNetworkScreen> {
             _reports()
           else if (_index == 12)
             _settingsView()
+          else if (_index == 14)
+            _commissionManagement()
+          else if (_index >= 15)
+            _BusinessNetworkPremiumPanel(
+              api: _api,
+              section: _section,
+              onOpenCommissionRules: () => _select(9),
+            )
           else
             _auditView(),
         ]));

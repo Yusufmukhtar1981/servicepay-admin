@@ -9,6 +9,7 @@ import 'admin_bulk_email_screen.dart';
 import 'admin_customer_support_screen.dart';
 import 'admin_ai_support_center_screen.dart';
 import 'admin_customer_360_screen.dart';
+import 'customer_experience_screen.dart';
 import 'admin_delivery_management_screen.dart';
 import 'admin_delivery_pricing_screen.dart';
 import 'admin_kyc_screen.dart';
@@ -277,6 +278,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _FintechItem('Service Performance', Icons.speed_outlined),
         _FintechItem('Manager Performance', Icons.leaderboard_outlined),
         _FintechItem('Download Reports', Icons.download_outlined),
+        _FintechItem('Customer Experience Management', Icons.loyalty_outlined),
       ],
     ),
     _FintechSection(
@@ -814,6 +816,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     if (title == 'Phone Financing') {
       Navigator.of(context).pushNamed('/phone-financing');
+      return;
+    }
+
+    if (title == 'Customer Experience Management') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/admin/customer-experience'),
+          builder: (_) => const AdminCustomerExperienceScreen(),
+        ),
+      );
       return;
     }
 

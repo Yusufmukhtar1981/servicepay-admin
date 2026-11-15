@@ -6,15 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Read-only client for the privacy-safe Head Office referral report.
 class AdminReferralsApi {
   AdminReferralsApi({http.Client? client, String? baseUrl})
-    : baseUrl =
-          (baseUrl ??
-                  const String.fromEnvironment(
-                    'SERVICEPAY_API_BASE_URL',
-                    defaultValue: 'https://api.servicepay.ng/api',
-                  ))
-              .replaceFirst(RegExp(r'/$'), ''),
-      _client = client ?? http.Client(),
-      _ownsClient = client == null;
+      : baseUrl = (baseUrl ??
+                const String.fromEnvironment(
+                  'SERVICEPAY_API_BASE_URL',
+                  defaultValue: 'https://api.servicepay.ng/api',
+                ))
+            .replaceFirst(RegExp(r'/$'), ''),
+        _client = client ?? http.Client(),
+        _ownsClient = client == null;
 
   final String baseUrl;
   final http.Client _client;
@@ -22,6 +21,77 @@ class AdminReferralsApi {
 
   Future<Map<String, dynamic>> summary() => _get('/summary');
   Future<Map<String, dynamic>> getSummary() => summary();
+
+  Future<Map<String, dynamic>> programme() => _get('/programme');
+
+  Future<Map<String, dynamic>> updateProgramme({
+    required bool enabled,
+    required num registrationBonus,
+    required num transactionCommission,
+    required List<String> eligibleServices,
+    required String reason,
+  }) async {
+    final token = await _token();
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/admin/referrals/programme'),
+      headers: <String, String>{
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'enabled': enabled,
+        'registrationBonus': registrationBonus,
+        'transactionCommission': transactionCommission,
+        'eligibleServices': eligibleServices,
+        'reason': reason.trim(),
+      }),
+    );
+    return _decodeResponse(response.body, response.statusCode);
+  }
+
+  Future<Map<String, dynamic>> commissions({
+    String query = '',
+    String rewardType = '',
+    int page = 1,
+    int limit = 50,
+  }) =>
+      _get('/commissions', <String, String>{
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (rewardType.trim().isNotEmpty)
+          'rewardType': rewardType.trim().toUpperCase(),
+        'page': '$page',
+        'limit': '${limit.clamp(1, 200)}',
+      });
+
+  Future<AdminReferralExport> exportCommissions({
+    String query = '',
+    String rewardType = '',
+  }) async {
+    final token = await _token();
+    final parameters = <String, String>{
+      if (query.trim().isNotEmpty) 'q': query.trim(),
+      if (rewardType.trim().isNotEmpty)
+        'rewardType': rewardType.trim().toUpperCase(),
+    };
+    final uri = Uri.parse('$baseUrl/admin/referrals/commissions/export')
+        .replace(queryParameters: parameters.isEmpty ? null : parameters);
+    final response = await _client.get(uri, headers: <String, String>{
+      'Accept': 'text/csv',
+      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+    });
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final decoded = _decodeResponse(response.body, response.statusCode);
+      throw AdminReferralsException(
+        decoded['message']?.toString() ?? 'Unable to export referral report.',
+        statusCode: response.statusCode,
+      );
+    }
+    return AdminReferralExport(
+      csv: response.body,
+      limit: response.headers['x-export-limit'],
+    );
+  }
 
   Future<Map<String, dynamic>> search({
     String query = '',
@@ -48,13 +118,14 @@ class AdminReferralsApi {
     String rewardStatus = '',
     int page = 1,
     int limit = 50,
-  }) => this.search(
-    search: search,
-    category: category,
-    rewardStatus: rewardStatus,
-    page: page,
-    limit: limit,
-  );
+  }) =>
+      this.search(
+        search: search,
+        category: category,
+        rewardStatus: rewardStatus,
+        page: page,
+        limit: limit,
+      );
 
   Future<Map<String, dynamic>> progress(String customerId) =>
       _get('/${Uri.encodeComponent(customerId)}/progress');
@@ -69,18 +140,7 @@ class AdminReferralsApi {
     String path, [
     Map<String, String>? query,
   ]) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token =
-        <String>[
-              'auth_token',
-              'token',
-              'access_token',
-              'accessToken',
-              'jwt_token',
-              'jwt',
-            ]
-            .map((key) => prefs.getString(key)?.trim() ?? '')
-            .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+    final token = await _token();
     final uri = Uri.parse(
       '$baseUrl/admin/referrals$path',
     ).replace(queryParameters: query == null || query.isEmpty ? null : query);
@@ -91,20 +151,38 @@ class AdminReferralsApi {
         if (token.isNotEmpty) 'Authorization': 'Bearer $token',
       },
     );
+    return _decodeResponse(response.body, response.statusCode);
+  }
+
+  Future<String> _token() async {
+    final prefs = await SharedPreferences.getInstance();
+    return <String>[
+      'auth_token',
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt_token',
+      'jwt',
+    ]
+        .map((key) => prefs.getString(key)?.trim() ?? '')
+        .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+  }
+
+  Map<String, dynamic> _decodeResponse(String body, int statusCode) {
     dynamic decoded;
     try {
-      decoded = jsonDecode(response.body);
+      decoded = jsonDecode(body);
     } catch (_) {}
     final result = decoded is Map
         ? Map<String, dynamic>.from(decoded)
         : <String, dynamic>{};
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300 ||
+    if (statusCode < 200 ||
+        statusCode >= 300 ||
         (result.containsKey('success') && result['success'] != true)) {
       throw AdminReferralsException(
         result['message']?.toString() ??
             'Unable to load referral monitoring data.',
-        statusCode: response.statusCode,
+        statusCode: statusCode,
       );
     }
     return result;
@@ -113,6 +191,12 @@ class AdminReferralsApi {
   void close() {
     if (_ownsClient) _client.close();
   }
+}
+
+class AdminReferralExport {
+  const AdminReferralExport({required this.csv, this.limit});
+  final String csv;
+  final String? limit;
 }
 
 typedef AdminReferralMonitoringApi = AdminReferralsApi;

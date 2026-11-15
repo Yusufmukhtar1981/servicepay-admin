@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'admin_control_center_download.dart';
 import 'admin_permissions.dart';
 import 'admin_referrals_api.dart';
 
@@ -29,6 +30,22 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
   String? _error;
   String _category = '';
   String _rewardStatus = '';
+  String _commissionType = '';
+  Map<String, dynamic> _programme = <String, dynamic>{};
+  Map<String, dynamic> _readiness = <String, dynamic>{};
+  bool _canManageProgramme = false;
+  bool _programmeChecked = false;
+  bool _programmeAvailable = false;
+  String? _programmeError;
+  bool _commissionsChecked = false;
+  bool _commissionsAvailable = false;
+  bool _commissionsLoading = false;
+  String? _commissionsError;
+  List<Map<String, dynamic>> _commissions = <Map<String, dynamic>>[];
+  Map<String, dynamic> _commissionSummary = <String, dynamic>{};
+  int _commissionTotal = 0;
+  int _commissionPage = 1;
+  int _commissionPages = 1;
   int _page = 1;
   static const _limit = 50;
   int _total = 0;
@@ -68,6 +85,10 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
   static String _status(dynamic value, [String fallback = 'PENDING']) =>
       _text(value, fallback).replaceAll('_', ' ');
 
+  String _earnedBreakdown(Map<String, dynamic> row) =>
+      'Registration ₦${_number(row['registrationBonusEarned']).toStringAsFixed(0)}'
+      ' · Transactions ₦${_number(row['transactionCommissionsEarned']).toStringAsFixed(0)}';
+
   Map<String, dynamic> _payload(
     Map<String, dynamic> result, [
     String key = '',
@@ -97,6 +118,16 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
   bool _canView(AdminAccess access) =>
       access.has(AdminPermissions.referralsView);
 
+  bool get _isActiveV2 =>
+      _number(_programme['version']).toInt() >= 2 &&
+      (_programme['enabled'] == true ||
+          _text(_programme['activatedAt'], '').isNotEmpty);
+
+  Future<void> _applyFilters() async {
+    _commissionPage = 1;
+    await _load(page: 1);
+  }
+
   Future<void> _load({int? page}) async {
     final access = widget.initialAccess ?? await AdminSessionStore.loadAccess();
     if (!_canView(access)) {
@@ -114,6 +145,10 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
         _loading = true;
         _error = null;
         if (page != null) _page = page;
+        _programmeChecked = false;
+        _commissionsChecked = false;
+        _programmeError = null;
+        _commissionsError = null;
       });
     }
     try {
@@ -121,8 +156,8 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
         _api.summary(),
         _api.search(
           query: _search.text,
-          category: _category,
-          rewardStatus: _rewardStatus,
+          category: _isActiveV2 ? '' : _category,
+          rewardStatus: _isActiveV2 ? '' : _rewardStatus,
           page: _page,
           limit: _limit,
         ),
@@ -136,12 +171,254 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
         if (_total == 0 && _rows.isNotEmpty) _total = _rows.length;
         _loading = false;
       });
+      await _loadProgramme();
+      await _loadCommissions();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = error.toString().replaceFirst('Exception: ', '');
       });
+    }
+  }
+
+  bool _isNotFound(Object error) =>
+      error is AdminReferralsException && error.statusCode == 404;
+
+  String _errorText(Object error) =>
+      error.toString().replaceFirst('Exception: ', '');
+
+  Future<void> _loadProgramme() async {
+    try {
+      final response = await _api.programme();
+      if (!mounted) return;
+      setState(() {
+        _programme = _payload(response, 'programme');
+        _readiness = _map(response['readiness']);
+        _canManageProgramme = response['canManage'] == true &&
+            (_access?.has(AdminPermissions.settingsUpdate) ?? false);
+        _programmeAvailable = true;
+        _programmeChecked = true;
+        _programmeError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _programmeAvailable = !_isNotFound(error);
+        _programmeChecked = true;
+        _canManageProgramme = false;
+        _programmeError = _isNotFound(error) ? null : _errorText(error);
+      });
+    }
+  }
+
+  Future<void> _loadCommissions({int? page}) async {
+    if (!mounted) return;
+    setState(() {
+      if (page != null) _commissionPage = page;
+      _commissionsLoading = true;
+      _commissionsChecked = false;
+      _commissionsError = null;
+    });
+    try {
+      final result = await _api.commissions(
+        query: _search.text,
+        rewardType: _commissionType,
+        page: _commissionPage,
+        limit: _limit,
+      );
+      if (!mounted) return;
+      setState(() {
+        _commissions = _rowsFrom(result);
+        _commissionTotal = _number(result['total']).toInt();
+        _commissionPages = (_number(
+          result['pages'] ?? ((_commissionTotal + _limit - 1) ~/ _limit),
+        ).toInt())
+            .clamp(1, 100000);
+        _commissionSummary = _map(result['summary']);
+        _commissionsAvailable = true;
+        _commissionsChecked = true;
+        _commissionsLoading = false;
+        _commissionsError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _commissionsAvailable = !_isNotFound(error);
+        _commissionsChecked = true;
+        _commissionsLoading = false;
+        _commissionsError = _isNotFound(error) ? null : _errorText(error);
+      });
+    }
+  }
+
+  Future<void> _manageProgramme() async {
+    if (!_canManageProgramme) return;
+    final enabled = _programme['enabled'] == true;
+    final registration = TextEditingController(
+      text: '${_programme['registrationBonus'] ?? 100}',
+    );
+    final commission = TextEditingController(
+      text: '${_programme['transactionCommission'] ?? 1}',
+    );
+    final reason = TextEditingController();
+    final allServices = <String>[
+      'AIRTIME',
+      'DATA',
+      'ELECTRICITY',
+      'CABLE',
+      'EXAM_PIN',
+      'DELIVERY',
+      'MARKETPLACE',
+      'ID_VERIFICATION',
+      'EDUPAY',
+      'INTERSTATE_LOGISTICS',
+    ];
+    final selected = Set<String>.from(
+      (_programme['eligibleServices'] is List
+              ? _programme['eligibleServices'] as List
+              : allServices)
+          .map((value) => '$value'),
+    );
+    bool nextEnabled = !enabled;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Referral programme controls'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                        nextEnabled ? 'Programme active' : 'Programme paused'),
+                    value: nextEnabled,
+                    onChanged: (value) =>
+                        setDialogState(() => nextEnabled = value),
+                  ),
+                  if (nextEnabled)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Activation applies to future activity only. No past registrations or transactions will be backfilled.',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  TextField(
+                    controller: registration,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Registration bonus (NGN)'),
+                  ),
+                  TextField(
+                    controller: commission,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Per-transaction commission (NGN)'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Eligible paid services',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  Wrap(
+                    spacing: 4,
+                    children: allServices
+                        .map((service) => FilterChip(
+                              label: Text(service.replaceAll('_', ' ')),
+                              selected: selected.contains(service),
+                              onSelected: (value) => setDialogState(() {
+                                value
+                                    ? selected.add(service)
+                                    : selected.remove(service);
+                              }),
+                            ))
+                        .toList(),
+                  ),
+                  TextField(
+                    controller: reason,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Reason (required)'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                reason.text.trim().isNotEmpty &&
+                    num.tryParse(registration.text) != null &&
+                    num.tryParse(commission.text) != null,
+              ),
+              child: const Text('Save programme'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) {
+      registration.dispose();
+      commission.dispose();
+      reason.dispose();
+      return;
+    }
+    try {
+      final response = await _api.updateProgramme(
+        enabled: nextEnabled,
+        registrationBonus: num.parse(registration.text),
+        transactionCommission: num.parse(commission.text),
+        eligibleServices: selected.toList(),
+        reason: reason.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _programme = _payload(response, 'programme');
+        _readiness = _map(response['readiness']);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Referral programme updated.')),
+      );
+      await _load(page: _page);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to update programme: $error')),
+        );
+      }
+    } finally {
+      registration.dispose();
+      commission.dispose();
+      reason.dispose();
+    }
+  }
+
+  Future<void> _exportCommissions() async {
+    try {
+      final report = await _api.exportCommissions(
+        query: _search.text,
+        rewardType: _commissionType,
+      );
+      await downloadControlCenterCsv(
+          report.csv, 'servicepay-referral-commissions.csv');
+      if (mounted && report.limit != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export is bounded to ${report.limit} rows.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export report: $error')),
+        );
+      }
     }
   }
 
@@ -254,13 +531,35 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   _detail('Customer code', id),
-                  _detail(
-                    'Qualification',
-                    _status(
-                      progress['qualificationStatus'] ??
-                          row['qualificationStatus'],
+                  if (_isActiveV2) ...[
+                    _detail(
+                      'Verified registration',
+                      (progress['verified'] ?? row['verified']) == true
+                          ? 'Verified'
+                          : 'Not verified',
                     ),
-                  ),
+                    _detail(
+                      'Successful paid transactions',
+                      '${_number(progress['successfulTransactions'] ?? row['successfulTransactions']).toInt()}',
+                    ),
+                    _detail(
+                      'Registration bonus earned',
+                      _money(progress['registrationBonusEarned'] ??
+                          row['registrationBonusEarned']),
+                    ),
+                    _detail(
+                      'Transaction commissions earned',
+                      _money(progress['transactionCommissionsEarned'] ??
+                          row['transactionCommissionsEarned']),
+                    ),
+                  ] else
+                    _detail(
+                      'Qualification',
+                      _status(
+                        progress['qualificationStatus'] ??
+                            row['qualificationStatus'],
+                      ),
+                    ),
                   _detail(
                     'Reward status',
                     _rewardLabel(<String, dynamic>{
@@ -270,14 +569,21 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                   ),
                   _detail(
                     'Reward reference',
-                    _text(progress['rewardReference'] ?? _rewardReference(row)),
+                    _text(
+                      progress['ledgerReference'] ??
+                          progress['rewardReference'] ??
+                          row['ledgerReference'] ??
+                          _rewardReference(row),
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Qualification progress',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  Text(_progressLabel(progress.isEmpty ? row : progress)),
+                  if (!_isActiveV2) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Qualification progress',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    Text(_progressLabel(progress.isEmpty ? row : progress)),
+                  ],
                   const SizedBox(height: 12),
                   const Text(
                     'Audit history',
@@ -291,19 +597,19 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.history_rounded),
-                        title: Text(
-                          _text(
-                            event['event'] ?? event['action'],
-                            'Audit event',
-                          ),
-                        ),
-                        subtitle: Text(
-                          _text(
-                            event['occurredAt'] ??
-                                event['createdAt'] ??
-                                event['timestamp'],
-                          ),
-                        ),
+                        title: Text(_text(
+                          event['event'] ?? event['action'] ?? event['type'],
+                          'Audit event',
+                        )),
+                        subtitle: Text([
+                          _text(event['createdAt'] ??
+                              event['occurredAt'] ??
+                              event['timestamp']),
+                          if (event['reference'] != null)
+                            'Ref ${_text(event['reference'])}',
+                          if (event['amount'] != null) _money(event['amount']),
+                          if (event['status'] != null) _status(event['status']),
+                        ].join(' · ')),
                       ),
                     ),
                 ],
@@ -385,44 +691,64 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                 width: 250,
                 child: TextField(
                   controller: _search,
-                  onSubmitted: (_) => _load(page: 1),
-                  decoration: const InputDecoration(
+                  onSubmitted: (_) => _applyFilters(),
+                  decoration: InputDecoration(
                     labelText: 'Search referrals',
-                    hintText: 'Name or customer code',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                    hintText: _isActiveV2
+                        ? 'Name, phone or referral code'
+                        : 'Name or customer code',
+                    prefixIcon: const Icon(Icons.search),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ),
+              if (!_isActiveV2)
+                DropdownButton<String>(
+                  value: _category,
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(value: '', child: Text('All categories')),
+                    DropdownMenuItem(value: 'DATA', child: Text('Data')),
+                    DropdownMenuItem(
+                        value: 'DELIVERY', child: Text('Delivery')),
+                    DropdownMenuItem(
+                      value: 'MARKETPLACE',
+                      child: Text('Marketplace'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _category = value ?? '');
+                    _applyFilters();
+                  },
+                ),
+              if (!_isActiveV2)
+                DropdownButton<String>(
+                  value: _rewardStatus,
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(value: '', child: Text('All rewards')),
+                    DropdownMenuItem(value: 'AWARDED', child: Text('Paid')),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _rewardStatus = value ?? '');
+                    _applyFilters();
+                  },
+                ),
               DropdownButton<String>(
-                value: _category,
+                value: _commissionType,
                 items: const <DropdownMenuItem<String>>[
-                  DropdownMenuItem(value: '', child: Text('All categories')),
-                  DropdownMenuItem(value: 'DATA', child: Text('Data')),
-                  DropdownMenuItem(value: 'DELIVERY', child: Text('Delivery')),
                   DropdownMenuItem(
-                    value: 'MARKETPLACE',
-                    child: Text('Marketplace'),
-                  ),
+                      value: '', child: Text('All commission types')),
+                  DropdownMenuItem(
+                      value: 'REGISTRATION', child: Text('Registration')),
+                  DropdownMenuItem(
+                      value: 'TRANSACTION', child: Text('Transaction')),
                 ],
                 onChanged: (value) {
-                  setState(() => _category = value ?? '');
-                  _load(page: 1);
-                },
-              ),
-              DropdownButton<String>(
-                value: _rewardStatus,
-                items: const <DropdownMenuItem<String>>[
-                  DropdownMenuItem(value: '', child: Text('All rewards')),
-                  DropdownMenuItem(value: 'AWARDED', child: Text('Paid')),
-                ],
-                onChanged: (value) {
-                  setState(() => _rewardStatus = value ?? '');
-                  _load(page: 1);
+                  setState(() => _commissionType = value ?? '');
+                  _applyFilters();
                 },
               ),
               FilledButton.icon(
-                onPressed: () => _load(page: 1),
+                onPressed: _applyFilters,
                 icon: const Icon(Icons.filter_alt_outlined),
                 label: const Text('Apply filters'),
               ),
@@ -430,6 +756,227 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
           ),
         ),
       );
+
+  Widget _programmePanel() {
+    if (_programmeError != null) {
+      return Card(
+        elevation: 0,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Referral programme unavailable',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(_programmeError!),
+              TextButton.icon(
+                onPressed: _loadProgramme,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry programme'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final enabled = _programme['enabled'] == true;
+    final blockers = _readiness['blockers'] is List
+        ? (_readiness['blockers'] as List).map((value) => '$value').toList()
+        : <String>[];
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text('Referral programme',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                Chip(
+                  label: Text(enabled ? 'ACTIVE' : 'PAUSED'),
+                  backgroundColor: enabled
+                      ? const Color(0xFFE3F1E8)
+                      : const Color(0xFFF0F1EF),
+                ),
+                if (_canManageProgramme)
+                  FilledButton.icon(
+                    onPressed: _manageProgramme,
+                    icon: const Icon(Icons.tune_rounded),
+                    label: const Text('Manage programme'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(
+              '₦${_number(_programme['registrationBonus'] ?? 100).toStringAsFixed(0)} once per verified registration · '
+              '₦${_number(_programme['transactionCommission'] ?? 1).toStringAsFixed(0)} per eligible paid transaction',
+              style: const TextStyle(color: Color(0xFF667085)),
+            ),
+            if (blockers.isNotEmpty) ...[
+              const SizedBox(height: 7),
+              Text('Readiness blockers: ${blockers.join(' · ')}',
+                  style: const TextStyle(color: Color(0xFF8A4D20))),
+            ],
+            const SizedBox(height: 5),
+            const Text(
+                'Changes affect future activity only; no backfill is performed.',
+                style: TextStyle(color: Color(0xFF667085), fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _commissionPanel() {
+    if (_commissionsError != null) {
+      return Card(
+        elevation: 0,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Commission report unavailable',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(_commissionsError!),
+              TextButton.icon(
+                onPressed: () => _loadCommissions(),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry commission report'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final summary = _commissionSummary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Text('Commission ledger',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            OutlinedButton.icon(
+              onPressed: _exportCommissions,
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Export CSV'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _ledgerTotal(
+              'Registration bonuses', summary['registrationBonusesEarned']),
+          _ledgerTotal('Transaction commissions',
+              summary['transactionCommissionsEarned']),
+          _ledgerTotal(
+              'Net referral earnings', summary['totalReferralEarnings']),
+          _ledgerTotal('Legacy rewards', summary['legacyRewards']),
+        ]),
+        const SizedBox(height: 9),
+        Text(
+            'Showing ${_commissions.length} of $_commissionTotal commission entries',
+            style: const TextStyle(color: Color(0xFF667085), fontSize: 12)),
+        if (_commissions.isEmpty)
+          const Card(
+            elevation: 0,
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('No commission entries match these filters.'),
+            ),
+          )
+        else
+          ..._commissions.map(_commissionRow),
+        if (_commissionsLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        if (_commissionTotal > _limit || _commissionPages > 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                tooltip: 'Previous commission page',
+                onPressed: _commissionsLoading || _commissionPage <= 1
+                    ? null
+                    : () => _loadCommissions(page: _commissionPage - 1),
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Text('Commission page $_commissionPage of $_commissionPages'),
+              IconButton(
+                tooltip: 'Next commission page',
+                onPressed: _commissionsLoading ||
+                        _commissionPage * _limit >= _commissionTotal
+                    ? null
+                    : () => _loadCommissions(page: _commissionPage + 1),
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _ledgerTotal(String label, dynamic value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+            color: const Color(0xFFEAF1EB),
+            borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF667085))),
+          Text(_money(value),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+        ]),
+      );
+
+  Widget _commissionRow(Map<String, dynamic> row) {
+    final referrer = _map(row['referrer']);
+    final referred = _map(row['referredCustomer']);
+    final debit = _text(row['direction'], 'CREDIT').toUpperCase() == 'DEBIT';
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            children: [
+              Text(_text(row['rewardType'], 'REWARD').replaceAll('_', ' '),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, color: _referralGreen)),
+              Text(_text(row['date'])),
+              Text('${debit ? '−' : '+'}${_money(row['amount'])}',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: debit ? const Color(0xFF9B4D3A) : _referralGreen)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+              '${_text(referrer['fullName'], 'Referrer')} · ${_text(referrer['referralCode'], 'No code')}'),
+          Text('Referred: ${_text(referred['fullName'], 'Customer')}'),
+          Text(
+              'Reference: ${_text(row['reference'])} · Source: ${_text(row['sourceReference'])}',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF667085))),
+        ]),
+      ),
+    );
+  }
 
   Widget _row(Map<String, dynamic> row) => Card(
         elevation: 0,
@@ -453,7 +1000,9 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                       ),
                     ),
                     Text(
-                      _status(row['qualificationStatus']),
+                      _status(_isActiveV2
+                          ? row['rewardStatus']
+                          : row['qualificationStatus']),
                       style: const TextStyle(
                         color: _referralGreen,
                         fontWeight: FontWeight.w800,
@@ -468,28 +1017,47 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                         const TextStyle(color: Color(0xFF667085), fontSize: 12),
                   ),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 5,
-                  children: <Widget>[
-                    Text('Category: ${_text(row['category'], 'Not selected')}'),
-                    Text('Reward: ${_rewardLabel(row)}'),
-                    if (_rewardReference(row).isNotEmpty)
-                      Text('Ledger: ${_rewardReference(row)}'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: _progressValue(row),
-                  minHeight: 7,
-                  backgroundColor: const Color(0xFFE6EEE8),
-                  color: _referralGreen,
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  _progressLabel(row),
-                  style: const TextStyle(color: Color(0xFF667085)),
-                ),
+                if (_isActiveV2) ...[
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 5,
+                    children: [
+                      Text((row['verified'] == true)
+                          ? 'Verified registration'
+                          : 'Registration not verified'),
+                      Text(
+                          '${_number(row['successfulTransactions']).toInt()} successful paid transactions'),
+                      Text(_earnedBreakdown(row)),
+                      Text('Reward: ${_rewardLabel(row)}'),
+                      if (_text(row['ledgerReference'], '').isNotEmpty)
+                        Text('Ledger: ${_text(row['ledgerReference'])}'),
+                    ],
+                  ),
+                ] else ...[
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 5,
+                    children: <Widget>[
+                      Text(
+                          'Category: ${_text(row['category'], 'Not selected')}'),
+                      Text('Reward: ${_rewardLabel(row)}'),
+                      if (_rewardReference(row).isNotEmpty)
+                        Text('Ledger: ${_rewardReference(row)}'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: _progressValue(row),
+                    minHeight: 7,
+                    backgroundColor: const Color(0xFFE6EEE8),
+                    color: _referralGreen,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _progressLabel(row),
+                    style: const TextStyle(color: Color(0xFF667085)),
+                  ),
+                ],
                 const Align(
                   alignment: Alignment.centerRight,
                   child: Text(
@@ -588,6 +1156,20 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                             ),
                             const SizedBox(height: 14),
                             _filters(),
+                            const SizedBox(height: 12),
+                            if (_programmeChecked && _programmeAvailable) ...[
+                              _programmePanel(),
+                              const SizedBox(height: 12),
+                            ],
+                            if (_commissionsChecked &&
+                                _commissionsAvailable) ...[
+                              _commissionPanel(),
+                              const SizedBox(height: 12),
+                            ],
+                            const SizedBox(height: 18),
+                            const Text('Referral monitoring',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 6),
                             Text(
                               'Showing ${_rows.length} of $_total referrals',

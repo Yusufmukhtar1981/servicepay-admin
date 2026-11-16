@@ -1,8 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import 'admin_announcements_api.dart';
 import 'admin_permissions.dart';
 import 'admin_promo_participants_screen.dart';
+
+List<String> announcementDeliveryIssues(Map<String, dynamic> item,
+    {DateTime? now}) {
+  final instant = now ?? DateTime.now();
+  DateTime? date(dynamic value) => DateTime.tryParse('${value ?? ''}');
+  final start = date(item['startAt']);
+  final end = date(item['endAt']);
+  return [
+    if (item['isActive'] != true) 'Inactive',
+    if (start != null && instant.isBefore(start)) 'Scheduled for the future',
+    if (end != null && !instant.isBefore(end)) 'Expired',
+    if (item['campaignTrackingEnabled'] == true &&
+        item['campaignStatus'] != 'ACTIVE')
+      'Campaign ${item['campaignStatus'] ?? 'DRAFT'}',
+    if (item['style'] == 'POPUP') 'Popup only — not a dashboard banner',
+  ];
+}
 
 class AdminAnnouncementsScreen extends StatefulWidget {
   const AdminAnnouncementsScreen({super.key, this.api, this.initialAccess});
@@ -217,7 +235,7 @@ class _AdminAnnouncementsScreenState extends State<AdminAnnouncementsScreen> {
   Future<void> _openEditor([Map<String, dynamic>? item]) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _AnnouncementEditor(item: item),
+      builder: (_) => _AnnouncementEditor(item: item, api: _api),
     );
     if (result == null) return;
     try {
@@ -352,6 +370,8 @@ class _AnnouncementTile extends StatelessWidget {
             Chip(label: Text(value(item, 'type', 'GENERAL'))),
             Chip(label: Text(value(item, 'visibility', 'IN_APP'))),
             Chip(label: Text(active ? 'ACTIVE' : 'INACTIVE')),
+            ...announcementDeliveryIssues(item)
+                .map((issue) => Chip(label: Text(issue))),
           ]),
           const SizedBox(height: 12),
           Wrap(spacing: 20, runSpacing: 8, children: [
@@ -389,7 +409,8 @@ class _AnnouncementTile extends StatelessWidget {
 }
 
 class _AnnouncementEditor extends StatefulWidget {
-  const _AnnouncementEditor({this.item});
+  const _AnnouncementEditor({this.item, required this.api});
+  final AdminAnnouncementsApi api;
   final Map<String, dynamic>? item;
   @override
   State<_AnnouncementEditor> createState() => _AnnouncementEditorState();
@@ -420,6 +441,33 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
   String _audience = 'ALL';
   String _campaignStatus = 'DRAFT';
   bool _trackingEnabled = false;
+  bool _uploading = false;
+  Future<void> _uploadImage() async {
+    setState(() => _uploading = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
+        withData: true,
+        allowMultiple: false,
+      );
+      if (result == null) return;
+      final file = result.files.single;
+      if (file.size > 5 * 1024 * 1024 || file.bytes == null) {
+        throw Exception('Choose a JPEG, PNG, or WebP image, 5 MB or smaller.');
+      }
+      final url = await widget.api.uploadImage(file.bytes!, file.name);
+      if (mounted) setState(() => _image.text = url);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Image upload failed. Use a valid image up to 5 MB, '
+                'or paste an existing HTTPS image URL.')));
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
   final _formKey = GlobalKey<FormState>();
   @override
   void initState() {
@@ -604,7 +652,29 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
                 const SizedBox(height: 12),
                 TextFormField(
                     controller: _image,
-                    decoration: _dec('Image URL (optional)')),
+                    onFieldSubmitted: (_) => setState(() {}),
+                    decoration: _dec('Image URL (optional)').copyWith(
+                        helperText: 'Upload an image or paste its existing HTTPS URL.')),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  OutlinedButton.icon(
+                    onPressed: _uploading ? null : _uploadImage,
+                    icon: const Icon(Icons.upload_outlined),
+                    label: Text(_uploading ? 'Uploading…' : 'Upload banner image'),
+                  ),
+                  TextButton(
+                      onPressed: () => setState(() {}),
+                      child: const Text('Preview image')),
+                ]),
+                if (Uri.tryParse(_image.text.trim())?.scheme == 'https')
+                  SizedBox(
+                    width: double.infinity,
+                    height: 180,
+                    child: Image.network(_image.text.trim(),
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Center(
+                            child: Text('Image could not be loaded. Check the URL.'))),
+                  ),
                 const SizedBox(height: 12),
                 Column(children: [
                   TextFormField(
@@ -619,11 +689,13 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
                 Column(children: [
                   TextFormField(
                       controller: _startAt,
-                      decoration: _dec('Start at (ISO 8601)')),
+                      decoration: _dec('Start at (ISO 8601)').copyWith(
+                          helperText: 'Use Z for UTC or an explicit timezone offset. Blank: no start limit.')),
                   const SizedBox(height: 12),
                   TextFormField(
                       controller: _endAt,
-                      decoration: _dec('End at (ISO 8601)')),
+                      decoration: _dec('End at (ISO 8601)').copyWith(
+                          helperText: 'Expired promotions are hidden even when Active is enabled.')),
                 ]),
                 DropdownButtonFormField<String>(
                     isExpanded: true,
@@ -798,7 +870,7 @@ class _AnnouncementEditorState extends State<_AnnouncementEditor> {
               },
               child: const Text('Preview')),
           FilledButton(
-              onPressed: () {
+              onPressed: _uploading ? null : () {
                 if (_formKey.currentState!.validate()) {
                   Navigator.pop(context, _payload());
                 }

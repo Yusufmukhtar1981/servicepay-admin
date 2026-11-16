@@ -29,6 +29,35 @@ class AdminAnnouncementsApi {
       _request('PATCH', '/${Uri.encodeComponent(id)}/status',
           payload: {'isActive': active});
 
+  Future<String> uploadImage(List<int> bytes, String filename) async {
+    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
+      throw Exception('Choose an image of 5 MB or smaller.');
+    }
+    final token = await _token();
+    final request = http.MultipartRequest(
+        'POST', Uri.parse('$baseUrl/announcements/admin/image'))
+      ..headers.addAll({
+        'Accept': 'application/json',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      })
+      ..files.add(http.MultipartFile.fromBytes('image', bytes, filename: filename));
+    final response = await http.Response.fromStream(
+        await _client.send(request).timeout(const Duration(seconds: 45)));
+    final decoded = jsonDecode(response.body);
+    final url = decoded is Map && decoded['data'] is Map
+        ? decoded['data']['imageUrl']?.toString()
+        : null;
+    if (response.statusCode != 200 ||
+        decoded['success'] != true ||
+        url == null ||
+        Uri.tryParse(url)?.scheme != 'https') {
+      throw Exception(decoded is Map
+          ? decoded['message'] ?? 'Image upload failed.'
+          : 'Image upload failed.');
+    }
+    return url;
+  }
+
   /// Returns the tracked customers for a promotion announcement.
   ///
   /// Query values are deliberately built here (rather than in the widget) so
@@ -191,11 +220,9 @@ class AdminAnnouncementsApi {
           String announcementId, String customerId) =>
       markWinner(announcementId, customerId);
 
-  Future<Map<String, dynamic>> _request(String method, String path,
-      {Map<String, dynamic>? payload,
-      Map<String, String>? queryParameters}) async {
+  Future<String> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = [
+    return [
       'auth_token',
       'token',
       'access_token',
@@ -205,6 +232,12 @@ class AdminAnnouncementsApi {
     ]
         .map((key) => prefs.getString(key)?.trim() ?? '')
         .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+  }
+
+  Future<Map<String, dynamic>> _request(String method, String path,
+      {Map<String, dynamic>? payload,
+      Map<String, String>? queryParameters}) async {
+    final token = await _token();
     final uri = Uri.parse('$baseUrl/announcements/admin$path').replace(
       queryParameters: queryParameters,
     );

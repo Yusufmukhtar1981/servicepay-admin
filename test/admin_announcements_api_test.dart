@@ -13,7 +13,7 @@ class _Client extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     requests.add(request);
-    bodies.add(utf8.decode(await request.finalize().toBytes()));
+    bodies.add(utf8.decode(await request.finalize().toBytes(), allowMalformed: true));
     final response = responses.removeAt(0);
     return http.StreamedResponse(
       Stream.value(utf8.encode(response.body)),
@@ -27,6 +27,36 @@ class _Client extends http.BaseClient {
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({'auth_token': 'test-token'});
+  });
+
+  test('banner uploads use the protected multipart endpoint and retain the HTTPS image URL', () async {
+    const url = 'https://images.example.test/banner.png';
+    final client = _Client([http.Response(
+        jsonEncode({'success': true, 'data': {'imageUrl': url}}), 200)]);
+    final api = AdminAnnouncementsApi(client: client,
+        baseUrl: 'https://api.example.test/api');
+    final image = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jgekAAAAASUVORK5CYII=');
+    expect(await api.uploadImage(image, 'banner.png'), url);
+    final request = client.requests.single;
+    expect(request.method, 'POST');
+    expect(request.url.path, '/api/announcements/admin/image');
+    expect(request.headers['Authorization'], 'Bearer test-token');
+    expect(request.headers['content-type'], startsWith('multipart/form-data'));
+    expect(client.bodies.single, contains('name="image"'));
+    expect(client.bodies.single, contains('filename="banner.png"'));
+  });
+
+  test('banner uploads reject invalid sizes locally and surface storage errors', () async {
+    final client = _Client([http.Response(
+        jsonEncode({'success': false, 'message': 'Image storage unavailable'}), 503)]);
+    final api = AdminAnnouncementsApi(client: client);
+    await expectLater(api.uploadImage([], 'empty.png'), throwsException);
+    await expectLater(api.uploadImage(List.filled(5 * 1024 * 1024 + 1, 0), 'large.png'),
+        throwsException);
+    expect(client.requests, isEmpty);
+    await expectLater(api.uploadImage([1, 2, 3], 'image.png'),
+        throwsA(predicate((e) => e.toString().contains('Image storage unavailable'))));
   });
 
   test('list and summary parse their exact admin endpoints', () async {

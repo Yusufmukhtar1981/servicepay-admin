@@ -32,6 +32,29 @@ class _ScreenClient extends http.BaseClient {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('delivery diagnostics expose expired, inactive, draft and popup-only banners', () {
+    final issues = announcementDeliveryIssues({
+      'isActive': false,
+      'style': 'POPUP',
+      'campaignTrackingEnabled': true,
+      'campaignStatus': 'DRAFT',
+      'endAt': '2026-11-16T10:00:00+01:00',
+    }, now: DateTime.utc(2026, 11, 16, 9));
+    expect(issues, containsAll([
+      'Inactive', 'Expired', 'Campaign DRAFT',
+      'Popup only — not a dashboard banner',
+    ]));
+    expect(announcementDeliveryIssues({
+      'isActive': true, 'style': 'BANNER',
+      'startAt': '2026-11-16T10:00:00+01:00',
+      'endAt': '2026-12-01T00:00:00Z',
+    }, now: DateTime.utc(2026, 11, 16, 9)), isEmpty);
+    expect(announcementDeliveryIssues({
+      'isActive': true, 'style': 'BANNER',
+      'startAt': '2026-12-01T00:00:00Z',
+    }, now: DateTime.utc(2026, 11, 16)), contains('Scheduled for the future'));
+  });
+
   testWidgets('shows loading then empty state and hides ungranted controls',
       (tester) async {
     final access = const AdminAccess(

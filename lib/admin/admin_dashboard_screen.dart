@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'fintech_screen_registry.dart';
 
 import 'admin_announcements_api.dart';
+import 'admin_announcements_screen.dart';
 import 'admin_executive_dashboard_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_bulk_email_screen.dart';
@@ -816,6 +817,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     if (title == 'Phone Financing') {
       Navigator.of(context).pushNamed('/phone-financing');
+      return;
+    }
+
+    if (title == 'Announcements') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/admin/announcements'),
+          builder: (_) => AdminAnnouncementsScreen(
+            initialAccess: widget.initialAccess,
+            api: widget.promoApi,
+          ),
+        ),
+      );
       return;
     }
 

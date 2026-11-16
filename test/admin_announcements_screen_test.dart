@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:servicepay_app/admin/admin_announcements_api.dart';
 import 'package:servicepay_app/admin/admin_announcements_screen.dart';
+import 'package:servicepay_app/admin/admin_dashboard_screen.dart';
 import 'package:servicepay_app/admin/admin_permissions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +32,33 @@ class _ScreenClient extends http.BaseClient {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('Fintech Announcements opens the existing protected editor with image upload',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = AdminAnnouncementsApi(
+        client: _ScreenClient({'announcements': [], 'summary': {}}));
+    await tester.pumpWidget(MaterialApp(
+      home: AdminDashboardScreen(
+        initialAccess: const AdminAccess(role: 'HEAD_OFFICE', permissions: {'*'}),
+        dashboardLoader: (_) async => <String, dynamic>{},
+        promoApi: api,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fintech Control Center').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Announcements');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Announcements').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(AdminAnnouncementsScreen), findsOneWidget);
+    expect(find.text('New announcement'), findsOneWidget);
+    await tester.tap(find.text('New announcement'));
+    await tester.pumpAndSettle();
+    expect(find.text('Upload banner image'), findsOneWidget);
+  });
 
   test('delivery diagnostics expose expired, inactive, draft and popup-only banners', () {
     final issues = announcementDeliveryIssues({

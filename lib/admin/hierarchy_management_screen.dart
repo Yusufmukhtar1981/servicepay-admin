@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'admin_permissions.dart';
+import 'admin_management_access.dart';
 import 'hierarchy_downline_dialog.dart';
 import 'phase1_operations_api.dart';
 
@@ -55,7 +56,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
   bool get _canManage {
     final AdminAccess access =
         AdminAccess(role: widget.role, permissions: widget.permissions);
-    return access.hasHeadOfficePermission(AdminPermissions.hierarchyManage);
+    return canManageHeadOfficeHierarchy(access);
   }
 
   String get _parentRole => _roleOptions.firstWhere(
@@ -170,17 +171,20 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
       }
       target['currentParent'] = lineage[directParentId];
       target['lineage'] = lineage;
+      if (!mounted) return;
       final Map<String, dynamic>? parent = await _chooseParent(target);
-      if (parent == null) return;
+      if (parent == null || !mounted) return;
 
       final TextEditingController reason = TextEditingController();
-      final bool? confirmed = await showDialog<bool>(
+      final DialogRoute<bool> reviewRoute = DialogRoute<bool>(
         context: context,
+        themes: InheritedTheme.capture(
+            from: context, to: Navigator.of(context, rootNavigator: true).context),
         builder: (BuildContext dialogContext) => AlertDialog(
           title: Text(directParentId.isEmpty
               ? 'Confirm assignment'
               : 'Confirm reassignment'),
-          content: Column(
+          content: SingleChildScrollView(child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -190,6 +194,10 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
               const Divider(height: 20),
               Text(
                   'New $_parentRoleLabel: ${_name(parent)} (${_text(parent, '_id', '')})'),
+              if (_selectedRole == 'CUSTOMER')
+                Text('New reporting state / zone: ${_text(parent, 'state')} / ${_text(parent, 'zone')}. '
+                    'Existing transactions, commissions, address and balances stay unchanged.',
+                    style: const TextStyle(fontSize: 12)),
               const SizedBox(height: 16),
               TextField(
                 controller: reason,
@@ -210,7 +218,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                 style: TextStyle(fontSize: 12),
               ),
             ],
-          ),
+          )),
           actions: <Widget>[
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
@@ -232,8 +240,12 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
           ],
         ),
       );
+      final bool? confirmed = await Navigator.of(context, rootNavigator: true)
+          .push<bool>(reviewRoute);
       final String reasonText = reason.text.trim();
-      Future<void>.delayed(const Duration(milliseconds: 350), reason.dispose);
+      // The pop result resolves before the exit animation. Dispose only once
+      // the dialog overlay is actually gone, including on slow/mobile frames.
+      unawaited(reviewRoute.completed.then((_) => reason.dispose()));
       if (confirmed != true) return;
 
       if (mounted) setState(() => _saving = true);
@@ -419,6 +431,9 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                               'ACTIVE') {
                             return false;
                           }
+                          // Head Office can choose an Aggregator in any state
+                          // for a Customer; the backend verifies its full chain.
+                          if (_selectedRole == 'CUSTOMER') return true;
                           if (!_locationMatchesWhenKnown(
                               user, candidate, 'zone')) {
                             return false;
@@ -607,9 +622,10 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                             child: Text('Unable to load history: ${snapshot.error}'),
                           );
                         }
-                        if (!snapshot.hasData)
+                        if (!snapshot.hasData) {
                           return const Center(
                               child: CircularProgressIndicator());
+                        }
                         final dynamic raw = snapshot.data!['records'];
                         final List<Map<String, dynamic>> records = raw is List
                             ? raw
@@ -719,22 +735,21 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
         children: <Widget>[
-          Row(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Expanded(
-                child: Column(
+              Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('Hierarchy Management',
-                        style: TextStyle(
+                    Text(_selectedRole == 'CUSTOMER' ? 'Customer Assignments' : 'Hierarchy Management',
+                        style: const TextStyle(
                             fontSize: 26, fontWeight: FontWeight.w800)),
-                    SizedBox(height: 6),
-                    Text(
+                    const SizedBox(height: 6),
+                    const Text(
                         'Move current reporting lines without changing roles or historical financial ownership.'),
                   ],
-                ),
               ),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -778,7 +793,9 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          SegmentedButton<String>(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<String>(
             segments: _roleOptions
                 .map((Map<String, String> item) => ButtonSegment<String>(
                       value: item['role']!,
@@ -790,7 +807,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
               setState(() => _selectedRole = value.first);
               _load();
             },
-          ),
+          )),
           const SizedBox(height: 12),
           TextField(
             controller: _search,

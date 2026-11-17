@@ -23,6 +23,8 @@ import 'admin_riders_screen.dart';
 import 'staff_management_screen.dart';
 import 'admin_control_center_screen.dart';
 import 'admin_feature_controls_screen.dart';
+import 'admin_management_performance_screen.dart';
+import 'admin_management_access.dart';
 
 import 'admin_airtime_to_cash_screen.dart';
 
@@ -239,6 +241,9 @@ class AdminMainNavigation extends StatefulWidget {
     if (access.isHeadOffice) {
       labels.add('Staff Management');
     }
+    if (canViewHeadOfficePerformance(access)) {
+      labels.add('Management Performance');
+    }
     if (canAccessExecutiveControlNavigation(
       role: access.role,
       permissions: access.permissions,
@@ -285,8 +290,9 @@ class AdminMainNavigation extends StatefulWidget {
     if (access.has(AdminPermissions.referralsView)) {
       labels.add('Referral Monitoring');
     }
-    if (access.hasHeadOfficePermission(AdminPermissions.hierarchyManage)) {
+    if (canManageHeadOfficeHierarchy(access)) {
       labels.add('Hierarchy Management');
+      labels.add('Customer Assignments');
     }
     if (canAccessCustomerWithdrawalsNavigation(
       role: access.role,
@@ -539,6 +545,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.groups_outlined,
         activeIcon: Icons.groups_rounded,
         label: 'Staff Management',
+      );
+    }
+
+    if (canViewHeadOfficePerformance(
+        AdminAccess(role: adminRole, permissions: permissions))) {
+      addNavigationPage(
+        page: AdminManagementPerformanceScreen(
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+        ),
+        icon: Icons.query_stats_outlined,
+        activeIcon: Icons.query_stats_rounded,
+        label: 'Management Performance',
       );
     }
 
@@ -930,10 +948,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (AdminAccess(
+    if (canManageHeadOfficeHierarchy(AdminAccess(
       role: adminRole,
       permissions: permissions,
-    ).hasHeadOfficePermission(AdminPermissions.hierarchyManage)) {
+    ))) {
       addNavigationPage(
         page: HierarchyManagementScreen(
           role: adminRole,
@@ -942,6 +960,16 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.account_tree_outlined,
         activeIcon: Icons.account_tree_rounded,
         label: 'Hierarchy Management',
+      );
+      addNavigationPage(
+        page: HierarchyManagementScreen(
+          role: adminRole,
+          permissions: permissions,
+          initialRole: 'CUSTOMER',
+        ),
+        icon: Icons.assignment_ind_outlined,
+        activeIcon: Icons.assignment_ind_rounded,
+        label: 'Customer Assignments',
       );
     }
 
@@ -1338,6 +1366,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       body: IndexedStack(
         index: safeIndex,
         children: pages.asMap().entries.map((MapEntry<int, Widget> entry) {
+          if (!shouldBuildHeadOfficeManagementPage(
+              items[entry.key].label ?? '', entry.key, safeIndex)) {
+            return const SizedBox.shrink();
+          }
           if (isStaff && !_visitedStaffPageIndices.contains(entry.key)) {
             return const SizedBox.shrink();
           }

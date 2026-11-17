@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'admin_support_api.dart';
 import 'admin_support_widgets.dart';
+import 'admin_management_complaint_evidence.dart';
 
 bool canManageSupportAssignmentsForRole({
   required String staffRoleName,
@@ -472,7 +473,7 @@ class _DetailState extends State<_Detail> {
       '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
   Future<void> changeStatus(String value) async {
-    if (['RESOLVED', 'CLOSED'].contains(value)) {
+    if (['RESOLVED', 'CLOSED', 'REJECTED'].contains(value)) {
       final ok = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
@@ -598,6 +599,7 @@ class _DetailState extends State<_Detail> {
       'IN_REVIEW',
       'WAITING_ON_CUSTOMER',
       'RESOLVED',
+      'REJECTED',
       'CLOSED',
       if (currentStatus == 'ESCALATED') 'ESCALATED',
     ];
@@ -636,6 +638,8 @@ class _DetailState extends State<_Detail> {
                     ),
                   ),
                 ),
+                if (x['transactionContext'] is Map)
+                  AdminManagementComplaintEvidence(ticket: x),
                 if (x['transactionContext'] is Map)
                   AdminTransactionCard(
                     contextData: Map<String, dynamic>.from(

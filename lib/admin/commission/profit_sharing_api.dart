@@ -120,20 +120,11 @@ class ProfitSharingApi {
   }
 
   Future<Map<String, dynamic>> saveRule(Map<String, dynamic> payload) async {
-    final dynamic rawPool = payload['poolPercentage'];
-    if (rawPool is! num ||
-        !rawPool.isFinite ||
-        rawPool < 0 ||
-        rawPool > 100 ||
-        (rawPool * 100).roundToDouble() != rawPool * 100) {
-      throw const ProfitSharingApiException(
-        'Set a pool percentage from 0 to 100 with at most two decimal places.',
-      );
-    }
     const List<String> roles = <String>[
-      'AGGREGATOR',
-      'STATE_MANAGER',
+      'HEAD_OFFICE',
       'ZONAL_MANAGER',
+      'STATE_MANAGER',
+      'AGGREGATOR',
     ];
     final dynamic rawPercentages = payload['percentages'];
     if (rawPercentages is! Map ||
@@ -144,7 +135,7 @@ class ProfitSharingApi {
             !value.isFinite ||
             value < 0 ||
             value > 100 ||
-            (value * 100).roundToDouble() != value * 100) ||
+            ((value * 100).roundToDouble() - value * 100).abs() > 1e-8) ||
         (rawPercentages.values.cast<num>().fold<num>(
                       0,
                       (num total, num value) => total + value,
@@ -153,14 +144,42 @@ class ProfitSharingApi {
             .abs() >
             0.000001) {
       throw const ProfitSharingApiException(
-        'The three supported beneficiary allocations must total 100%, with each value from 0 to 100 and at most two decimal places.',
+        'All four beneficiary percentages must total 100%, with each value from 0 to 100 and at most two decimal places.',
       );
     }
-    final Map<String, dynamic> root = await _send('POST', body: payload);
+    final Map<String, dynamic> requestBody = Map<String, dynamic>.from(payload)
+      ..remove('policyVersion')
+      ..remove('poolPercentage');
+    final Map<String, dynamic> root =
+        await _send('POST', body: requestBody);
     final dynamic raw = root['data'];
     final Map<String, dynamic> data =
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     final dynamic rawVersions = data['versions'];
+    bool validFourRoleRates(dynamic rawRates) {
+      if (rawRates is! Map ||
+          rawRates.length != roles.length ||
+          !roles.every(rawRates.containsKey)) {
+        return false;
+      }
+      final Iterable<dynamic> values = rawRates.values;
+      if (values.any((dynamic value) =>
+          value is! num ||
+          !value.isFinite ||
+          value < 0 ||
+          value > 100 ||
+          ((value * 100).roundToDouble() - value * 100).abs() > 1e-8)) {
+        return false;
+      }
+      return (values.cast<num>().fold<num>(
+                    0,
+                    (num total, num value) => total + value,
+                  ) -
+                  100)
+              .abs() <=
+          0.000001;
+    }
+
     final bool validVersions = rawVersions is List &&
         rawVersions.isNotEmpty &&
         rawVersions.every((dynamic value) {
@@ -168,8 +187,6 @@ class ProfitSharingApi {
           final Map<String, dynamic> version = Map<String, dynamic>.from(value);
           return version['id'] != null &&
               version['serviceType'] is String &&
-              (version['policyVersion'] != 2 ||
-                  version['poolPercentage'] is num) &&
               version['enabled'] is bool &&
               version['effectiveAt'] is String &&
               version['percentages'] is Map &&
@@ -182,8 +199,11 @@ class ProfitSharingApi {
         !validVersions ||
         !(data['versions'] as List).any((dynamic value) =>
             value is Map &&
-            value['policyVersion'] == 2 &&
-            value['poolPercentage'] is num) ||
+            value['policyVersion'] == 3 &&
+            validFourRoleRates(value['percentages']) &&
+            value.containsKey('previousPercentages') &&
+            (value['previousPercentages'] == null ||
+                validFourRoleRates(value['previousPercentages']))) ||
         data['replayed'] is! bool) {
       throw const ProfitSharingApiException(
         'The server response could not confirm whether this rule was saved.',

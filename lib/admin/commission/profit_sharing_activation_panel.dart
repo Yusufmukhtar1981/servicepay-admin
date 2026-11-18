@@ -650,7 +650,8 @@ class _ProfitSharingActivationPanelState
     for (final MapEntry<String, String> field in <MapEntry<String, String>>[
       const MapEntry<String, String>('netProfitKobo', 'Verified net profit'),
       const MapEntry<String, String>('poolKobo', 'Profit pool'),
-      const MapEntry<String, String>('companyRetainedKobo', 'Company-retained profit'),
+      const MapEntry<String, String>('headOfficeKobo', 'Head Office share · company custody'),
+      const MapEntry<String, String>('beneficiaryKobo', 'Other beneficiary shares'),
       const MapEntry<String, String>('unallocatedKobo', 'Unallocated commission'),
       const MapEntry<String, String>('roundingKobo', 'Rounding'),
     ]) {
@@ -658,10 +659,6 @@ class _ProfitSharingActivationPanelState
       if (amount is num) {
         lines.add('${field.value}: ₦${(amount / 100).toStringAsFixed(2)}');
       }
-    }
-    final dynamic poolPercentage = plan['poolPercentage'];
-    if (poolPercentage is num) {
-      lines.add('Pool percentage: $poolPercentage%');
     }
     if (lines.isEmpty) return const SizedBox.shrink();
     return Container(

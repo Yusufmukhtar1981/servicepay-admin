@@ -241,12 +241,12 @@ void main() {
                   'id': 'receipt-24',
                    'plan': <String, dynamic>{
                      'eligible': true,
-                      'netProfitKobo': 5000,
-                     'poolKobo': 3500,
-                     'companyRetainedKobo': 1500,
-                      'unallocatedKobo': 0,
+                     'netProfitKobo': 10000,
+                     'poolKobo': 10000,
+                     'headOfficeKobo': 3800,
+                     'beneficiaryKobo': 6200,
+                     'unallocatedKobo': 0,
                      'roundingKobo': 0,
-                      'poolPercentage': 70,
                    },
                   'serviceType': 'AIRTIME',
                   'ruleId': 'rule-airtime-12',
@@ -281,11 +281,15 @@ void main() {
     await tester.pumpAndSettle();
     await _scrollTo(tester, find.textContaining('Eligible receipt receipt-24'));
     expect(find.textContaining('Eligible receipt receipt-24'), findsOneWidget);
-    expect(find.textContaining('Verified net profit: ₦50.00'), findsOneWidget);
-    expect(find.textContaining('Profit pool: ₦35.00'), findsOneWidget);
-    expect(find.textContaining('Company-retained profit: ₦15.00'), findsOneWidget);
+    expect(find.textContaining('Verified net profit: ₦100.00'), findsOneWidget);
+    expect(find.textContaining('Profit pool: ₦100.00'), findsOneWidget);
+    expect(
+      find.textContaining('Head Office share · company custody: ₦38.00'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Other beneficiary shares: ₦62.00'), findsOneWidget);
     expect(find.textContaining('Unallocated commission: ₦0.00'), findsOneWidget);
-    expect(find.textContaining('Pool percentage: 70%'), findsOneWidget);
+    expect(find.textContaining('Company-retained profit'), findsNothing);
 
     await _scrollTo(
       tester,

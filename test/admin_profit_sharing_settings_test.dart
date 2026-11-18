@@ -79,13 +79,32 @@ Map<String, dynamic> engine() => <String, dynamic>{
       },
     };
 
+Map<String, dynamic> companySettings({bool canManage = true}) =>
+    <String, dynamic>{
+      'success': true,
+      'data': <String, dynamic>{
+        'revision': 0,
+        'enabled': false,
+        'currentRule': null,
+        'versions': <dynamic>[],
+        'storageBlockers': <dynamic>[],
+        'canManage': canManage,
+        'pendingVerificationCount': 0,
+        'settlementSource': 'VERIFIED_COMPANY_PROFIT_ONLY',
+      },
+    };
+
 http.Response _settingsOrEngine(
   http.Request request, {
   required Map<String, dynamic> settingsResponse,
 }) =>
     http.Response(
       jsonEncode(
-        request.url.path.endsWith('/engine') ? engine() : settingsResponse,
+        request.url.path.endsWith('/company')
+            ? companySettings()
+            : request.url.path.endsWith('/engine')
+                ? engine()
+                : settingsResponse,
       ),
       200,
     );
@@ -122,8 +141,10 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Company Profit Sharing Configuration'), findsOneWidget);
+    await _scrollTo(tester, find.text('Distribution is not live'));
     expect(find.text('Distribution is not live'), findsOneWidget);
-    expect(find.text('Settlement is not enabled for this environment.'), findsOneWidget);
+    expect(find.text('Settlement is not enabled for this environment.'),
+        findsOneWidget);
     await _scrollTo(
       tester,
       find.byKey(const ValueKey<String>('percentage-HEAD_OFFICE')),
@@ -134,7 +155,8 @@ void main() {
       'STATE_MANAGER',
       'AGGREGATOR',
     ]) {
-      final TextField field = tester.widget<TextField>(find.byKey(ValueKey<String>('percentage-$role')));
+      final TextField field = tester
+          .widget<TextField>(find.byKey(ValueKey<String>('percentage-$role')));
       expect(field.controller!.text, isEmpty);
     }
     expect(find.text('Head Office Percentage'), findsOneWidget);
@@ -142,18 +164,27 @@ void main() {
     expect(find.text('State Managers Percentage'), findsOneWidget);
     expect(find.text('Aggregators Percentage'), findsOneWidget);
     expect(find.text('Remaining unallocated: 100.00%'), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('profit-sharing-use-allocation-suggestion')), findsNothing);
-    expect(find.byKey(const ValueKey<String>('profit-sharing-pool-percentage')), findsNothing);
+    expect(
+        find.byKey(
+            const ValueKey<String>('profit-sharing-use-allocation-suggestion')),
+        findsNothing);
+    expect(find.byKey(const ValueKey<String>('profit-sharing-pool-percentage')),
+        findsNothing);
     expect(find.textContaining('40 / 35 / 25'), findsNothing);
     await _scrollTo(
       tester,
-      find.text('No saved rule for this service yet. Percentages are intentionally blank.'),
+      find.text(
+          'No saved rule for this service yet. Percentages are intentionally blank.'),
     );
-    expect(find.text('No saved rule for this service yet. Percentages are intentionally blank.'), findsOneWidget);
+    expect(
+        find.text(
+            'No saved rule for this service yet. Percentages are intentionally blank.'),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('validates missing percentages and audit reason before confirmation',
+  testWidgets(
+      'validates missing percentages and audit reason before confirmation',
       (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: ProfitSharingSettingsScreen(
@@ -163,13 +194,12 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView), const Offset(0, -1500));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Save rule'));
+    await _scrollTo(tester, find.text('Save rule'));
     await tester.tap(find.text('Save rule'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Set all four beneficiary percentages explicitly. Zero is allowed.'),
+      find.text(
+          'Set all four beneficiary percentages explicitly. Zero is allowed.'),
       findsOneWidget,
     );
     expect(find.text('Review future rule'), findsNothing);
@@ -191,7 +221,8 @@ void main() {
       const MapEntry<String, String>('STATE_MANAGER', '30'),
       const MapEntry<String, String>('AGGREGATOR', '40'),
     ]) {
-      final Finder field = find.byKey(ValueKey<String>('percentage-${rate.key}'));
+      final Finder field =
+          find.byKey(ValueKey<String>('percentage-${rate.key}'));
       await _scrollTo(tester, field);
       await tester.enterText(field, rate.value);
     }
@@ -203,8 +234,12 @@ void main() {
     await _scrollTo(tester, find.text('Save rule'));
     await tester.tap(find.text('Save rule'));
     await tester.pumpAndSettle();
-    expect(find.text('Choose a future date and time for this rule.'), findsOneWidget);
-    expect(find.text('The four beneficiary percentages must add up to exactly 100%.'), findsNothing);
+    expect(find.text('Choose a future date and time for this rule.'),
+        findsOneWidget);
+    expect(
+        find.text(
+            'The four beneficiary percentages must add up to exactly 100%.'),
+        findsNothing);
   });
 
   testWidgets('decimal rates report zero remaining without negative zero',
@@ -223,7 +258,8 @@ void main() {
       const MapEntry<String, String>('STATE_MANAGER', '38'),
       const MapEntry<String, String>('AGGREGATOR', '36'),
     ]) {
-      final Finder field = find.byKey(ValueKey<String>('percentage-${rate.key}'));
+      final Finder field =
+          find.byKey(ValueKey<String>('percentage-${rate.key}'));
       await _scrollTo(tester, field);
       await tester.enterText(field, rate.value);
     }
@@ -236,7 +272,8 @@ void main() {
     await _scrollTo(tester, find.text('Save rule'));
     await tester.tap(find.text('Save rule'));
     await tester.pumpAndSettle();
-    expect(find.text('Choose a future date and time for this rule.'), findsOneWidget);
+    expect(find.text('Choose a future date and time for this rule.'),
+        findsOneWidget);
   });
 
   testWidgets('remaining percentage updates and non-100 rates cannot save',
@@ -255,7 +292,8 @@ void main() {
       const MapEntry<String, String>('STATE_MANAGER', '21'),
       const MapEntry<String, String>('AGGREGATOR', '13'),
     ]) {
-      final Finder field = find.byKey(ValueKey<String>('percentage-${rate.key}'));
+      final Finder field =
+          find.byKey(ValueKey<String>('percentage-${rate.key}'));
       await _scrollTo(tester, field);
       await tester.enterText(field, rate.value);
     }
@@ -273,7 +311,8 @@ void main() {
     await tester.tap(find.text('Save rule'));
     await tester.pumpAndSettle();
     expect(
-      find.text('The four beneficiary percentages must add up to exactly 100%.'),
+      find.text(
+          'The four beneficiary percentages must add up to exactly 100%.'),
       findsOneWidget,
     );
     expect(find.text('Review future rule'), findsNothing);
@@ -300,16 +339,28 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('percentage-HEAD_OFFICE')),
     );
-    expect(tester.widget<TextField>(find.byKey(
-      const ValueKey<String>('percentage-HEAD_OFFICE'),
-    )).controller!.text, '38');
-    expect(tester.widget<TextField>(find.byKey(
-      const ValueKey<String>('percentage-ZONAL_MANAGER'),
-    )).controller!.text, '27');
+    expect(
+        tester
+            .widget<TextField>(find.byKey(
+              const ValueKey<String>('percentage-HEAD_OFFICE'),
+            ))
+            .controller!
+            .text,
+        '38');
+    expect(
+        tester
+            .widget<TextField>(find.byKey(
+              const ValueKey<String>('percentage-ZONAL_MANAGER'),
+            ))
+            .controller!
+            .text,
+        '27');
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
     expect(find.text('Approved distribution update'), findsOneWidget);
-    expect(find.text('Policy v3 · 100% of verified positive company net profit'), findsOneWidget);
+    expect(
+        find.text('Policy v3 · 100% of verified positive company net profit'),
+        findsOneWidget);
     expect(find.text('New configuration'), findsOneWidget);
     expect(find.text('Head Office: 38%'), findsOneWidget);
     expect(find.text('Zonal Managers: 27%'), findsOneWidget);
@@ -318,10 +369,12 @@ void main() {
     expect(find.text('Previous configuration'), findsOneWidget);
     expect(find.text('Head Office: 35%'), findsOneWidget);
     expect(find.text('Zonal Managers: 25%'), findsOneWidget);
-    expect(find.text('Recorded 2029-01-01T12:00:00.000Z · admin@servicepay.ng'), findsOneWidget);
+    expect(find.text('Recorded 2029-01-01T12:00:00.000Z · admin@servicepay.ng'),
+        findsOneWidget);
   });
 
-  testWidgets('legacy allocations stay hidden while history metadata is preserved',
+  testWidgets(
+      'legacy allocations stay hidden while history metadata is preserved',
       (WidgetTester tester) async {
     final Map<String, dynamic> legacy = version()
       ..remove('policyVersion')
@@ -348,8 +401,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView), const Offset(0, -350));
-    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.textContaining('Legacy rule:'));
     expect(find.textContaining('Legacy rule:'), findsOneWidget);
     for (final String role in <String>[
       'HEAD_OFFICE',
@@ -358,9 +410,12 @@ void main() {
       'AGGREGATOR',
     ]) {
       expect(
-        tester.widget<TextField>(
-          find.byKey(ValueKey<String>('percentage-$role')),
-        ).controller!.text,
+        tester
+            .widget<TextField>(
+              find.byKey(ValueKey<String>('percentage-$role')),
+            )
+            .controller!
+            .text,
         isEmpty,
       );
     }
@@ -368,12 +423,14 @@ void main() {
       tester,
       find.textContaining('Legacy version — preserved as recorded'),
     );
-    expect(find.textContaining('Legacy version — preserved as recorded'), findsOneWidget);
+    expect(find.textContaining('Legacy version — preserved as recorded'),
+        findsOneWidget);
     expect(find.textContaining('BUSINESS_NETWORK_AGENT'), findsNothing);
     expect(find.textContaining(': 20%'), findsNothing);
     expect(find.text('Head Office: 20%'), findsNothing);
     expect(find.text('Zonal Managers: 20%'), findsNothing);
-    expect(find.textContaining('Effective 2030-04-12T09:00:00.000Z'), findsOneWidget);
+    expect(find.textContaining('Effective 2030-04-12T09:00:00.000Z'),
+        findsOneWidget);
     expect(find.text('Approved distribution update'), findsOneWidget);
   });
 
@@ -394,15 +451,17 @@ void main() {
           }
           postCount++;
           if (postCount == 1) return http.Response('{}', 200);
-          return http.Response(jsonEncode(<String, dynamic>{
-            'success': true,
-            'data': <String, dynamic>{
-              'serviceType': 'AIRTIME',
-              'revision': 1,
-              'versions': <Map<String, dynamic>>[version()],
-              'replayed': false,
-            },
-          }), 200);
+          return http.Response(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'data': <String, dynamic>{
+                  'serviceType': 'AIRTIME',
+                  'revision': 1,
+                  'versions': <Map<String, dynamic>>[version()],
+                  'replayed': false,
+                },
+              }),
+              200);
         }),
       ),
     ));
@@ -413,7 +472,8 @@ void main() {
       const MapEntry<String, String>('STATE_MANAGER', '21'),
       const MapEntry<String, String>('AGGREGATOR', '14'),
     ]) {
-      final Finder field = find.byKey(ValueKey<String>('percentage-${rate.key}'));
+      final Finder field =
+          find.byKey(ValueKey<String>('percentage-${rate.key}'));
       await _scrollTo(tester, field);
       await tester.enterText(field, rate.value);
     }
@@ -457,21 +517,26 @@ void main() {
       hasLength(2),
     );
     expect(
-      jsonDecode(requests.lastWhere(
-        (http.Request request) => request.method == 'POST',
-      ).body),
+      jsonDecode(requests
+          .lastWhere(
+            (http.Request request) => request.method == 'POST',
+          )
+          .body),
       firstBody,
     );
     final http.Request post = firstPost;
     expect(post.method, 'POST');
     expect(post.url.path, '/api/admin/product-commissions/profit-sharing');
     expect(post.headers['authorization'], 'Bearer test-token');
-    final Map<String, dynamic> body = jsonDecode(post.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(post.body) as Map<String, dynamic>;
     expect(body['serviceType'], 'AIRTIME');
     expect(body['revision'], 0);
     expect(body['confirmation'], true);
     expect(body['reason'], 'Approved annual service margin');
-    expect(DateTime.parse(body['effectiveAt'] as String).isAfter(DateTime.now()), isTrue);
+    expect(
+        DateTime.parse(body['effectiveAt'] as String).isAfter(DateTime.now()),
+        isTrue);
     expect(body['percentages'], <String, dynamic>{
       'HEAD_OFFICE': 38,
       'ZONAL_MANAGER': 27,
@@ -490,12 +555,15 @@ void main() {
       ]),
     );
     expect(body['idempotencyKey'], isNotEmpty);
-    await tester.drag(find.byType(ListView), const Offset(0, 3000));
-    await tester.pumpAndSettle();
+    await _scrollTo(
+      tester,
+      find.text('Distribution is not live'),
+      delta: -220,
+    );
     expect(find.text('Distribution is not live'), findsOneWidget);
     expect(
-      requests.where((http.Request request) =>
-          request.url.path.endsWith('/activation')),
+      requests.where(
+          (http.Request request) => request.url.path.endsWith('/activation')),
       isEmpty,
     );
   });
@@ -552,17 +620,17 @@ void main() {
       baseUrl: 'https://servicepay.test/api',
       tokenProvider: () async => 'test-token',
       client: MockClient((http.Request request) async => http.Response(
-        jsonEncode(<String, dynamic>{
-          'success': true,
-          'data': <String, dynamic>{
-            'serviceType': 'AIRTIME',
-            'revision': 8,
-            'versions': <Map<String, dynamic>>[version(), legacy],
-            'replayed': false,
-          },
-        }),
-        200,
-      )),
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'data': <String, dynamic>{
+                'serviceType': 'AIRTIME',
+                'revision': 8,
+                'versions': <Map<String, dynamic>>[version(), legacy],
+                'replayed': false,
+              },
+            }),
+            200,
+          )),
     );
     addTearDown(api.close);
     final Map<String, dynamic> result = await api.saveRule(<String, dynamic>{
@@ -576,7 +644,8 @@ void main() {
     });
     final List versions = (result['data'] as Map)['versions'] as List;
     expect(versions, hasLength(2));
-    expect((versions[1] as Map)['percentages'], contains('BUSINESS_NETWORK_AGENT'));
+    expect((versions[1] as Map)['percentages'],
+        contains('BUSINESS_NETWORK_AGENT'));
     expect((versions[1] as Map).containsKey('policyVersion'), isFalse);
   });
 
@@ -710,17 +779,17 @@ void main() {
       baseUrl: 'https://servicepay.test/api',
       tokenProvider: () async => 'test-token',
       client: MockClient((http.Request request) async => http.Response(
-        jsonEncode(<String, dynamic>{
-          'success': true,
-          'data': <String, dynamic>{
-            'serviceType': 'AIRTIME',
-            'revision': 10,
-            'versions': <Map<String, dynamic>>[savedVersion],
-            'replayed': false,
-          },
-        }),
-        200,
-      )),
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'data': <String, dynamic>{
+                'serviceType': 'AIRTIME',
+                'revision': 10,
+                'versions': <Map<String, dynamic>>[savedVersion],
+                'replayed': false,
+              },
+            }),
+            200,
+          )),
     );
     addTearDown(api.close);
     final Map<String, dynamic> result = await api.saveRule(<String, dynamic>{
@@ -729,7 +798,8 @@ void main() {
     });
     expect((result['data'] as Map)['revision'], 10);
     expect(
-      ((result['data'] as Map)['versions'] as List).first['previousPercentages'],
+      ((result['data'] as Map)['versions'] as List)
+          .first['previousPercentages'],
       isNull,
     );
   });

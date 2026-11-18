@@ -45,7 +45,8 @@ class ProfitSharingApi {
     if (_tokenProvider != null) {
       token = await _tokenProvider!();
     } else {
-      final SharedPreferences preferences = await SharedPreferences.getInstance();
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
       for (final String key in const <String>[
         'auth_token',
         'admin_token',
@@ -62,8 +63,9 @@ class ProfitSharingApi {
         }
       }
     }
-    final String clean =
-        (token ?? '').replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '').trim();
+    final String clean = (token ?? '')
+        .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '')
+        .trim();
     if (clean.isEmpty) {
       throw const ProfitSharingApiException(
         'Your admin session was not found. Please sign in again.',
@@ -75,6 +77,186 @@ class ProfitSharingApi {
 
   Future<Map<String, dynamic>> getSettings() => _send('GET');
 
+  /// Reads the company-wide, verified-net-profit distribution configuration.
+  Future<Map<String, dynamic>> getCompany() async {
+    final Map<String, dynamic> response =
+        await _send('GET', suffix: '/company');
+    _validateCompanyResponse(response);
+    return response;
+  }
+
+  /// Saves an immediate company-wide allocation version.
+  ///
+  /// The request intentionally contains only the company endpoint contract;
+  /// service rules, schedules, dry-run receipts, and engine settings do not
+  /// belong to this write.
+  Future<Map<String, dynamic>> saveCompanyRule(
+    Map<String, dynamic> payload,
+  ) async {
+    const List<String> requiredKeys = <String>[
+      'revision',
+      'idempotencyKey',
+      'percentages',
+      'reason',
+      'confirmation',
+      'currentPassword',
+    ];
+    final Map<String, dynamic> body = Map<String, dynamic>.from(payload);
+    if (body.keys.toSet().difference(requiredKeys.toSet()).isNotEmpty ||
+        !body.keys.toSet().containsAll(requiredKeys)) {
+      throw const ProfitSharingApiException(
+        'The company rule request is incomplete.',
+      );
+    }
+    _validateCompanyRevision(body['revision']);
+    _validateCompanyPercentages(body['percentages']);
+    _validateCompanyAudit(body);
+    if (body['idempotencyKey'] is! String ||
+        (body['idempotencyKey'] as String).trim().isEmpty ||
+        (body['idempotencyKey'] as String).length > 160) {
+      throw const ProfitSharingApiException(
+        'A valid idempotency key is required.',
+      );
+    }
+    final Map<String, dynamic> response =
+        await _send('POST', suffix: '/company', body: body);
+    _validateCompanyResponse(response);
+    return response;
+  }
+
+  /// Changes authoritative company distribution activation.
+  Future<Map<String, dynamic>> setCompanyEnabled(
+    Map<String, dynamic> payload,
+  ) async {
+    const Set<String> requiredKeys = <String>{
+      'revision',
+      'enabled',
+      'reason',
+      'confirmation',
+      'currentPassword',
+    };
+    final Map<String, dynamic> body = Map<String, dynamic>.from(payload);
+    if (body.keys.toSet().difference(requiredKeys).isNotEmpty ||
+        !body.keys.toSet().containsAll(requiredKeys) ||
+        body['enabled'] is! bool) {
+      throw const ProfitSharingApiException(
+        'The company activation request is incomplete.',
+      );
+    }
+    _validateCompanyRevision(body['revision']);
+    _validateCompanyAudit(body);
+    final Map<String, dynamic> response =
+        await _send('POST', suffix: '/company/activation', body: body);
+    _validateCompanyResponse(response);
+    final dynamic data = response['data'];
+    if ((data as Map)['enabled'] != body['enabled']) {
+      throw const ProfitSharingApiException(
+        'The server response did not confirm the requested company status.',
+        statusCode: 200,
+      );
+    }
+    return response;
+  }
+
+  static const List<String> _companyRoles = <String>[
+    'HEAD_OFFICE',
+    'ZONAL_MANAGER',
+    'STATE_MANAGER',
+    'AGGREGATOR',
+  ];
+
+  void _validateCompanyRevision(dynamic revision) {
+    if (revision is! num ||
+        !revision.isFinite ||
+        revision < 0 ||
+        revision != revision.roundToDouble()) {
+      throw const ProfitSharingApiException(
+        'A current non-negative integer company revision is required.',
+      );
+    }
+  }
+
+  void _validateCompanyPercentages(dynamic rawPercentages) {
+    if (rawPercentages is! Map ||
+        rawPercentages.length != _companyRoles.length ||
+        !_companyRoles.every(rawPercentages.containsKey) ||
+        rawPercentages.values.any((dynamic value) =>
+            value is! num ||
+            !value.isFinite ||
+            value < 0 ||
+            value > 100 ||
+            ((value * 100).roundToDouble() - value * 100).abs() > 1e-8) ||
+        (rawPercentages.values.cast<num>().fold<num>(
+                          0,
+                          (num total, num value) => total + value,
+                        ) -
+                    100)
+                .abs() >
+            0.000001) {
+      throw const ProfitSharingApiException(
+        'All four company percentages must total exactly 100%, with values from 0 to 100 and at most two decimal places.',
+      );
+    }
+  }
+
+  void _validateCompanyAudit(Map<String, dynamic> body) {
+    final dynamic reason = body['reason'];
+    if (body['confirmation'] != true ||
+        reason is! String ||
+        reason.trim().length < 10 ||
+        reason.trim().length > 500 ||
+        body['currentPassword'] is! String ||
+        (body['currentPassword'] as String).isEmpty) {
+      throw const ProfitSharingApiException(
+        'A reason of 10–500 characters, confirmation, and current password are required.',
+      );
+    }
+  }
+
+  void _validateCompanyResponse(Map<String, dynamic> response) {
+    final dynamic raw = response['data'];
+    if (raw is! Map) {
+      throw const ProfitSharingApiException(
+        'Company profit settings returned incomplete data.',
+      );
+    }
+    final Map<String, dynamic> data = Map<String, dynamic>.from(raw);
+    final dynamic current = data['currentRule'];
+    bool validRule(dynamic value) {
+      if (value is! Map) return false;
+      final Map<String, dynamic> rule = Map<String, dynamic>.from(value);
+      try {
+        _validateCompanyPercentages(rule['percentages']);
+      } on ProfitSharingApiException {
+        return false;
+      }
+      return rule['id'] != null &&
+          rule['createdAt'] is String &&
+          rule['createdBy'] != null &&
+          rule['reason'] is String;
+    }
+
+    final dynamic versions = data['versions'];
+    if (data['revision'] is! num ||
+        !(data['revision'] as num).isFinite ||
+        (data['revision'] as num) < 0 ||
+        (data['revision'] as num) !=
+            (data['revision'] as num).roundToDouble() ||
+        data['enabled'] is! bool ||
+        (current != null && !validRule(current)) ||
+        versions is! List ||
+        !versions.every(validRule) ||
+        data['storageBlockers'] is! List ||
+        data['canManage'] is! bool ||
+        data['pendingVerificationCount'] is! int ||
+        (data['pendingVerificationCount'] as int) < 0 ||
+        data['settlementSource'] != 'VERIFIED_COMPANY_PROFIT_ONLY') {
+      throw const ProfitSharingApiException(
+        'Company profit settings returned incomplete or invalid data.',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> getEngine() => _send('GET', suffix: '/engine');
 
   Future<Map<String, dynamic>> getSettlements({
@@ -84,16 +266,14 @@ class ProfitSharingApi {
     String? to,
   }) {
     if (page < 1 || limit < 1 || limit > 100) {
-      throw const ProfitSharingApiException('Choose a valid settlement history page.');
+      throw const ProfitSharingApiException(
+          'Choose a valid settlement history page.');
     }
-    final DateTime? fromDate =
-        from == null ? null : DateTime.tryParse(from);
+    final DateTime? fromDate = from == null ? null : DateTime.tryParse(from);
     final DateTime? toDate = to == null ? null : DateTime.tryParse(to);
     if ((from != null && fromDate == null) ||
         (to != null && toDate == null) ||
-        (fromDate != null &&
-            toDate != null &&
-            fromDate.isAfter(toDate))) {
+        (fromDate != null && toDate != null && fromDate.isAfter(toDate))) {
       throw const ProfitSharingApiException(
         'Choose a valid settlement report period.',
       );
@@ -129,7 +309,8 @@ class ProfitSharingApi {
     final String? serviceAction = payload['serviceAction']?.toString();
     final dynamic revision = payload['revision'];
     if (mode != 'LIVE' && mode != 'PAUSED') {
-      throw const ProfitSharingApiException('Choose a valid distribution mode.');
+      throw const ProfitSharingApiException(
+          'Choose a valid distribution mode.');
     }
     if (serviceAction != null &&
         serviceAction != 'ENABLE' &&
@@ -152,8 +333,7 @@ class ProfitSharingApi {
     }
     if (payload['confirmation'] != true ||
         (mode == 'LIVE' &&
-            payload['confirmationText'] !=
-                'ACTIVATE FUTURE PROFIT SHARING') ||
+            payload['confirmationText'] != 'ACTIVATE FUTURE PROFIT SHARING') ||
         payload['reason'] is! String ||
         (payload['reason'] as String).trim().length < 10 ||
         payload['currentPassword'] is! String ||
@@ -195,11 +375,11 @@ class ProfitSharingApi {
             value > 100 ||
             ((value * 100).roundToDouble() - value * 100).abs() > 1e-8) ||
         (rawPercentages.values.cast<num>().fold<num>(
-                      0,
-                      (num total, num value) => total + value,
-                    ) -
-                100)
-            .abs() >
+                          0,
+                          (num total, num value) => total + value,
+                        ) -
+                    100)
+                .abs() >
             0.000001) {
       throw const ProfitSharingApiException(
         'All four beneficiary percentages must total 100%, with each value from 0 to 100 and at most two decimal places.',
@@ -208,8 +388,7 @@ class ProfitSharingApi {
     final Map<String, dynamic> requestBody = Map<String, dynamic>.from(payload)
       ..remove('policyVersion')
       ..remove('poolPercentage');
-    final Map<String, dynamic> root =
-        await _send('POST', body: requestBody);
+    final Map<String, dynamic> root = await _send('POST', body: requestBody);
     final dynamic raw = root['data'];
     final Map<String, dynamic> data =
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
@@ -230,9 +409,9 @@ class ProfitSharingApi {
         return false;
       }
       return (values.cast<num>().fold<num>(
-                    0,
-                    (num total, num value) => total + value,
-                  ) -
+                        0,
+                        (num total, num value) => total + value,
+                      ) -
                   100)
               .abs() <=
           0.000001;
@@ -309,11 +488,11 @@ class ProfitSharingApi {
         }
         if (decoded is Map) root = Map<String, dynamic>.from(decoded);
       }
-      if (response.statusCode < 200 || response.statusCode >= 300 ||
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
           root['success'] != true) {
-        final String message = (root['message'] ?? root['error'] ?? '')
-            .toString()
-            .trim();
+        final String message =
+            (root['message'] ?? root['error'] ?? '').toString().trim();
         throw ProfitSharingApiException(
           message.isEmpty
               ? response.statusCode == 409

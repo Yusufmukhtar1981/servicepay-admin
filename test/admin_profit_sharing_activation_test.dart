@@ -21,6 +21,20 @@ Map<String, dynamic> _settings({
       },
     };
 
+Map<String, dynamic> _companySettings() => <String, dynamic>{
+      'success': true,
+      'data': <String, dynamic>{
+        'revision': 0,
+        'enabled': false,
+        'currentRule': null,
+        'versions': <dynamic>[],
+        'storageBlockers': <dynamic>[],
+        'canManage': true,
+        'pendingVerificationCount': 0,
+        'settlementSource': 'VERIFIED_COMPANY_PROFIT_ONLY',
+      },
+    };
+
 Map<String, dynamic> _engine({
   String mode = 'PAUSED',
   bool ready = true,
@@ -39,22 +53,26 @@ Map<String, dynamic> _engine({
         'storageBlockers': storageBlockers,
         'services': services ??
             <Map<String, dynamic>>[
-          <String, dynamic>{
-            'serviceType': 'AIRTIME',
-            'ruleId': 'rule-airtime-12',
-            'ready': true,
-            'enabled': false,
-            'live': false,
-            'blockers': serviceBlockers,
-          },
-        ],
+              <String, dynamic>{
+                'serviceType': 'AIRTIME',
+                'ruleId': 'rule-airtime-12',
+                'ready': true,
+                'enabled': live,
+                'live': live,
+                'blockers': serviceBlockers,
+              },
+            ],
       },
     };
 
-Future<void> _scrollTo(WidgetTester tester, Finder target) async {
+Future<void> _scrollTo(
+  WidgetTester tester,
+  Finder target, {
+  double delta = 220,
+}) async {
   await tester.scrollUntilVisible(
     target,
-    220,
+    delta,
     scrollable: find.byType(Scrollable).first,
   );
   await Scrollable.ensureVisible(
@@ -70,7 +88,8 @@ void main() {
     final ProfitSharingApi api = ProfitSharingApi(
       baseUrl: 'https://servicepay.test/api',
       tokenProvider: () async => 'session-token',
-      client: MockClient((http.Request request) async => http.Response('{}', 500)),
+      client:
+          MockClient((http.Request request) async => http.Response('{}', 500)),
     );
     addTearDown(api.close);
     expect(
@@ -104,7 +123,8 @@ void main() {
     }
   });
 
-  testWidgets('service pause submits scoped DISABLE and verifies refreshed status',
+  testWidgets(
+      'service pause submits scoped DISABLE and verifies refreshed status',
       (WidgetTester tester) async {
     final List<http.Request> requests = <http.Request>[];
     Map<String, dynamic> engine = _engine(
@@ -126,16 +146,18 @@ void main() {
       tokenProvider: () async => 'session-token',
       client: MockClient((http.Request request) async {
         requests.add(request);
-        return http.Response(jsonEncode(<String, dynamic>{
-          'success': true,
-          'data': <String, dynamic>{
-            'mode': 'LIVE',
-            'revision': 13,
-            'serviceAction': 'DISABLE',
-            'serviceType': 'DATA',
-            'activeServices': <String>[],
-          },
-        }), 200);
+        return http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'data': <String, dynamic>{
+                'mode': 'LIVE',
+                'revision': 13,
+                'serviceAction': 'DISABLE',
+                'serviceType': 'DATA',
+                'activeServices': <String>[],
+              },
+            }),
+            200);
       }),
     );
     addTearDown(api.close);
@@ -200,7 +222,8 @@ void main() {
     expect(body.containsKey('dryRunIds'), isFalse);
     expect(body['reason'], 'Pause DATA after review');
     expect(body['currentPassword'], 'current-password');
-    expect(find.textContaining('Backend status confirms this service is disabled'),
+    expect(
+        find.textContaining('Backend status confirms this service is disabled'),
         findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -210,7 +233,8 @@ void main() {
     final ProfitSharingApi api = ProfitSharingApi(
       baseUrl: 'https://servicepay.test/api',
       tokenProvider: () async => 'session-token',
-      client: MockClient((http.Request request) async => http.Response('{}', 500)),
+      client:
+          MockClient((http.Request request) async => http.Response('{}', 500)),
     );
     addTearDown(api.close);
     await tester.pumpWidget(MaterialApp(
@@ -233,17 +257,21 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<FilledButton>(
-        find.byKey(const ValueKey<String>('profit-sharing-activate')),
-      ).onPressed,
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('profit-sharing-activate')),
+          )
+          .onPressed,
       isNull,
     );
-    expect(find.text('Your account cannot perform activation or pause actions.'),
+    expect(
+        find.text('Your account cannot perform activation or pause actions.'),
         findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('global pause scope is explicit and requires confirmation before sending',
+  testWidgets(
+      'global pause scope is explicit and requires confirmation before sending',
       (WidgetTester tester) async {
     final List<http.Request> requests = <http.Request>[];
     int refreshes = 0;
@@ -252,46 +280,66 @@ void main() {
       tokenProvider: () async => 'session-token',
       client: MockClient((http.Request request) async {
         requests.add(request);
-        return http.Response(jsonEncode(<String, dynamic>{
-          'success': true, 'data': <String, dynamic>{'mode': 'PAUSED', 'revision': 13},
-        }), 200);
+        return http.Response(
+            jsonEncode(<String, dynamic>{
+              'success': true,
+              'data': <String, dynamic>{'mode': 'PAUSED', 'revision': 13},
+            }),
+            200);
       }),
     );
     addTearDown(api.close);
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
       child: ProfitSharingActivationPanel(
-        api: api, engine: _engine(mode: 'LIVE', live: true)['data'] as Map<String, dynamic>,
-        service: 'AIRTIME', canManage: true, refreshStatus: () async { refreshes++; },
+        api: api,
+        engine:
+            _engine(mode: 'LIVE', live: true)['data'] as Map<String, dynamic>,
+        service: 'AIRTIME',
+        canManage: true,
+        refreshStatus: () async {
+          refreshes++;
+        },
       ),
     ))));
     await tester.pumpAndSettle();
-    await _scrollTo(tester, find.byKey(const ValueKey<String>('profit-sharing-expand-controls')));
-    await tester.tap(find.byKey(const ValueKey<String>('profit-sharing-expand-controls')));
+    await _scrollTo(tester,
+        find.byKey(const ValueKey<String>('profit-sharing-expand-controls')));
+    await tester.tap(
+        find.byKey(const ValueKey<String>('profit-sharing-expand-controls')));
     await tester.pumpAndSettle();
     for (final entry in <String, String>{
       'profit-sharing-activation-reason': 'Stop new admissions for safety',
       'profit-sharing-current-password': 'synthetic-current-password',
     }.entries) {
       final Finder field = find.byKey(ValueKey<String>(entry.key));
-      await _scrollTo(tester, field); await tester.enterText(field, entry.value);
+      await _scrollTo(tester, field);
+      await tester.enterText(field, entry.value);
     }
     final Finder pause = find.text('Emergency pause all services');
-    await _scrollTo(tester, pause); await tester.tap(pause); await tester.pumpAndSettle();
+    await _scrollTo(tester, pause);
+    await tester.tap(pause);
+    await tester.pumpAndSettle();
     expect(find.textContaining('all active services'), findsOneWidget);
-    expect(find.textContaining('Already admitted settlements and refunds'), findsOneWidget);
+    expect(find.textContaining('Already admitted settlements and refunds'),
+        findsOneWidget);
     expect(requests, isEmpty);
-    await tester.tap(find.text('Confirm pause')); await tester.pumpAndSettle();
-    expect(requests, hasLength(1)); expect(refreshes, 1);
+    await tester.tap(find.text('Confirm pause'));
+    await tester.pumpAndSettle();
+    expect(requests, hasLength(1));
+    expect(refreshes, 1);
     final Map<String, dynamic> pauseBody =
         jsonDecode(requests.single.body) as Map<String, dynamic>;
     expect(pauseBody['mode'], 'PAUSED');
     expect(pauseBody.containsKey('confirmationText'), isFalse);
     final TextField password = tester.widget<TextField>(
-      find.byKey(const ValueKey<String>('profit-sharing-current-password')));
+        find.byKey(const ValueKey<String>('profit-sharing-current-password')));
     expect(password.controller!.text, isEmpty);
     expect(tester.takeException(), isNull);
   });
-  test('engine and dry-run use authenticated scoped endpoints and safe body', () async {
+  test('engine and dry-run use authenticated scoped endpoints and safe body',
+      () async {
     final List<http.Request> requests = <http.Request>[];
     final ProfitSharingApi api = ProfitSharingApi(
       baseUrl: 'https://servicepay.test/api',
@@ -327,8 +375,10 @@ void main() {
         '/api/admin/product-commissions/profit-sharing/engine',
         '/api/admin/product-commissions/profit-sharing/dry-run',
       ]);
-      expect(requests.every((http.Request request) =>
-          request.headers['authorization'] == 'Bearer session-token'), isTrue);
+      expect(
+          requests.every((http.Request request) =>
+              request.headers['authorization'] == 'Bearer session-token'),
+          isTrue);
       expect(requests[1].method, 'POST');
       expect(jsonDecode(requests[1].body), <String, dynamic>{
         'transactionId': '0123456789abcdef01234567',
@@ -354,6 +404,9 @@ void main() {
         tokenProvider: () async => 'session-token',
         client: MockClient((http.Request request) async {
           requestedPaths.add(request.url.path);
+          if (request.url.path.endsWith('/company')) {
+            return http.Response(jsonEncode(_companySettings()), 200);
+          }
           if (request.url.path.endsWith('/engine')) {
             return http.Response(
               jsonEncode(_engine(
@@ -361,7 +414,9 @@ void main() {
                 ready: false,
                 live: false,
                 storageBlockers: <String>['Ledger write path unavailable.'],
-                serviceBlockers: <String>['Production adapter is not registered.'],
+                serviceBlockers: <String>[
+                  'Production adapter is not registered.'
+                ],
               )),
               200,
             );
@@ -371,6 +426,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('Distribution is not live'));
     expect(find.text('Distribution is not live'), findsOneWidget);
     expect(find.text('Distribution is LIVE'), findsNothing);
     final Finder storageBlocker =
@@ -387,19 +443,19 @@ void main() {
     await _scrollTo(tester, controls);
     await tester.tap(controls);
     await tester.pumpAndSettle();
-    final Finder activateLabel =
-        find.text('Activate future profit sharing');
+    final Finder activateLabel = find.text('Activate future profit sharing');
     await _scrollTo(tester, activateLabel);
-    final FilledButton activate =
-        tester.widget<FilledButton>(
+    final FilledButton activate = tester.widget<FilledButton>(
       find.byKey(const ValueKey<String>('profit-sharing-activate')),
     );
     expect(activate.onPressed, isNull);
-    expect(requestedPaths.any((String path) => path.endsWith('/engine')), isTrue);
+    expect(
+        requestedPaths.any((String path) => path.endsWith('/engine')), isTrue);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('activation requires eligible dry-run and sends one-service confirmation',
+  testWidgets(
+      'activation requires eligible dry-run and sends one-service confirmation',
       (WidgetTester tester) async {
     final List<http.Request> requests = <http.Request>[];
     bool live = false;
@@ -410,8 +466,13 @@ void main() {
         tokenProvider: () async => 'session-token',
         client: MockClient((http.Request request) async {
           requests.add(request);
+          if (request.url.path.endsWith('/company')) {
+            return http.Response(jsonEncode(_companySettings()), 200);
+          }
           if (request.url.path.endsWith('/engine')) {
-            return http.Response(jsonEncode(_engine(live: live, mode: live ? 'LIVE' : 'PAUSED')), 200);
+            return http.Response(
+                jsonEncode(_engine(live: live, mode: live ? 'LIVE' : 'PAUSED')),
+                200);
           }
           if (request.url.path.endsWith('/dry-run')) {
             final Map<String, dynamic> body =
@@ -422,15 +483,15 @@ void main() {
                 'success': true,
                 'data': <String, dynamic>{
                   'id': 'receipt-24',
-                   'plan': <String, dynamic>{
-                     'eligible': true,
-                     'netProfitKobo': 10000,
-                     'poolKobo': 10000,
-                     'headOfficeKobo': 3800,
-                     'beneficiaryKobo': 6200,
-                     'unallocatedKobo': 0,
-                     'roundingKobo': 0,
-                   },
+                  'plan': <String, dynamic>{
+                    'eligible': true,
+                    'netProfitKobo': 10000,
+                    'poolKobo': 10000,
+                    'headOfficeKobo': 3800,
+                    'beneficiaryKobo': 6200,
+                    'unallocatedKobo': 0,
+                    'roundingKobo': 0,
+                  },
                   'serviceType': 'AIRTIME',
                   'ruleId': 'rule-airtime-12',
                   'adapterVersion': 'test-v1',
@@ -442,7 +503,8 @@ void main() {
           }
           if (request.url.path.endsWith('/activation')) {
             live = true;
-            return http.Response(jsonEncode(_engine(mode: 'LIVE', live: true)), 200);
+            return http.Response(
+                jsonEncode(_engine(mode: 'LIVE', live: true)), 200);
           }
           return http.Response(jsonEncode(_settings()), 200);
         }),
@@ -456,9 +518,11 @@ void main() {
     await tester.tap(controls);
     await tester.pumpAndSettle();
     expect(
-      tester.widget<FilledButton>(
-        find.byKey(const ValueKey<String>('profit-sharing-activate')),
-      ).onPressed,
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('profit-sharing-activate')),
+          )
+          .onPressed,
       isNull,
     );
     await _scrollTo(tester, find.text('Run zero-write dry-run'));
@@ -476,8 +540,10 @@ void main() {
       find.textContaining('Head Office share · company custody: ₦38.00'),
       findsOneWidget,
     );
-    expect(find.textContaining('Other beneficiary shares: ₦62.00'), findsOneWidget);
-    expect(find.textContaining('Unallocated commission: ₦0.00'), findsOneWidget);
+    expect(find.textContaining('Other beneficiary shares: ₦62.00'),
+        findsOneWidget);
+    expect(
+        find.textContaining('Unallocated commission: ₦0.00'), findsOneWidget);
     expect(find.textContaining('Company-retained profit'), findsNothing);
 
     await _scrollTo(
@@ -503,7 +569,8 @@ void main() {
       ),
     );
     await tester.enterText(
-      find.byKey(const ValueKey<String>('profit-sharing-activation-confirmation')),
+      find.byKey(
+          const ValueKey<String>('profit-sharing-activation-confirmation')),
       'ACTIVATE FUTURE PROFIT SHARING',
     );
     await _scrollTo(tester, find.text('Activate future profit sharing'));
@@ -524,11 +591,17 @@ void main() {
     expect(body['dryRunIds'], <String, String>{'AIRTIME': 'receipt-24'});
     expect(body['reason'], 'Approved readiness review');
     expect(body['currentPassword'], 'current-password');
-    await tester.drag(find.byType(ListView).first, const Offset(0, 5000));
+    await tester.drag(
+      find.byType(ListView).first,
+      const Offset(0, 5000),
+    );
     await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('Distribution is LIVE'));
     expect(find.text('Distribution is LIVE'), findsOneWidget);
-    expect(requests.where((http.Request request) =>
-        request.url.path.endsWith('/activation')), hasLength(1));
+    expect(
+        requests.where(
+            (http.Request request) => request.url.path.endsWith('/activation')),
+        hasLength(1));
     expect(tester.takeException(), isNull);
   });
 
@@ -586,8 +659,8 @@ void main() {
       findsOneWidget,
     );
     expect(
-      requests.where((http.Request request) =>
-          request.url.path.endsWith('/activation')),
+      requests.where(
+          (http.Request request) => request.url.path.endsWith('/activation')),
       isEmpty,
     );
   });
@@ -602,28 +675,32 @@ void main() {
       client: MockClient((http.Request request) async {
         requests.add(request);
         if (request.url.path.endsWith('/dry-run')) {
-          return http.Response(jsonEncode(<String, dynamic>{
-            'success': true,
-            'data': <String, dynamic>{
-              'id': 'data-receipt',
-              'plan': <String, dynamic>{'eligible': true, 'poolKobo': 880},
-              'serviceType': 'DATA',
-              'ruleId': 'data-rule',
-              'adapterVersion': 'test-v1',
-              'financialWrites': 0,
-            },
-          }), 200);
+          return http.Response(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'data': <String, dynamic>{
+                  'id': 'data-receipt',
+                  'plan': <String, dynamic>{'eligible': true, 'poolKobo': 880},
+                  'serviceType': 'DATA',
+                  'ruleId': 'data-rule',
+                  'adapterVersion': 'test-v1',
+                  'financialWrites': 0,
+                },
+              }),
+              200);
         }
         if (request.url.path.endsWith('/activation')) {
-          return http.Response(jsonEncode(<String, dynamic>{
-            'success': true,
-            'data': <String, dynamic>{
-              'mode': 'LIVE',
-              'serviceAction': 'ENABLE',
-              'serviceType': 'DATA',
-              'revision': 13,
-            },
-          }), 200);
+          return http.Response(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'data': <String, dynamic>{
+                  'mode': 'LIVE',
+                  'serviceAction': 'ENABLE',
+                  'serviceType': 'DATA',
+                  'revision': 13,
+                },
+              }),
+              200);
         }
         return http.Response('{}', 404);
       }),
@@ -686,7 +763,8 @@ void main() {
       'current-password',
     );
     await tester.enterText(
-      find.byKey(const ValueKey<String>('profit-sharing-activation-confirmation')),
+      find.byKey(
+          const ValueKey<String>('profit-sharing-activation-confirmation')),
       'ACTIVATE FUTURE PROFIT SHARING',
     );
     await _scrollTo(
@@ -710,8 +788,10 @@ void main() {
     expect(body['reason'], 'Scoped DATA adapter reviewed');
     expect(body['currentPassword'], 'current-password');
     expect(body['confirmationText'], 'ACTIVATE FUTURE PROFIT SHARING');
-    expect(requests.where((http.Request request) =>
-        request.url.path.endsWith('/activation')), hasLength(1));
+    expect(
+        requests.where(
+            (http.Request request) => request.url.path.endsWith('/activation')),
+        hasLength(1));
     expect(tester.takeException(), isNull);
   });
 }

@@ -24,7 +24,8 @@ class ProfitSharingSettingsScreen extends StatefulWidget {
       _ProfitSharingSettingsScreenState();
 }
 
-class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScreen> {
+class _ProfitSharingSettingsScreenState
+    extends State<ProfitSharingSettingsScreen> {
   static const Color ink = Color(0xFF20372F);
   static const Color green = Color(0xFF168A3A);
   static const Color paper = Color(0xFFF4F7F2);
@@ -53,14 +54,28 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   };
 
   late final ProfitSharingApi _api = widget.api ??
-      ProfitSharingApi(client: widget.client, tokenProvider: widget.tokenProvider);
+      ProfitSharingApi(
+          client: widget.client, tokenProvider: widget.tokenProvider);
   late final bool _ownsApi = widget.api == null;
   final Map<String, TextEditingController> _percentControllers =
       <String, TextEditingController>{
     for (final String role in roleCodes) role: TextEditingController(),
   };
   final TextEditingController _reasonController = TextEditingController();
+  final Map<String, TextEditingController> _companyPercentControllers =
+      <String, TextEditingController>{
+    for (final String role in roleCodes) role: TextEditingController(),
+  };
+  final TextEditingController _companyReasonController =
+      TextEditingController();
   Map<String, dynamic> _data = <String, dynamic>{};
+  Map<String, dynamic>? _companyData;
+  String? _companyError;
+  String? _companyValidationError;
+  bool _companyLoading = true;
+  bool _companySaving = false;
+  int _companyKeySequence = 0;
+  Map<String, dynamic>? _companyFrozenSave;
   Map<String, dynamic>? _engine;
   String? _service;
   DateTime? _effectiveAt;
@@ -92,6 +107,11 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       controller.dispose();
     }
     _reasonController.dispose();
+    _companyReasonController.dispose();
+    for (final TextEditingController controller
+        in _companyPercentControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -105,7 +125,10 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   List<Map<String, dynamic>> get _items {
     final dynamic values = _data['items'];
     if (values is! List) return <Map<String, dynamic>>[];
-    return values.whereType<Map>().map((Map item) => Map<String, dynamic>.from(item)).toList();
+    return values
+        .whereType<Map>()
+        .map((Map item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   Map<String, dynamic>? get _selectedItem {
@@ -119,7 +142,10 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     final dynamic values = _selectedItem?['versions'];
     if (values is! List) return <Map<String, dynamic>>[];
     // The API supplies versions newest first; preserve that audit ordering.
-    return values.whereType<Map>().map((Map item) => Map<String, dynamic>.from(item)).toList();
+    return values
+        .whereType<Map>()
+        .map((Map item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   Future<void> _load({bool keepEditor = false}) async {
@@ -147,13 +173,54 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     } on ProfitSharingApiException catch (exception) {
       if (mounted) setState(() => _error = exception.message);
     } on TimeoutException {
-      if (mounted) setState(() => _error = 'The request timed out. Check your connection and refresh.');
+      if (mounted) {
+        setState(() => _error =
+            'The request timed out. Check your connection and refresh.');
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Unable to load profit-sharing settings. Please try again.');
+      if (mounted) {
+        setState(() => _error =
+            'Unable to load profit-sharing settings. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
     await _loadEngine();
+    await _loadCompany();
+  }
+
+  Future<void> _loadCompany() async {
+    if (mounted) {
+      setState(() {
+        _companyLoading = true;
+        _companyError = null;
+      });
+    }
+    try {
+      final Map<String, dynamic> response = await _api.getCompany();
+      final Map<String, dynamic> company =
+          Map<String, dynamic>.from(response['data'] as Map);
+      if (!mounted) return;
+      setState(() {
+        _companyData = company;
+        _companyError = null;
+        _companyValidationError = null;
+      });
+    } on ProfitSharingApiException catch (exception) {
+      if (mounted) setState(() => _companyError = exception.message);
+    } on TimeoutException {
+      if (mounted) {
+        setState(() => _companyError =
+            'Company controls timed out. Refresh to check the authoritative status.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _companyError =
+            'Unable to load company profit controls. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _companyLoading = false);
+    }
   }
 
   Future<void> _loadEngine() async {
@@ -205,7 +272,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
           _engine = null;
           _distributionLive = false;
           _engineError = exception.message;
-          _readiness = 'Activation status could not be verified. Distribution is treated as not live.';
+          _readiness =
+              'Activation status could not be verified. Distribution is treated as not live.';
         });
       }
     } on TimeoutException {
@@ -214,7 +282,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
           _engine = null;
           _distributionLive = false;
           _engineError = 'Engine status request timed out.';
-          _readiness = 'Activation status could not be verified. Distribution is treated as not live.';
+          _readiness =
+              'Activation status could not be verified. Distribution is treated as not live.';
         });
       }
     } catch (_) {
@@ -223,7 +292,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
           _engine = null;
           _distributionLive = false;
           _engineError = 'Unable to verify backend activation status.';
-          _readiness = 'Activation status could not be verified. Distribution is treated as not live.';
+          _readiness =
+              'Activation status could not be verified. Distribution is treated as not live.';
         });
       }
     } finally {
@@ -233,7 +303,9 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
 
   List<String> _engineBlockers([Map<String, dynamic>? source]) {
     final Map<String, dynamic>? engine = source ?? _engine;
-    if (engine == null) return const <String>['Backend engine status unavailable.'];
+    if (engine == null) {
+      return const <String>['Backend engine status unavailable.'];
+    }
     final List<String> blockers = <String>[];
     final dynamic storage = engine['storageBlockers'];
     if (storage is List) {
@@ -261,10 +333,12 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   }
 
   void _populateCurrentRule() {
-    final Map<String, dynamic>? current = _versions.isEmpty ? null : _versions.first;
+    final Map<String, dynamic>? current =
+        _versions.isEmpty ? null : _versions.first;
     final dynamic rawPercentages = current?['percentages'];
-    final Map<String, dynamic> percentages =
-        rawPercentages is Map ? Map<String, dynamic>.from(rawPercentages) : <String, dynamic>{};
+    final Map<String, dynamic> percentages = rawPercentages is Map
+        ? Map<String, dynamic>.from(rawPercentages)
+        : <String, dynamic>{};
     final bool compatible = current != null &&
         current['policyVersion'] == 3 &&
         roleCodes.every(percentages.containsKey) &&
@@ -325,7 +399,9 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     final int totalBasisPoints = roleCodes.fold<int>(
       0,
       (int sum, String role) =>
-          sum + ((double.parse(_percentControllers[role]!.text.trim()) * 100).round()),
+          sum +
+          ((double.parse(_percentControllers[role]!.text.trim()) * 100)
+              .round()),
     );
     if (totalBasisPoints != 10000) {
       return 'The four beneficiary percentages must add up to exactly 100%.';
@@ -340,7 +416,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   }
 
   Map<String, dynamic> _buildPayload() {
-    _pendingKey ??= 'profit-${DateTime.now().microsecondsSinceEpoch}-${_keySequence++}';
+    _pendingKey ??=
+        'profit-${DateTime.now().microsecondsSinceEpoch}-${_keySequence++}';
     return <String, dynamic>{
       'serviceType': _service,
       'revision': _selectedItem?['revision'] ?? 0,
@@ -373,8 +450,12 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
           '${_effectiveAt!.toLocal()}? This creates a future version only; it does not activate settlement.',
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Review again')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirm save')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Review again')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirm save')),
         ],
       ),
     );
@@ -392,7 +473,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       if (raw is Map) {
         final Map<String, dynamic> saved = Map<String, dynamic>.from(raw);
         final List<Map<String, dynamic>> items = _items;
-        final int index = items.indexWhere((Map<String, dynamic> item) => item['serviceType'] == _service);
+        final int index = items.indexWhere(
+            (Map<String, dynamic> item) => item['serviceType'] == _service);
         final Map<String, dynamic> updated = <String, dynamic>{
           if (index >= 0) ...items[index],
           'serviceType': _service,
@@ -414,7 +496,9 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       });
       _populateCurrentRule();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Future rule saved. Distribution remains subject to platform readiness.')),
+        const SnackBar(
+            content: Text(
+                'Future rule saved. Distribution remains subject to platform readiness.')),
       );
       await _loadEngine();
     } on ProfitSharingApiException catch (exception) {
@@ -426,7 +510,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
         });
         await _load();
         if (mounted) {
-          setState(() => _error = 'A newer rule was saved elsewhere. Refresh complete — review the latest version before saving again.');
+          setState(() => _error =
+              'A newer rule was saved elsewhere. Refresh complete — review the latest version before saving again.');
         }
       } else if (exception.statusCode != null &&
           exception.statusCode! >= 400 &&
@@ -440,21 +525,24 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       } else {
         setState(() {
           _frozenPayload = Map<String, dynamic>.from(payload);
-          _validationError = 'Outcome is unknown. Your exact request is preserved; retry only after reviewing the status.';
+          _validationError =
+              'Outcome is unknown. Your exact request is preserved; retry only after reviewing the status.';
         });
       }
     } on TimeoutException {
       if (mounted) {
         setState(() {
           _frozenPayload = Map<String, dynamic>.from(payload);
-          _validationError = 'Outcome is unknown after timeout. The exact request is preserved; retry will use the same key and values.';
+          _validationError =
+              'Outcome is unknown after timeout. The exact request is preserved; retry will use the same key and values.';
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _frozenPayload = Map<String, dynamic>.from(payload);
-          _validationError = 'Outcome is unknown. The exact request is preserved; retry will use the same key and values.';
+          _validationError =
+              'Outcome is unknown. The exact request is preserved; retry will use the same key and values.';
         });
       }
     } finally {
@@ -481,8 +569,236 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     );
     if (time == null) return;
     setState(() {
-      _effectiveAt = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+      _effectiveAt =
+          DateTime(day.year, day.month, day.day, time.hour, time.minute);
     });
+  }
+
+  String? _validateCompanyRule() {
+    for (final String role in roleCodes) {
+      final String text = _companyPercentControllers[role]!.text.trim();
+      if (text.isEmpty) {
+        return 'Enter all four company percentages explicitly. Zero is allowed.';
+      }
+      final double? number = double.tryParse(text);
+      if (number == null || !number.isFinite || number < 0 || number > 100) {
+        return 'Each company percentage must be between 0 and 100.';
+      }
+      if (text.contains('.') && text.split('.').last.length > 2) {
+        return 'Company percentages can have at most two decimal places.';
+      }
+    }
+    final int totalBasisPoints = roleCodes.fold<int>(
+      0,
+      (int sum, String role) =>
+          sum +
+          (double.parse(_companyPercentControllers[role]!.text.trim()) * 100)
+              .round(),
+    );
+    if (totalBasisPoints != 10000) {
+      return 'The four company percentages must add up to exactly 100%.';
+    }
+    final int reasonLength = _companyReasonController.text.trim().length;
+    if (reasonLength < 10 || reasonLength > 500) {
+      return 'Add an audit reason between 10 and 500 characters.';
+    }
+    return null;
+  }
+
+  Future<String?> _freshPassword({
+    required String title,
+    required String explanation,
+  }) async {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => _CompanyPasswordDialog(
+        title: title,
+        explanation: explanation,
+      ),
+    );
+  }
+
+  Future<void> _saveCompanyRule() async {
+    if (_companySaving || _companyData?['canManage'] != true) return;
+    if (_companyFrozenSave == null) {
+      final String? issue = _validateCompanyRule();
+      if (issue != null) {
+        setState(() => _companyValidationError = issue);
+        return;
+      }
+    }
+    final String? password = await _freshPassword(
+      title: 'Save company profit rule',
+      explanation:
+          'This creates an immediate company-wide rule for verified net profit. It does not schedule service rules or create earnings.',
+    );
+    if (password == null || !mounted) return;
+    _companyFrozenSave ??= <String, dynamic>{
+      'revision': _companyData?['revision'],
+      'idempotencyKey':
+          'company-profit-${DateTime.now().microsecondsSinceEpoch}-${_companyKeySequence++}',
+      'percentages': <String, num>{
+        for (final String role in roleCodes)
+          role: num.parse(_companyPercentControllers[role]!.text.trim()),
+      },
+      'reason': _companyReasonController.text.trim(),
+      'confirmation': true,
+    };
+    final Map<String, dynamic> payload = <String, dynamic>{
+      ..._companyFrozenSave!,
+      'currentPassword': password,
+    };
+    setState(() {
+      _companySaving = true;
+      _companyValidationError = null;
+    });
+    try {
+      final Map<String, dynamic> response = await _api.saveCompanyRule(payload);
+      if (!mounted) return;
+      setState(() {
+        _companyData = Map<String, dynamic>.from(response['data'] as Map);
+        _companyFrozenSave = null;
+        _companyReasonController.clear();
+        for (final TextEditingController controller
+            in _companyPercentControllers.values) {
+          controller.clear();
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Company rule saved as an immediate version.')),
+      );
+    } on ProfitSharingApiException catch (exception) {
+      if (!mounted) return;
+      if (exception.isForbidden) {
+        setState(() {
+          if (_companyData != null) _companyData!['canManage'] = false;
+          _companyFrozenSave = null;
+          _companyError = exception.message;
+        });
+      } else if (exception.isConflict) {
+        _companyFrozenSave = null;
+        await _loadCompany();
+        if (mounted) {
+          setState(() => _companyError =
+              'Company rule changed elsewhere. Latest status loaded; review it before making another change.');
+        }
+      } else {
+        if (exception.statusCode != null &&
+            exception.statusCode! >= 400 &&
+            exception.statusCode! < 500) {
+          setState(() {
+            _companyFrozenSave = null;
+            _companyValidationError = exception.message;
+          });
+        } else {
+          setState(() => _companyValidationError =
+              'The result is unknown. The exact rule is preserved; refresh status before retrying.');
+          await _loadCompany();
+        }
+      }
+    } on TimeoutException {
+      if (mounted) {
+        setState(() => _companyValidationError =
+            'The result is unknown. Refresh company status before attempting another change.');
+        await _loadCompany();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _companyValidationError =
+            'The result could not be confirmed. Refresh company status before attempting another change.');
+        await _loadCompany();
+      }
+    } finally {
+      payload['currentPassword'] = '';
+      if (mounted) setState(() => _companySaving = false);
+    }
+  }
+
+  Future<void> _setCompanyEnabled(bool enabled) async {
+    final Map<String, dynamic>? company = _companyData;
+    if (_companySaving || company == null || company['canManage'] != true) {
+      return;
+    }
+    if (enabled && company['currentRule'] == null) {
+      setState(() => _companyValidationError =
+          'Save a valid four-role company rule before enabling distribution.');
+      return;
+    }
+    final int reasonLength = _companyReasonController.text.trim().length;
+    if (reasonLength < 10 || reasonLength > 500) {
+      setState(() => _companyValidationError =
+          'Add an audit reason between 10 and 500 characters before changing company status.');
+      return;
+    }
+    final String? password = await _freshPassword(
+      title: enabled
+          ? 'Enable company distribution'
+          : 'Disable company distribution',
+      explanation: enabled
+          ? 'Only genuinely verified company net profit can be distributed. Missing evidence stays pending; unknown pending amounts are never estimated.'
+          : 'This disables future company-wide distribution. Previously recorded settlement history remains unchanged.',
+    );
+    if (password == null || !mounted) return;
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'revision': company['revision'],
+      'enabled': enabled,
+      'reason': _companyReasonController.text.trim(),
+      'confirmation': true,
+      'currentPassword': password,
+    };
+    setState(() {
+      _companySaving = true;
+      _companyValidationError = null;
+    });
+    try {
+      final Map<String, dynamic> response =
+          await _api.setCompanyEnabled(payload);
+      if (!mounted) return;
+      setState(() {
+        _companyData = Map<String, dynamic>.from(response['data'] as Map);
+        _companyReasonController.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled
+              ? 'Company distribution enabled.'
+              : 'Company distribution disabled.'),
+        ),
+      );
+    } on ProfitSharingApiException catch (exception) {
+      if (!mounted) return;
+      if (exception.isForbidden) {
+        setState(() {
+          if (_companyData != null) _companyData!['canManage'] = false;
+          _companyError = exception.message;
+        });
+      } else if (exception.isConflict) {
+        await _loadCompany();
+        if (mounted) {
+          setState(() => _companyError =
+              'Company status changed elsewhere. Latest status loaded; review it before trying again.');
+        }
+      } else {
+        setState(() => _companyValidationError = exception.message);
+      }
+    } on TimeoutException {
+      if (mounted) {
+        setState(() => _companyValidationError =
+            'The result is unknown. Refresh company status before attempting another change.');
+        await _loadCompany();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _companyValidationError =
+            'The result could not be confirmed. Refresh company status before attempting another change.');
+        await _loadCompany();
+      }
+    } finally {
+      payload['currentPassword'] = '';
+      if (mounted) setState(() => _companySaving = false);
+    }
   }
 
   String _dateLabel(DateTime? date) => date == null
@@ -536,17 +852,41 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
                       children: <Widget>[
-                        _readinessBanner(),
                         if (_error != null) ...<Widget>[
                           const SizedBox(height: 12),
                           _InlineMessage(message: _error!, danger: true),
                         ],
                         const SizedBox(height: 22),
-                        const Text('RULE DESIGN', style: TextStyle(color: green, letterSpacing: 1.4, fontSize: 11, fontWeight: FontWeight.w900)),
+                        _companyPanel(),
+                        const SizedBox(height: 18),
+                        ProfitSharingSettlementHistory(api: _api),
+                        const SizedBox(height: 28),
+                        const Text('LEGACY SERVICE CONTROLS',
+                            style: TextStyle(
+                                color: Color(0xFF7A827C),
+                                letterSpacing: 1.4,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900)),
                         const SizedBox(height: 5),
-                         const Text('Configure company profit sharing.', style: TextStyle(color: ink, fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -0.6)),
+                        const Text('Service-specific rules',
+                            style: TextStyle(
+                                color: ink,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.5)),
                         const SizedBox(height: 6),
-                         const Text('Share 100% of verified positive company net profit across four administrator-controlled rates. The Head Office share remains in company custody and is not credited to the current administrator’s personal wallet.', style: TextStyle(color: Color(0xFF60736A), height: 1.45)),
+                        const Text(
+                            'Retained for existing service configuration and audit history. These controls do not define or activate company-wide verified net-profit distribution.',
+                            style: TextStyle(
+                                color: Color(0xFF728078), height: 1.45)),
+                        const SizedBox(height: 14),
+                        _readinessBanner(),
+                        if (_engineError != null) ...<Widget>[
+                          const SizedBox(height: 9),
+                          _InlineMessage(
+                              message: 'Legacy service status: $_engineError',
+                              danger: true),
+                        ],
                         const SizedBox(height: 22),
                         _servicePicker(),
                         const SizedBox(height: 18),
@@ -557,7 +897,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
                         _auditEditor(),
                         if (_validationError != null) ...<Widget>[
                           const SizedBox(height: 12),
-                          _InlineMessage(message: _validationError!, danger: true),
+                          _InlineMessage(
+                              message: _validationError!, danger: true),
                         ],
                         const SizedBox(height: 16),
                         SizedBox(
@@ -565,30 +906,45 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
                           child: FilledButton.icon(
                             onPressed: !_canManage || _saving
                                 ? null
-                                : _frozenPayload == null ? _confirmAndSave : _save,
+                                : _frozenPayload == null
+                                    ? _confirmAndSave
+                                    : _save,
                             style: FilledButton.styleFrom(
                               backgroundColor: green,
                               disabledBackgroundColor: const Color(0xFFB8C9BC),
                               foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15)),
                             ),
                             icon: _saving
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : Icon(_frozenPayload == null ? Icons.save_outlined : Icons.replay_rounded),
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : Icon(_frozenPayload == null
+                                    ? Icons.save_outlined
+                                    : Icons.replay_rounded),
                             label: Text(
-                              _saving ? 'Saving rule…' : _frozenPayload == null ? 'Save rule' : 'Retry same request',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
+                              _saving
+                                  ? 'Saving rule…'
+                                  : _frozenPayload == null
+                                      ? 'Save rule'
+                                      : 'Retry same request',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800),
                             ),
                           ),
                         ),
                         if (!_canManage) ...<Widget>[
                           const SizedBox(height: 9),
-                          const Text('Your account can review rules but cannot save changes.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF64756C))),
+                          const Text(
+                              'Your account can review rules but cannot save changes.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Color(0xFF64756C))),
                         ],
                         const SizedBox(height: 28),
                         _versionHistory(),
-                        const SizedBox(height: 18),
-                        ProfitSharingSettlementHistory(api: _api),
                         const SizedBox(height: 18),
                         ProfitSharingActivationPanel(
                           api: _api,
@@ -604,193 +960,746 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     );
   }
 
+  Widget _companyPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'COMPANY-WIDE · VERIFIED NET PROFIT',
+            style: TextStyle(
+              color: green,
+              letterSpacing: 1.35,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Company profit controls',
+            style: TextStyle(
+              color: ink,
+              fontSize: 27,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.7,
+            ),
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Set how verified positive company net profit is allocated. This is not a service readiness dashboard and does not create earnings.',
+            style: TextStyle(color: Color(0xFF60736A), height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE9F1E9),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: const Color(0xFFD1E0D2)),
+            ),
+            child: const Text(
+              'Enabled means only genuinely verified net profit can be distributed. Missing evidence remains pending; unknown pending amounts are not invented. Use settlement history below for recorded earnings.',
+              style: TextStyle(
+                color: Color(0xFF385343),
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_companyLoading && _companyData == null)
+            const _CompanyControlSkeleton()
+          else if (_companyError != null && _companyData == null)
+            _Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Company controls unavailable',
+                    style: TextStyle(fontWeight: FontWeight.w900, color: ink),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(_companyError!, style: const TextStyle(height: 1.4)),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _companyLoading ? null : _loadCompany,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            _companyControls(),
+        ],
+      );
+
+  Widget _companyControls() {
+    final Map<String, dynamic> company = _companyData ?? <String, dynamic>{};
+    final bool enabled = company['enabled'] == true;
+    final bool canManage = company['canManage'] == true;
+    final Map<String, dynamic>? current = company['currentRule'] is Map
+        ? Map<String, dynamic>.from(company['currentRule'] as Map)
+        : null;
+    final List<dynamic> blockers = company['storageBlockers'] is List
+        ? company['storageBlockers'] as List<dynamic>
+        : <dynamic>[];
+    final List<dynamic> versions = company['versions'] is List
+        ? company['versions'] as List<dynamic>
+        : <dynamic>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Text(
+                          'Distribution status',
+                          style: TextStyle(
+                            color: ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          enabled
+                              ? 'Enabled · verified profit only'
+                              : 'Disabled',
+                          key: const ValueKey<String>(
+                              'company-distribution-status'),
+                          style: TextStyle(
+                            color: enabled
+                                ? const Color(0xFF317245)
+                                : const Color(0xFF7B5B30),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Refresh company controls',
+                    onPressed:
+                        _companyLoading || _companySaving ? null : _loadCompany,
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _CompanyMetric(
+                      label: 'Pending verification',
+                      value: '${company['pendingVerificationCount'] ?? 0}',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _CompanyMetric(
+                      label: 'Rule versions',
+                      value: '${versions.length}',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (current == null)
+                const Text(
+                  'No current company rule. Distribution cannot be enabled until a complete four-role rule is saved.',
+                  style: TextStyle(
+                    color: Color(0xFF75623E),
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else ...<Widget>[
+                Text(
+                  'Current rule ${current['id']}',
+                  style: const TextStyle(
+                    color: ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: roleCodes.map((String role) {
+                    final Map<String, dynamic> rates =
+                        current['percentages'] is Map
+                            ? Map<String, dynamic>.from(
+                                current['percentages'] as Map,
+                              )
+                            : <String, dynamic>{};
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F5F0),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Text(
+                        '${role.replaceAll('_', ' ')} ${rates[role]}%',
+                        style: const TextStyle(
+                          color: Color(0xFF53645A),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+              if (_companyLoading) ...<Widget>[
+                const SizedBox(height: 11),
+                const LinearProgressIndicator(minHeight: 2),
+              ],
+              if (blockers.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 13),
+                _InlineMessage(
+                  message:
+                      'Storage blockers: ${blockers.map((dynamic item) => item.toString()).join(' · ')}',
+                  danger: true,
+                ),
+              ],
+              if (_companyError != null) ...<Widget>[
+                const SizedBox(height: 10),
+                _InlineMessage(message: _companyError!, danger: true),
+              ],
+              if (!canManage) ...<Widget>[
+                const SizedBox(height: 11),
+                const Text(
+                  'Read-only access. Your account can review company rules but cannot change them.',
+                  style: TextStyle(color: Color(0xFF6C786F), height: 1.4),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const _SectionHeading(
+                  number: '01', title: 'Company allocation rule'),
+              const SizedBox(height: 5),
+              const Text(
+                'All fields start blank so every new version is an explicit decision. Rates must total exactly 100%.',
+                style: TextStyle(
+                    color: Color(0xFF728078), fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              ...roleCodes.asMap().entries.map((MapEntry<int, String> entry) {
+                final String role = entry.value;
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: entry.key == roleCodes.length - 1 ? 0 : 11,
+                  ),
+                  child: TextField(
+                    key: ValueKey<String>('company-percentage-$role'),
+                    controller: _companyPercentControllers[role],
+                    enabled: canManage &&
+                        !_companySaving &&
+                        _companyFrozenSave == null,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d{0,3}(?:\.\d{0,2})?'),
+                      ),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: roleNames[role],
+                      suffixText: '%',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onChanged: (_) =>
+                        setState(() => _companyValidationError = null),
+                  ),
+                );
+              }),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey<String>('company-profit-audit-reason'),
+                controller: _companyReasonController,
+                enabled:
+                    canManage && !_companySaving && _companyFrozenSave == null,
+                maxLines: 3,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Audit reason',
+                  hintText: 'Why is this company allocation changing?',
+                  helperText: 'Required for every write · 10–500 characters.',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+                onChanged: (_) =>
+                    setState(() => _companyValidationError = null),
+              ),
+              if (_companyValidationError != null) ...<Widget>[
+                const SizedBox(height: 8),
+                _InlineMessage(
+                  message: _companyValidationError!,
+                  danger: true,
+                ),
+              ],
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: FilledButton.icon(
+                  key: const ValueKey<String>('save-company-profit-rule'),
+                  onPressed:
+                      canManage && !_companySaving ? _saveCompanyRule : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: green,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFB8C9BC),
+                  ),
+                  icon: _companySaving
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(
+                    _companySaving
+                        ? 'Saving company rule…'
+                        : 'Save immediate version',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 11),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  key: ValueKey<String>(
+                    enabled
+                        ? 'disable-company-distribution'
+                        : 'enable-company-distribution',
+                  ),
+                  onPressed: canManage &&
+                          !_companySaving &&
+                          _companyFrozenSave == null &&
+                          (!(!enabled && current == null))
+                      ? () => _setCompanyEnabled(!enabled)
+                      : null,
+                  icon: Icon(
+                    enabled
+                        ? Icons.pause_circle_outline_rounded
+                        : Icons.play_circle_outline_rounded,
+                  ),
+                  label: Text(
+                    enabled
+                        ? 'Disable company distribution'
+                        : 'Enable company distribution',
+                  ),
+                ),
+              ),
+              if (!enabled && current == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 7),
+                  child: Text(
+                    'A valid four-role company rule is required before enabling.',
+                    style: TextStyle(color: Color(0xFF7A6A4C), fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _companyVersionHistory(versions),
+      ],
+    );
+  }
+
+  Widget _companyVersionHistory(List<dynamic> versions) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Company rule history',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${versions.length} ${versions.length == 1 ? 'version' : 'versions'}',
+                style: const TextStyle(
+                  color: Color(0xFF77847D),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          if (versions.isEmpty)
+            const _Panel(
+              child: Text(
+                'No company allocation versions yet. No percentages have been assumed.',
+                style: TextStyle(color: Color(0xFF63736A), height: 1.4),
+              ),
+            )
+          else
+            ...versions.map((dynamic raw) {
+              final Map<String, dynamic> version = raw is Map
+                  ? Map<String, dynamic>.from(raw)
+                  : <String, dynamic>{};
+              final Map<String, dynamic> rates = version['percentages'] is Map
+                  ? Map<String, dynamic>.from(version['percentages'] as Map)
+                  : <String, dynamic>{};
+              return _Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            'Version ${version['id'] ?? '—'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: ink,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          version['enabled'] == true ? 'Enabled' : 'Disabled',
+                          style: TextStyle(
+                            color: version['enabled'] == true
+                                ? const Color(0xFF317245)
+                                : const Color(0xFF7B5B30),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      roleCodes
+                          .map((String role) =>
+                              '${role.replaceAll('_', ' ')} ${rates[role] ?? '—'}%')
+                          .join('  ·  '),
+                      style: const TextStyle(
+                        color: Color(0xFF53645A),
+                        height: 1.45,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${version['createdAt'] ?? 'Date unavailable'} · ${version['createdBy'] ?? 'Author unavailable'}',
+                      style: const TextStyle(
+                        color: Color(0xFF78847D),
+                        fontSize: 11,
+                      ),
+                    ),
+                    if ((version['reason'] ?? '')
+                        .toString()
+                        .isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 5),
+                      Text(
+                        version['reason'].toString(),
+                        style: const TextStyle(
+                          color: Color(0xFF64736A),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }),
+        ],
+      );
+
   Widget _readinessBanner({bool includeBlockers = false}) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _distributionLive ? const Color(0xFFE4F3E8) : const Color(0xFFFFF1D9),
+          color: _distributionLive
+              ? const Color(0xFFE4F3E8)
+              : const Color(0xFFFFF1D9),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _distributionLive ? const Color(0xFFC4E2CC) : const Color(0xFFEBD7AC)),
+          border: Border.all(
+              color: _distributionLive
+                  ? const Color(0xFFC4E2CC)
+                  : const Color(0xFFEBD7AC)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Icon(_distributionLive ? Icons.verified_outlined : Icons.pause_circle_outline_rounded,
+            Icon(
+                _distributionLive
+                    ? Icons.verified_outlined
+                    : Icons.pause_circle_outline_rounded,
                 color: _distributionLive ? green : const Color(0xFF96651D)),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-                 Text(_distributionLive ? 'Distribution is LIVE' : 'Distribution is not live',
-                    style: TextStyle(fontWeight: FontWeight.w900, color: _distributionLive ? ink : const Color(0xFF704A12))),
-                const SizedBox(height: 4),
-                Text(_readiness, style: const TextStyle(height: 1.4, color: Color(0xFF5B625B))),
-                 if (includeBlockers && _engine != null &&
-                     _engineBlockers().isNotEmpty)
-                   Padding(
-                     padding: const EdgeInsets.only(top: 7),
-                     child: Text(
-                       'Backend blockers: ${_engineBlockers().join(' · ')}',
-                       style: const TextStyle(
-                         color: Color(0xFF754333),
-                         fontWeight: FontWeight.w700,
-                         height: 1.35,
-                       ),
-                     ),
-                   ),
-                 if (_engineLoading)
-                   const Padding(
-                     padding: EdgeInsets.only(top: 7),
-                     child: LinearProgressIndicator(minHeight: 2),
-                   ),
-                 if (_engineError != null)
-                   Padding(
-                     padding: const EdgeInsets.only(top: 7),
-                     child: Text('Backend status error: $_engineError',
-                         style: const TextStyle(color: Color(0xFF8F352E), fontWeight: FontWeight.w700)),
-                   ),
-                if (!_distributionLive)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
-                    child: Text('Saving a rule does not activate payouts or settlement.', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF704A12))),
-                  ),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                        _distributionLive
+                            ? 'Distribution is LIVE'
+                            : 'Distribution is not live',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: _distributionLive
+                                ? ink
+                                : const Color(0xFF704A12))),
+                    const SizedBox(height: 4),
+                    Text(_readiness,
+                        style: const TextStyle(
+                            height: 1.4, color: Color(0xFF5B625B))),
+                    if (includeBlockers &&
+                        _engine != null &&
+                        _engineBlockers().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 7),
+                        child: Text(
+                          'Backend blockers: ${_engineBlockers().join(' · ')}',
+                          style: const TextStyle(
+                            color: Color(0xFF754333),
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    if (_engineLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 7),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
+                    if (_engineError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 7),
+                        child: Text('Backend status error: $_engineError',
+                            style: const TextStyle(
+                                color: Color(0xFF8F352E),
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    if (!_distributionLive)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                            'Saving a rule does not activate payouts or settlement.',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF704A12))),
+                      ),
+                  ]),
             ),
           ],
         ),
       );
 
   Widget _servicePicker() => _Panel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '01', title: 'Choose a service'),
-          const SizedBox(height: 13),
-          DropdownButtonFormField<String>(
-            key: const ValueKey<String>('profit-sharing-service-selector'),
-            value: _services.contains(_service) ? _service : null,
-            decoration: const InputDecoration(labelText: 'Service', border: OutlineInputBorder()),
-            items: _services.map((String value) => DropdownMenuItem<String>(
-              value: value,
-              child: Text(serviceNames[value] ?? value.replaceAll('_', ' ')),
-            )).toList(),
-            onChanged: _canManage && _frozenPayload == null ? _changeService : null,
-          ),
-          if (_selectedItem?['revision'] != null) ...<Widget>[
-            const SizedBox(height: 8),
-            Text('Current revision ${_selectedItem!['revision']}', style: const TextStyle(color: Color(0xFF738179), fontSize: 12)),
-          ],
-        ]),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const _SectionHeading(number: '01', title: 'Choose a service'),
+              const SizedBox(height: 13),
+              DropdownButtonFormField<String>(
+                key: const ValueKey<String>('profit-sharing-service-selector'),
+                value: _services.contains(_service) ? _service : null,
+                decoration: const InputDecoration(
+                    labelText: 'Service', border: OutlineInputBorder()),
+                items: _services
+                    .map((String value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(serviceNames[value] ??
+                              value.replaceAll('_', ' ')),
+                        ))
+                    .toList(),
+                onChanged: _canManage && _frozenPayload == null
+                    ? _changeService
+                    : null,
+              ),
+              if (_selectedItem?['revision'] != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text('Current revision ${_selectedItem!['revision']}',
+                    style: const TextStyle(
+                        color: Color(0xFF738179), fontSize: 12)),
+              ],
+            ]),
       );
 
   Widget _percentEditor() => _Panel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '02', title: 'Set beneficiary percentages'),
-          const SizedBox(height: 5),
-          const Text('These four percentages divide verified positive company net profit and must total exactly 100%.', style: TextStyle(color: Color(0xFF728078), fontSize: 13)),
-          if (_legacyCurrentRule) ...<Widget>[
-            const SizedBox(height: 10),
-            const _InlineMessage(
-              message: 'Legacy rule: its former configuration is preserved in history but is not compatible with policy v3. No values were migrated. Enter all four percentages explicitly to create a new configuration.',
-              danger: true,
-            ),
-          ],
-          const SizedBox(height: 14),
-          ...roleCodes.asMap().entries.map((MapEntry<int, String> entry) {
-            final String role = entry.value;
-            return Padding(
-              padding: EdgeInsets.only(bottom: entry.key == roleCodes.length - 1 ? 0 : 11),
-              child: TextField(
-                key: ValueKey<String>('percentage-$role'),
-                controller: _percentControllers[role],
-                enabled: _canManage && _frozenPayload == null,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: <TextInputFormatter>[
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}(?:\.\d{0,2})?')),
-                ],
-                decoration: InputDecoration(
-                  labelText: roleNames[role],
-                  suffixText: '%',
-                  border: const OutlineInputBorder(),
-                  isDense: true,
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const _SectionHeading(
+                  number: '02', title: 'Set beneficiary percentages'),
+              const SizedBox(height: 5),
+              const Text(
+                  'These four percentages divide verified positive company net profit and must total exactly 100%.',
+                  style: TextStyle(color: Color(0xFF728078), fontSize: 13)),
+              if (_legacyCurrentRule) ...<Widget>[
+                const SizedBox(height: 10),
+                const _InlineMessage(
+                  message:
+                      'Legacy rule: its former configuration is preserved in history but is not compatible with policy v3. No values were migrated. Enter all four percentages explicitly to create a new configuration.',
+                  danger: true,
                 ),
-                onChanged: (_) => setState(() => _validationError = null),
+              ],
+              const SizedBox(height: 14),
+              ...roleCodes.asMap().entries.map((MapEntry<int, String> entry) {
+                final String role = entry.value;
+                return Padding(
+                  padding: EdgeInsets.only(
+                      bottom: entry.key == roleCodes.length - 1 ? 0 : 11),
+                  child: TextField(
+                    key: ValueKey<String>('percentage-$role'),
+                    controller: _percentControllers[role],
+                    enabled: _canManage && _frozenPayload == null,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d{0,3}(?:\.\d{0,2})?')),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: roleNames[role],
+                      suffixText: '%',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onChanged: (_) => setState(() => _validationError = null),
+                  ),
+                );
+              }),
+              const SizedBox(height: 13),
+              Container(
+                key: const ValueKey<String>(
+                    'profit-sharing-remaining-percentage'),
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F5EF),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Text(
+                  'Remaining unallocated: ${_remainingPercentage.toStringAsFixed(2)}%',
+                  style: const TextStyle(
+                    color: Color(0xFF44554A),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-            );
-          }),
-          const SizedBox(height: 13),
-          Container(
-            key: const ValueKey<String>('profit-sharing-remaining-percentage'),
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F5EF),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Text(
-              'Remaining unallocated: ${_remainingPercentage.toStringAsFixed(2)}%',
-              style: const TextStyle(
-                color: Color(0xFF44554A),
-                fontWeight: FontWeight.w800,
+              const SizedBox(height: 13),
+              const Text(
+                  'The Head Office allocation is held in company custody, not in the current administrator’s personal wallet.',
+                  style: TextStyle(
+                      color: Color(0xFF728078), fontSize: 12, height: 1.4)),
+              const SizedBox(height: 13),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _enabled,
+                activeTrackColor: green,
+                title: const Text('Rule enabled',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: const Text(
+                    'Applies to this requested future rule only; it does not turn settlement on.'),
+                onChanged: _canManage && _frozenPayload == null
+                    ? (bool value) => setState(() => _enabled = value)
+                    : null,
               ),
-            ),
-          ),
-          const SizedBox(height: 13),
-          const Text('The Head Office allocation is held in company custody, not in the current administrator’s personal wallet.', style: TextStyle(color: Color(0xFF728078), fontSize: 12, height: 1.4)),
-          const SizedBox(height: 13),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            value: _enabled,
-            activeTrackColor: green,
-            title: const Text('Rule enabled', style: TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: const Text('Applies to this requested future rule only; it does not turn settlement on.'),
-            onChanged: _canManage && _frozenPayload == null ? (bool value) => setState(() => _enabled = value) : null,
-          ),
-        ]),
+            ]),
       );
 
   Widget _scheduleEditor() => _Panel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '03', title: 'Set effective date'),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _canManage && _frozenPayload == null ? _chooseDateTime : null,
-            icon: const Icon(Icons.calendar_month_outlined),
-            label: Text(_dateLabel(_effectiveAt), overflow: TextOverflow.ellipsis),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(50),
-              foregroundColor: ink,
-              side: const BorderSide(color: Color(0xFFD3DED5)),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text('The date must be in the future. A saved version is not a payout activation.', style: TextStyle(color: Color(0xFF728078), fontSize: 12, height: 1.4)),
-        ]),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const _SectionHeading(number: '03', title: 'Set effective date'),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _canManage && _frozenPayload == null
+                    ? _chooseDateTime
+                    : null,
+                icon: const Icon(Icons.calendar_month_outlined),
+                label: Text(_dateLabel(_effectiveAt),
+                    overflow: TextOverflow.ellipsis),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  foregroundColor: ink,
+                  side: const BorderSide(color: Color(0xFFD3DED5)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                  'The date must be in the future. A saved version is not a payout activation.',
+                  style: TextStyle(
+                      color: Color(0xFF728078), fontSize: 12, height: 1.4)),
+            ]),
       );
 
   Widget _auditEditor() => _Panel(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '04', title: 'Record the reason'),
-          const SizedBox(height: 12),
-          TextField(
-            key: const ValueKey<String>('profit-sharing-audit-reason'),
-            controller: _reasonController,
-            enabled: _canManage && _frozenPayload == null,
-            maxLines: 3,
-            maxLength: 240,
-            decoration: const InputDecoration(
-              hintText: 'Why is this distribution changing?',
-              helperText: 'At least 10 characters. Stored with the audit history.',
-              border: OutlineInputBorder(),
-              alignLabelWithHint: true,
-            ),
-            onChanged: (_) => setState(() => _validationError = null),
-          ),
-        ]),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const _SectionHeading(number: '04', title: 'Record the reason'),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey<String>('profit-sharing-audit-reason'),
+                controller: _reasonController,
+                enabled: _canManage && _frozenPayload == null,
+                maxLines: 3,
+                maxLength: 240,
+                decoration: const InputDecoration(
+                  hintText: 'Why is this distribution changing?',
+                  helperText:
+                      'At least 10 characters. Stored with the audit history.',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+                onChanged: (_) => setState(() => _validationError = null),
+              ),
+            ]),
       );
 
   Widget _versionHistory() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(children: <Widget>[
-            const Expanded(child: Text('Version history', style: TextStyle(fontSize: 19, color: ink, fontWeight: FontWeight.w900))),
-            Text('${_versions.length} ${_versions.length == 1 ? 'version' : 'versions'}', style: const TextStyle(color: Color(0xFF77847D), fontSize: 12, fontWeight: FontWeight.w700)),
+            const Expanded(
+                child: Text('Version history',
+                    style: TextStyle(
+                        fontSize: 19,
+                        color: ink,
+                        fontWeight: FontWeight.w900))),
+            Text(
+                '${_versions.length} ${_versions.length == 1 ? 'version' : 'versions'}',
+                style: const TextStyle(
+                    color: Color(0xFF77847D),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 10),
           if (_versions.isEmpty)
@@ -798,11 +1707,16 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
               child: Row(children: <Widget>[
                 Icon(Icons.history_rounded, color: Color(0xFF7B8B81)),
                 SizedBox(width: 11),
-                Expanded(child: Text('No saved rule for this service yet. Percentages are intentionally blank.', style: TextStyle(height: 1.4, color: Color(0xFF63736A)))),
+                Expanded(
+                    child: Text(
+                        'No saved rule for this service yet. Percentages are intentionally blank.',
+                        style:
+                            TextStyle(height: 1.4, color: Color(0xFF63736A)))),
               ]),
             )
           else
-            ..._versions.map((Map<String, dynamic> version) => _VersionCard(version: version)),
+            ..._versions.map((Map<String, dynamic> version) =>
+                _VersionCard(version: version)),
         ],
       );
 }
@@ -863,8 +1777,7 @@ class _ProfitSharingSettlementHistoryState
       _error = null;
     });
     try {
-      final Map<String, dynamic> response =
-          await widget.api.getSettlements(
+      final Map<String, dynamic> response = await widget.api.getSettlements(
         page: requestedPage,
         limit: _limit,
         from: _from == null ? null : _dateQuery(_from!),
@@ -889,7 +1802,8 @@ class _ProfitSharingSettlementHistoryState
       }
     } catch (_) {
       if (mounted && requestVersion == _requestVersion) {
-        setState(() => _error = 'Unable to load settlement history. Retry to check again.');
+        setState(() => _error =
+            'Unable to load settlement history. Retry to check again.');
       }
     } finally {
       if (mounted && requestVersion == _requestVersion) {
@@ -924,11 +1838,13 @@ class _ProfitSharingSettlementHistoryState
     final DateTime? nextTo = isFrom ? _to : date;
     if (nextFrom != null && nextTo != null) {
       if (nextFrom.isAfter(nextTo)) {
-        setState(() => _periodError = 'From date must be on or before the to date.');
+        setState(
+            () => _periodError = 'From date must be on or before the to date.');
         return;
       }
       if (nextTo.difference(nextFrom).inDays > 93) {
-        setState(() => _periodError = 'Choose a reporting window of 93 days or less.');
+        setState(() =>
+            _periodError = 'Choose a reporting window of 93 days or less.');
         return;
       }
     }
@@ -952,14 +1868,19 @@ class _ProfitSharingSettlementHistoryState
   }
 
   List<Map<String, dynamic>> _maps(dynamic value) => value is List
-      ? value.whereType<Map>().map((Map item) => Map<String, dynamic>.from(item)).toList()
+      ? value
+          .whereType<Map>()
+          .map((Map item) => Map<String, dynamic>.from(item))
+          .toList()
       : <Map<String, dynamic>>[];
 
   Widget _metric(String label, dynamic value) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
           children: <Widget>[
-            Expanded(child: Text(label, style: const TextStyle(color: Color(0xFF66766D)))),
+            Expanded(
+                child: Text(label,
+                    style: const TextStyle(color: Color(0xFF66766D)))),
             Text(
               ProfitSharingSettlementHistory.formatKobo(value),
               style: const TextStyle(fontWeight: FontWeight.w800),
@@ -976,7 +1897,8 @@ class _ProfitSharingSettlementHistoryState
     final Map<String, dynamic> account = _data?['companyAccount'] is Map
         ? Map<String, dynamic>.from(_data!['companyAccount'] as Map)
         : <String, dynamic>{};
-    final List<Map<String, dynamic>> allocations = _maps(summary['allocations']);
+    final List<Map<String, dynamic>> allocations =
+        _maps(summary['allocations']);
     final List<Map<String, dynamic>> items = _maps(_data?['items']);
     final bool hasNext = _total > 0 && _page * _limit < _total;
 
@@ -1006,7 +1928,8 @@ class _ProfitSharingSettlementHistoryState
           const Text(
             'Future profit-sharing records only. Legacy main-wallet commissions are excluded. '
             'History does not indicate that distribution is live.',
-            style: TextStyle(height: 1.4, color: Color(0xFF65746C), fontSize: 12),
+            style:
+                TextStyle(height: 1.4, color: Color(0xFF65746C), fontSize: 12),
           ),
           const SizedBox(height: 11),
           const Text(
@@ -1024,13 +1947,15 @@ class _ProfitSharingSettlementHistoryState
             children: <Widget>[
               OutlinedButton.icon(
                 key: const ValueKey<String>('settlement-period-from'),
-                onPressed: _loading ? null : () => _choosePeriodDate(isFrom: true),
+                onPressed:
+                    _loading ? null : () => _choosePeriodDate(isFrom: true),
                 icon: const Icon(Icons.calendar_today_outlined, size: 16),
                 label: Text(_dateLabel(_from, 'From date')),
               ),
               OutlinedButton.icon(
                 key: const ValueKey<String>('settlement-period-to'),
-                onPressed: _loading ? null : () => _choosePeriodDate(isFrom: false),
+                onPressed:
+                    _loading ? null : () => _choosePeriodDate(isFrom: false),
                 icon: const Icon(Icons.event_outlined, size: 16),
                 label: Text(_dateLabel(_to, 'To date')),
               ),
@@ -1065,7 +1990,8 @@ class _ProfitSharingSettlementHistoryState
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(_error!, key: const ValueKey<String>('settlement-history-error')),
+                Text(_error!,
+                    key: const ValueKey<String>('settlement-history-error')),
                 TextButton.icon(
                   onPressed: _loading ? null : () => _load(),
                   icon: const Icon(Icons.refresh_rounded),
@@ -1077,10 +2003,12 @@ class _ProfitSharingSettlementHistoryState
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!, style: const TextStyle(color: Color(0xFF8F352E))),
+                child: Text(_error!,
+                    style: const TextStyle(color: Color(0xFF8F352E))),
               ),
             if (_loading) const LinearProgressIndicator(minHeight: 2),
-            const Text('Profit-sharing totals', style: TextStyle(fontWeight: FontWeight.w900)),
+            const Text('Profit-sharing totals',
+                style: TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(height: 10),
             _metric('Company profit', summary['companyProfitKobo']),
             _metric('Beneficiary credits', summary['creditedKobo']),
@@ -1101,7 +2029,8 @@ class _ProfitSharingSettlementHistoryState
                 ),
               ),
             const Divider(height: 20),
-            const Text('Company custody account', style: TextStyle(fontWeight: FontWeight.w900)),
+            const Text('Company custody account',
+                style: TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(height: 10),
             _metric('Available', account['availableKobo']),
             _metric('Reserved', account['reservedKobo']),
@@ -1111,39 +2040,49 @@ class _ProfitSharingSettlementHistoryState
             _metric('Reversed', account['reversedKobo']),
             if (allocations.isNotEmpty) ...<Widget>[
               const Divider(height: 20),
-              const Text('Allocation by role', style: TextStyle(fontWeight: FontWeight.w900)),
+              const Text('Allocation by role',
+                  style: TextStyle(fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
               ...allocations.map((Map<String, dynamic> allocation) => Padding(
                     padding: const EdgeInsets.only(bottom: 9),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text((allocation['role'] ?? 'Role unavailable').toString(),
-                            style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(
+                            (allocation['role'] ?? 'Role unavailable')
+                                .toString(),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 3),
-                        Text('Credited ${ProfitSharingSettlementHistory.formatKobo(allocation['creditedKobo'])} · '
+                        Text(
+                            'Credited ${ProfitSharingSettlementHistory.formatKobo(allocation['creditedKobo'])} · '
                             'Reversed ${ProfitSharingSettlementHistory.formatKobo(allocation['reversedKobo'])} · '
                             'Net ${ProfitSharingSettlementHistory.formatKobo(allocation['netKobo'])} · '
                             'Held / unallocated ${ProfitSharingSettlementHistory.formatKobo(allocation['heldKobo'])}',
-                            style: const TextStyle(color: Color(0xFF66766D), fontSize: 12)),
+                            style: const TextStyle(
+                                color: Color(0xFF66766D), fontSize: 12)),
                       ],
                     ),
                   )),
             ],
             const Divider(height: 20),
-            const Text('Settlement entries', style: TextStyle(fontWeight: FontWeight.w900)),
+            const Text('Settlement entries',
+                style: TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
             if (items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('No future profit-sharing settlements recorded yet.',
+                child: Text(
+                    'No future profit-sharing settlements recorded yet.',
                     key: ValueKey<String>('settlement-history-empty'),
                     style: TextStyle(color: Color(0xFF66766D))),
               )
             else
               ...items.map((Map<String, dynamic> item) {
-                final List<Map<String, dynamic>> entries = _maps(item['entries']);
-                final String created = item['createdAt']?.toString() ?? 'Date unavailable';
+                final List<Map<String, dynamic>> entries =
+                    _maps(item['entries']);
+                final String created =
+                    item['createdAt']?.toString() ?? 'Date unavailable';
                 return Container(
                   margin: const EdgeInsets.only(bottom: 9),
                   padding: const EdgeInsets.all(12),
@@ -1154,13 +2093,17 @@ class _ProfitSharingSettlementHistoryState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text('${item['kind'] ?? 'Settlement'} · ${item['serviceType'] ?? 'Service unavailable'}',
+                      Text(
+                          '${item['kind'] ?? 'Settlement'} · ${item['serviceType'] ?? 'Service unavailable'}',
                           style: const TextStyle(fontWeight: FontWeight.w800)),
                       const SizedBox(height: 3),
-                      Text('${item['reference'] ?? item['id'] ?? 'Reference unavailable'} · $created',
-                          style: const TextStyle(color: Color(0xFF66766D), fontSize: 12)),
+                      Text(
+                          '${item['reference'] ?? item['id'] ?? 'Reference unavailable'} · $created',
+                          style: const TextStyle(
+                              color: Color(0xFF66766D), fontSize: 12)),
                       const SizedBox(height: 5),
-                      Text('Amount ${ProfitSharingSettlementHistory.formatKobo(item['amountKobo'])} · '
+                      Text(
+                          'Amount ${ProfitSharingSettlementHistory.formatKobo(item['amountKobo'])} · '
                           'Company profit ${ProfitSharingSettlementHistory.formatKobo(item['companyProfitKobo'])}',
                           style: const TextStyle(fontSize: 12)),
                       if (entries.isNotEmpty) ...<Widget>[
@@ -1173,19 +2116,22 @@ class _ProfitSharingSettlementHistoryState
                             accountId,
                           );
                           return Text(
-                              held
-                                  ? 'Held / unallocated custody · not a beneficiary credit · '
-                                      '${ProfitSharingSettlementHistory.formatKobo(entry['amountKobo'])}'
-                                  : 'Beneficiary allocation · ${entry['role'] ?? 'Role unavailable'} · '
-                                      '${ProfitSharingSettlementHistory.formatKobo(entry['amountKobo'])} · '
-                                      'Account $accountId',
-                              style: const TextStyle(color: Color(0xFF66766D), fontSize: 12),
-                            );
+                            held
+                                ? 'Held / unallocated custody · not a beneficiary credit · '
+                                    '${ProfitSharingSettlementHistory.formatKobo(entry['amountKobo'])}'
+                                : 'Beneficiary allocation · ${entry['role'] ?? 'Role unavailable'} · '
+                                    '${ProfitSharingSettlementHistory.formatKobo(entry['amountKobo'])} · '
+                                    'Account $accountId',
+                            style: const TextStyle(
+                                color: Color(0xFF66766D), fontSize: 12),
+                          );
                         }),
                       ],
-                      if (item['code'] != null && item['code'].toString().isNotEmpty)
+                      if (item['code'] != null &&
+                          item['code'].toString().isNotEmpty)
                         Text('Record code ${item['code']}',
-                            style: const TextStyle(color: Color(0xFF66766D), fontSize: 11)),
+                            style: const TextStyle(
+                                color: Color(0xFF66766D), fontSize: 11)),
                     ],
                   ),
                 );
@@ -1194,17 +2140,22 @@ class _ProfitSharingSettlementHistoryState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: <Widget>[
                 Text('Page $_page${_total > 0 ? ' · $_total records' : ''}',
-                    style: const TextStyle(color: Color(0xFF66766D), fontSize: 12)),
+                    style: const TextStyle(
+                        color: Color(0xFF66766D), fontSize: 12)),
                 Row(
                   children: <Widget>[
                     IconButton(
                       tooltip: 'Previous history page',
-                      onPressed: _loading || _page <= 1 ? null : () => _load(page: _page - 1),
+                      onPressed: _loading || _page <= 1
+                          ? null
+                          : () => _load(page: _page - 1),
                       icon: const Icon(Icons.chevron_left_rounded),
                     ),
                     IconButton(
                       tooltip: 'Next history page',
-                      onPressed: _loading || !hasNext ? null : () => _load(page: _page + 1),
+                      onPressed: _loading || !hasNext
+                          ? null
+                          : () => _load(page: _page + 1),
                       icon: const Icon(Icons.chevron_right_rounded),
                     ),
                   ],
@@ -1247,7 +2198,10 @@ class _Panel extends StatelessWidget {
           color: const Color(0xFFFCFDFB),
           borderRadius: BorderRadius.circular(17),
           border: Border.all(color: const Color(0xFFE1E9E1)),
-          boxShadow: const <BoxShadow>[BoxShadow(color: Color(0x080E3018), blurRadius: 16, offset: Offset(0, 5))],
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+                color: Color(0x080E3018), blurRadius: 16, offset: Offset(0, 5))
+          ],
         ),
         child: child,
       );
@@ -1263,12 +2217,175 @@ class _SectionHeading extends StatelessWidget {
           width: 27,
           height: 27,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: const Color(0xFFE6F2E8), borderRadius: BorderRadius.circular(9)),
-          child: Text(number, style: const TextStyle(color: Color(0xFF168A3A), fontSize: 11, fontWeight: FontWeight.w900)),
+          decoration: BoxDecoration(
+              color: const Color(0xFFE6F2E8),
+              borderRadius: BorderRadius.circular(9)),
+          child: Text(number,
+              style: const TextStyle(
+                  color: Color(0xFF168A3A),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900)),
         ),
         const SizedBox(width: 9),
-        Expanded(child: Text(title, style: const TextStyle(color: Color(0xFF263C31), fontSize: 16, fontWeight: FontWeight.w900))),
+        Expanded(
+            child: Text(title,
+                style: const TextStyle(
+                    color: Color(0xFF263C31),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900))),
       ]);
+}
+
+class _CompanyMetric extends StatelessWidget {
+  const _CompanyMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F5F0),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF20372F),
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF6B786F),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _CompanyPasswordDialog extends StatefulWidget {
+  const _CompanyPasswordDialog({
+    required this.title,
+    required this.explanation,
+  });
+
+  final String title;
+  final String explanation;
+
+  @override
+  State<_CompanyPasswordDialog> createState() => _CompanyPasswordDialogState();
+}
+
+class _CompanyPasswordDialogState extends State<_CompanyPasswordDialog> {
+  final TextEditingController _passwordController = TextEditingController();
+  bool _confirmed = false;
+
+  @override
+  void dispose() {
+    _passwordController.clear();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(widget.explanation),
+            const SizedBox(height: 14),
+            TextField(
+              key: const ValueKey<String>('company-current-password'),
+              controller: _passwordController,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Current password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _confirmed,
+              onChanged: (bool? value) =>
+                  setState(() => _confirmed = value ?? false),
+              title: const Text('I confirm this company-wide change.'),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: _confirmed && _passwordController.text.isNotEmpty
+                ? () {
+                    final String password = _passwordController.text;
+                    _passwordController.clear();
+                    Navigator.pop(context, password);
+                  }
+                : null,
+            child: const Text('Confirm'),
+          ),
+        ],
+      );
+}
+
+class _CompanyControlSkeleton extends StatelessWidget {
+  const _CompanyControlSkeleton();
+
+  @override
+  Widget build(BuildContext context) => const _Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            LinearProgressIndicator(minHeight: 2),
+            SizedBox(height: 15),
+            _SkeletonLine(width: 154, height: 17),
+            SizedBox(height: 12),
+            _SkeletonLine(width: double.infinity, height: 44),
+            SizedBox(height: 10),
+            _SkeletonLine(width: double.infinity, height: 44),
+            SizedBox(height: 10),
+            _SkeletonLine(width: 190, height: 15),
+          ],
+        ),
+      );
+}
+
+class _SkeletonLine extends StatelessWidget {
+  const _SkeletonLine({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8ECE6),
+          borderRadius: BorderRadius.circular(8),
+        ),
+      );
 }
 
 class _InlineMessage extends StatelessWidget {
@@ -1278,8 +2395,14 @@ class _InlineMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(color: danger ? const Color(0xFFFFE8E5) : const Color(0xFFE4F3E8), borderRadius: BorderRadius.circular(13)),
-        child: Text(message, style: TextStyle(color: danger ? const Color(0xFF8F352E) : const Color(0xFF27573A), height: 1.4)),
+        decoration: BoxDecoration(
+            color: danger ? const Color(0xFFFFE8E5) : const Color(0xFFE4F3E8),
+            borderRadius: BorderRadius.circular(13)),
+        child: Text(message,
+            style: TextStyle(
+                color:
+                    danger ? const Color(0xFF8F352E) : const Color(0xFF27573A),
+                height: 1.4)),
       );
 }
 
@@ -1288,11 +2411,15 @@ class _LoadingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.all(18),
-        children: List<Widget>.generate(5, (int index) => Container(
-          height: index == 0 ? 90 : 120,
-          margin: const EdgeInsets.only(bottom: 13),
-          decoration: BoxDecoration(color: const Color(0xFFE5ECE5), borderRadius: BorderRadius.circular(17)),
-        )),
+        children: List<Widget>.generate(
+            5,
+            (int index) => Container(
+                  height: index == 0 ? 90 : 120,
+                  margin: const EdgeInsets.only(bottom: 13),
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFE5ECE5),
+                      borderRadius: BorderRadius.circular(17)),
+                )),
       );
 }
 
@@ -1305,13 +2432,18 @@ class _ErrorState extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(28),
           child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-            const Icon(Icons.cloud_off_outlined, size: 38, color: Color(0xFF829087)),
+            const Icon(Icons.cloud_off_outlined,
+                size: 38, color: Color(0xFF829087)),
             const SizedBox(height: 12),
-            const Text('Settings could not load', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const Text('Settings could not load',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             const SizedBox(height: 6),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 14),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Try again')),
+            FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try again')),
           ]),
         ),
       );
@@ -1333,7 +2465,8 @@ class _VersionCard extends StatelessWidget {
         : <String, dynamic>{};
     final bool previousCompatible =
         ProfitSharingSettingsScreenRole.isCompatible(previousPercentages);
-    final String date = version['effectiveAt']?.toString() ?? 'Date not recorded';
+    final String date =
+        version['effectiveAt']?.toString() ?? 'Date not recorded';
     final String created = version['createdAt']?.toString() ?? '';
     final String creator = version['createdBy']?.toString() ?? '';
     final bool legacy = version['policyVersion'] != 3 ||
@@ -1341,77 +2474,113 @@ class _VersionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: const Color(0xFFFCFDFB), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE1E9E1))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-        Row(children: <Widget>[
-          Expanded(child: Text('Version ${version['id'] ?? '—'}', style: const TextStyle(color: Color(0xFF263C31), fontWeight: FontWeight.w900))),
-          _StatusChip(enabled: version['enabled'] == true),
-        ]),
-        if (legacy) ...<Widget>[
-          const SizedBox(height: 8),
-          const _InlineMessage(
-            message: 'Legacy version — preserved as recorded in backend history, but its former beneficiary layout is hidden here and is not compatible with current activation policy.',
-            danger: true,
-          ),
-        ],
-        if (!legacy) ...<Widget>[
-          const SizedBox(height: 7),
-          Text('Policy v${version['policyVersion']} · 100% of verified positive company net profit',
-              style: const TextStyle(color: Color(0xFF52645A), fontWeight: FontWeight.w800, fontSize: 12)),
-        ],
-        const SizedBox(height: 7),
-        Text('Effective $date', style: const TextStyle(color: Color(0xFF69776F), fontSize: 12)),
-        if (created.isNotEmpty)
-          Text(
-            creator.isEmpty ? 'Recorded $created' : 'Recorded $created · $creator',
-            style: const TextStyle(color: Color(0xFF87928B), fontSize: 11),
-          ),
-        if (!legacy) ...<Widget>[
-          const SizedBox(height: 10),
-          const Text('New configuration', style: TextStyle(color: Color(0xFF168A3A), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
-          const SizedBox(height: 5),
-          _percentageRows(percentages),
-          const SizedBox(height: 10),
-          const Text('Previous configuration', style: TextStyle(color: Color(0xFF168A3A), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
-          const SizedBox(height: 5),
-          if (previousCompatible)
-            _percentageRows(previousPercentages)
-          else
-            const Text(
-              'Unavailable — the prior configuration was legacy or not policy v3 compatible.',
-              style: TextStyle(color: Color(0xFF69776F), fontSize: 12),
-            ),
-        ],
-        if ((version['reason']?.toString() ?? '').isNotEmpty) ...<Widget>[
-          const SizedBox(height: 10),
-          Text('Reason', style: TextStyle(color: const Color(0xFF168A3A), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
-          const SizedBox(height: 2),
-          Text(version['reason'].toString(), style: const TextStyle(color: Color(0xFF52645A), height: 1.4)),
-        ],
-      ]),
+      decoration: BoxDecoration(
+          color: const Color(0xFFFCFDFB),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE1E9E1))),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(children: <Widget>[
+              Expanded(
+                  child: Text('Version ${version['id'] ?? '—'}',
+                      style: const TextStyle(
+                          color: Color(0xFF263C31),
+                          fontWeight: FontWeight.w900))),
+              _StatusChip(enabled: version['enabled'] == true),
+            ]),
+            if (legacy) ...<Widget>[
+              const SizedBox(height: 8),
+              const _InlineMessage(
+                message:
+                    'Legacy version — preserved as recorded in backend history, but its former beneficiary layout is hidden here and is not compatible with current activation policy.',
+                danger: true,
+              ),
+            ],
+            if (!legacy) ...<Widget>[
+              const SizedBox(height: 7),
+              Text(
+                  'Policy v${version['policyVersion']} · 100% of verified positive company net profit',
+                  style: const TextStyle(
+                      color: Color(0xFF52645A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12)),
+            ],
+            const SizedBox(height: 7),
+            Text('Effective $date',
+                style: const TextStyle(color: Color(0xFF69776F), fontSize: 12)),
+            if (created.isNotEmpty)
+              Text(
+                creator.isEmpty
+                    ? 'Recorded $created'
+                    : 'Recorded $created · $creator',
+                style: const TextStyle(color: Color(0xFF87928B), fontSize: 11),
+              ),
+            if (!legacy) ...<Widget>[
+              const SizedBox(height: 10),
+              const Text('New configuration',
+                  style: TextStyle(
+                      color: Color(0xFF168A3A),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8)),
+              const SizedBox(height: 5),
+              _percentageRows(percentages),
+              const SizedBox(height: 10),
+              const Text('Previous configuration',
+                  style: TextStyle(
+                      color: Color(0xFF168A3A),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8)),
+              const SizedBox(height: 5),
+              if (previousCompatible)
+                _percentageRows(previousPercentages)
+              else
+                const Text(
+                  'Unavailable — the prior configuration was legacy or not policy v3 compatible.',
+                  style: TextStyle(color: Color(0xFF69776F), fontSize: 12),
+                ),
+            ],
+            if ((version['reason']?.toString() ?? '').isNotEmpty) ...<Widget>[
+              const SizedBox(height: 10),
+              Text('Reason',
+                  style: TextStyle(
+                      color: const Color(0xFF168A3A),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8)),
+              const SizedBox(height: 2),
+              Text(version['reason'].toString(),
+                  style:
+                      const TextStyle(color: Color(0xFF52645A), height: 1.4)),
+            ],
+          ]),
     );
   }
 
   Widget _percentageRows(Map<String, dynamic> percentages) => Wrap(
         spacing: 7,
         runSpacing: 7,
-        children: ProfitSharingSettingsScreenRole.supported.map(
-          (String role) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F5EF),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Text(
-              '${_roleNames[role]}: ${percentages[role]}%',
-              style: const TextStyle(
-                color: Color(0xFF44554A),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+        children: ProfitSharingSettingsScreenRole.supported
+            .map(
+              (String role) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F5EF),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                  '${_roleNames[role]}: ${percentages[role]}%',
+                  style: const TextStyle(
+                    color: Color(0xFF44554A),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
-          ),
-        ).toList(),
+            )
+            .toList(),
       );
 
   static const Map<String, String> _roleNames = <String, String>{
@@ -1442,7 +2611,14 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(color: enabled ? const Color(0xFFE4F3E8) : const Color(0xFFF0EFEB), borderRadius: BorderRadius.circular(20)),
-        child: Text(enabled ? 'Enabled' : 'Disabled', style: TextStyle(color: enabled ? const Color(0xFF2C7041) : const Color(0xFF69736C), fontSize: 11, fontWeight: FontWeight.w800)),
+        decoration: BoxDecoration(
+            color: enabled ? const Color(0xFFE4F3E8) : const Color(0xFFF0EFEB),
+            borderRadius: BorderRadius.circular(20)),
+        child: Text(enabled ? 'Enabled' : 'Disabled',
+            style: TextStyle(
+                color:
+                    enabled ? const Color(0xFF2C7041) : const Color(0xFF69736C),
+                fontSize: 11,
+                fontWeight: FontWeight.w800)),
       );
 }

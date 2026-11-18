@@ -120,6 +120,42 @@ class ProfitSharingApi {
   }
 
   Future<Map<String, dynamic>> saveRule(Map<String, dynamic> payload) async {
+    final dynamic rawPool = payload['poolPercentage'];
+    if (rawPool is! num ||
+        !rawPool.isFinite ||
+        rawPool < 0 ||
+        rawPool > 100 ||
+        (rawPool * 100).roundToDouble() != rawPool * 100) {
+      throw const ProfitSharingApiException(
+        'Set a pool percentage from 0 to 100 with at most two decimal places.',
+      );
+    }
+    const List<String> roles = <String>[
+      'AGGREGATOR',
+      'STATE_MANAGER',
+      'ZONAL_MANAGER',
+    ];
+    final dynamic rawPercentages = payload['percentages'];
+    if (rawPercentages is! Map ||
+        rawPercentages.length != roles.length ||
+        !roles.every(rawPercentages.containsKey) ||
+        rawPercentages.values.any((dynamic value) =>
+            value is! num ||
+            !value.isFinite ||
+            value < 0 ||
+            value > 100 ||
+            (value * 100).roundToDouble() != value * 100) ||
+        (rawPercentages.values.cast<num>().fold<num>(
+                      0,
+                      (num total, num value) => total + value,
+                    ) -
+                100)
+            .abs() >
+            0.000001) {
+      throw const ProfitSharingApiException(
+        'The three supported beneficiary allocations must total 100%, with each value from 0 to 100 and at most two decimal places.',
+      );
+    }
     final Map<String, dynamic> root = await _send('POST', body: payload);
     final dynamic raw = root['data'];
     final Map<String, dynamic> data =
@@ -132,6 +168,8 @@ class ProfitSharingApi {
           final Map<String, dynamic> version = Map<String, dynamic>.from(value);
           return version['id'] != null &&
               version['serviceType'] is String &&
+              (version['policyVersion'] != 2 ||
+                  version['poolPercentage'] is num) &&
               version['enabled'] is bool &&
               version['effectiveAt'] is String &&
               version['percentages'] is Map &&
@@ -142,6 +180,10 @@ class ProfitSharingApi {
     if (data['serviceType'] != payload['serviceType'] ||
         data['revision'] is! num ||
         !validVersions ||
+        !(data['versions'] as List).any((dynamic value) =>
+            value is Map &&
+            value['policyVersion'] == 2 &&
+            value['poolPercentage'] is num) ||
         data['replayed'] is! bool) {
       throw const ProfitSharingApiException(
         'The server response could not confirm whether this rule was saved.',

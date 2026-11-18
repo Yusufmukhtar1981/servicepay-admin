@@ -525,6 +525,12 @@ class _ProfitSharingActivationPanelState
                   ),
                 ),
               ),
+              if (_receipt!['plan'] is Map) ...<Widget>[
+                const SizedBox(height: 6),
+                _financialPlanSummary(
+                  Map<String, dynamic>.from(_receipt!['plan'] as Map),
+                ),
+              ],
             ],
             const SizedBox(height: 10),
             TextField(
@@ -635,6 +641,44 @@ class _ProfitSharingActivationPanelState
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _financialPlanSummary(Map<String, dynamic> plan) {
+    final List<String> lines = <String>[];
+    for (final MapEntry<String, String> field in <MapEntry<String, String>>[
+      const MapEntry<String, String>('netProfitKobo', 'Verified net profit'),
+      const MapEntry<String, String>('poolKobo', 'Profit pool'),
+      const MapEntry<String, String>('companyRetainedKobo', 'Company-retained profit'),
+      const MapEntry<String, String>('unallocatedKobo', 'Unallocated commission'),
+      const MapEntry<String, String>('roundingKobo', 'Rounding'),
+    ]) {
+      final dynamic amount = plan[field.key];
+      if (amount is num) {
+        lines.add('${field.value}: ₦${(amount / 100).toStringAsFixed(2)}');
+      }
+    }
+    final dynamic poolPercentage = plan['poolPercentage'];
+    if (poolPercentage is num) {
+      lines.add('Pool percentage: $poolPercentage%');
+    }
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F5EF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        lines.join(' · '),
+        style: const TextStyle(
+          color: Color(0xFF44554A),
+          fontSize: 12,
+          height: 1.45,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

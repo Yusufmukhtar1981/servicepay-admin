@@ -239,7 +239,15 @@ void main() {
                 'success': true,
                 'data': <String, dynamic>{
                   'id': 'receipt-24',
-                  'plan': <String, dynamic>{'eligible': true, 'poolKobo': 3500},
+                   'plan': <String, dynamic>{
+                     'eligible': true,
+                      'netProfitKobo': 5000,
+                     'poolKobo': 3500,
+                     'companyRetainedKobo': 1500,
+                      'unallocatedKobo': 0,
+                     'roundingKobo': 0,
+                      'poolPercentage': 70,
+                   },
                   'serviceType': 'AIRTIME',
                   'ruleId': 'rule-airtime-12',
                   'adapterVersion': 'test-v1',
@@ -273,6 +281,11 @@ void main() {
     await tester.pumpAndSettle();
     await _scrollTo(tester, find.textContaining('Eligible receipt receipt-24'));
     expect(find.textContaining('Eligible receipt receipt-24'), findsOneWidget);
+    expect(find.textContaining('Verified net profit: ₦50.00'), findsOneWidget);
+    expect(find.textContaining('Profit pool: ₦35.00'), findsOneWidget);
+    expect(find.textContaining('Company-retained profit: ₦15.00'), findsOneWidget);
+    expect(find.textContaining('Unallocated commission: ₦0.00'), findsOneWidget);
+    expect(find.textContaining('Pool percentage: 70%'), findsOneWidget);
 
     await _scrollTo(
       tester,
@@ -323,6 +336,66 @@ void main() {
     expect(requests.where((http.Request request) =>
         request.url.path.endsWith('/activation')), hasLength(1));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('legacy rule or missing pool blocker cannot be bypassed',
+      (WidgetTester tester) async {
+    final List<http.Request> requests = <http.Request>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ProfitSharingActivationPanel(
+            api: ProfitSharingApi(
+              baseUrl: 'https://servicepay.test/api',
+              tokenProvider: () async => 'session-token',
+              client: MockClient((http.Request request) async {
+                requests.add(request);
+                return http.Response('{}', 500);
+              }),
+            ),
+            engine: _engine(
+              services: <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'serviceType': 'AIRTIME',
+                  'ruleId': 'legacy-rule',
+                  'blockers': <String>[
+                    'Current rule is legacy or has no explicit pool percentage.',
+                  ],
+                },
+              ],
+            )['data'] as Map<String, dynamic>,
+            service: 'AIRTIME',
+            canManage: true,
+            refreshStatus: () async {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _scrollTo(
+      tester,
+      find.byKey(const ValueKey<String>('profit-sharing-expand-controls')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profit-sharing-expand-controls')),
+    );
+    await tester.pumpAndSettle();
+    final Finder activate = find.byKey(
+      const ValueKey<String>('profit-sharing-activate'),
+    );
+    await _scrollTo(tester, activate);
+    expect(tester.widget<FilledButton>(activate).onPressed, isNull);
+    expect(
+      find.text(
+        'Selected service blockers: Current rule is legacy or has no explicit pool percentage.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      requests.where((http.Request request) =>
+          request.url.path.endsWith('/activation')),
+      isEmpty,
+    );
   });
 
   testWidgets(

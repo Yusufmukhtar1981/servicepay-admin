@@ -29,18 +29,14 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   static const Color green = Color(0xFF168A3A);
   static const Color paper = Color(0xFFF4F7F2);
   static const List<String> roleCodes = <String>[
-    'BUSINESS_NETWORK_AGENT',
     'AGGREGATOR',
     'STATE_MANAGER',
     'ZONAL_MANAGER',
-    'HEAD_OFFICE',
   ];
   static const Map<String, String> roleNames = <String, String>{
-    'BUSINESS_NETWORK_AGENT': 'Business Network Agent',
     'AGGREGATOR': 'Aggregator',
     'STATE_MANAGER': 'State Manager',
     'ZONAL_MANAGER': 'Zonal Manager',
-    'HEAD_OFFICE': 'Head Office',
   };
   static const Map<String, String> serviceNames = <String, String>{
     'AIRTIME': 'Airtime',
@@ -61,6 +57,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       <String, TextEditingController>{
     for (final String role in roleCodes) role: TextEditingController(),
   };
+  final TextEditingController _poolController = TextEditingController();
   final TextEditingController _reasonController = TextEditingController();
   Map<String, dynamic> _data = <String, dynamic>{};
   Map<String, dynamic>? _engine;
@@ -71,6 +68,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   bool _saving = false;
   bool _canManage = false;
   bool _distributionLive = false;
+  bool _legacyCurrentRule = false;
   bool _engineLoading = true;
   String? _engineError;
   String _readiness = 'Loading distribution readiness…';
@@ -92,6 +90,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     for (final TextEditingController controller in _percentControllers.values) {
       controller.dispose();
     }
+    _poolController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
@@ -266,10 +265,19 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     final dynamic rawPercentages = current?['percentages'];
     final Map<String, dynamic> percentages =
         rawPercentages is Map ? Map<String, dynamic>.from(rawPercentages) : <String, dynamic>{};
+    final bool compatible = current != null &&
+        current['policyVersion'] == 2 &&
+        current['poolPercentage'] is num &&
+        roleCodes.every(percentages.containsKey) &&
+        percentages.keys.toSet().containsAll(roleCodes) &&
+        percentages.keys.every(roleCodes.contains);
+    _legacyCurrentRule = current != null && !compatible;
     for (final String role in roleCodes) {
-      _percentControllers[role]!.text =
-          percentages[role] == null ? '' : percentages[role].toString();
+      _percentControllers[role]!.text = compatible && percentages[role] != null
+          ? percentages[role].toString()
+          : '';
     }
+    _poolController.text = compatible ? current['poolPercentage'].toString() : '';
     _enabled = current?['enabled'] is bool ? current!['enabled'] as bool : true;
     _reasonController.clear();
     _effectiveAt = null;
@@ -287,6 +295,17 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   }
 
   String? _validate() {
+    final String poolText = _poolController.text.trim();
+    if (poolText.isEmpty) {
+      return 'Set the percentage of verified net profit assigned to the pool.';
+    }
+    final double? pool = double.tryParse(poolText);
+    if (pool == null || !pool.isFinite || pool < 0 || pool > 100) {
+      return 'Pool percentage must be between 0 and 100.';
+    }
+    if (poolText.contains('.') && poolText.split('.').last.length > 2) {
+      return 'Pool percentage can have at most two decimal places.';
+    }
     for (final String role in roleCodes) {
       final String text = _percentControllers[role]!.text.trim();
       if (text.isEmpty) return 'Enter a percentage for every role.';
@@ -326,7 +345,32 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
         for (final String role in roleCodes)
           role: num.parse(_percentControllers[role]!.text.trim()),
       },
+      'poolPercentage': num.parse(_poolController.text.trim()),
     };
+  }
+
+  Map<String, dynamic>? get _allocationSuggestion {
+    final dynamic raw = _data['allocationSuggestion'];
+    if (raw is! Map ||
+        !roleCodes.every(raw.containsKey) ||
+        raw.keys.any((dynamic key) => !roleCodes.contains(key.toString()))) {
+      return null;
+    }
+    final Map<String, dynamic> values = Map<String, dynamic>.from(raw);
+    if (values.values.any((dynamic value) => value is! num)) return null;
+    final num total = values.values.cast<num>().fold<num>(0, (num sum, num value) => sum + value);
+    return total == 100 ? values : null;
+  }
+
+  void _applyAllocationSuggestion() {
+    final Map<String, dynamic>? suggestion = _allocationSuggestion;
+    if (suggestion == null || !_canManage || _frozenPayload != null) return;
+    setState(() {
+      for (final String role in roleCodes) {
+        _percentControllers[role]!.text = suggestion[role].toString();
+      }
+      _validationError = null;
+    });
   }
 
   Future<void> _confirmAndSave() async {
@@ -515,9 +559,11 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
                         const SizedBox(height: 5),
                         const Text('Share the service margin.', style: TextStyle(color: ink, fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -0.6)),
                         const SizedBox(height: 6),
-                        const Text('Set a future distribution across all five roles. These rules never expose customer balances.', style: TextStyle(color: Color(0xFF60736A), height: 1.45)),
+                         const Text('Head Office controls the pool per service. Beneficiaries are Aggregator, State Manager and Zonal Manager only.', style: TextStyle(color: Color(0xFF60736A), height: 1.45)),
                         const SizedBox(height: 22),
                         _servicePicker(),
+                        const SizedBox(height: 18),
+                        _poolEditor(),
                         const SizedBox(height: 18),
                         _percentEditor(),
                         const SizedBox(height: 18),
@@ -648,9 +694,25 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
 
   Widget _percentEditor() => _Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '02', title: 'Allocate percentages'),
+          const _SectionHeading(number: '03', title: 'Allocate percentages'),
           const SizedBox(height: 5),
-          const Text('All five shares must total exactly 100%.', style: TextStyle(color: Color(0xFF728078), fontSize: 13)),
+          const Text('These percentages split the pool only; all three beneficiary shares must total exactly 100%.', style: TextStyle(color: Color(0xFF728078), fontSize: 13)),
+          if (_allocationSuggestion != null) ...<Widget>[
+            const SizedBox(height: 9),
+            OutlinedButton.icon(
+              key: const ValueKey<String>('profit-sharing-use-allocation-suggestion'),
+              onPressed: _canManage && _frozenPayload == null ? _applyAllocationSuggestion : null,
+              icon: const Icon(Icons.content_copy_rounded),
+              label: const Text('Use editable 40 / 35 / 25 template'),
+            ),
+          ],
+          if (_legacyCurrentRule) ...<Widget>[
+            const SizedBox(height: 10),
+            const _InlineMessage(
+              message: 'Legacy rule: this version uses the former beneficiary layout or has no confirmed pool percentage. It is preserved in history and is not activation-compatible. No values were migrated and no 100% pool was assumed. Set a pool percentage and all three supported allocations explicitly.',
+              danger: true,
+            ),
+          ],
           const SizedBox(height: 14),
           ...roleCodes.asMap().entries.map((MapEntry<int, String> entry) {
             final String role = entry.value;
@@ -675,6 +737,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
             );
           }),
           const SizedBox(height: 13),
+          const Text('Head Office is the controller, not a beneficiary. Company-retained profit is separate from this beneficiary allocation.', style: TextStyle(color: Color(0xFF728078), fontSize: 12, height: 1.4)),
+          const SizedBox(height: 13),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             value: _enabled,
@@ -686,9 +750,38 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
         ]),
       );
 
+  Widget _poolEditor() => _Panel(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          const _SectionHeading(number: '02', title: 'Set the profit pool'),
+          const SizedBox(height: 8),
+          const Text(
+            'Explicitly set how much of verified positive net profit enters the beneficiary pool for this service. Pool = floor(net profit × pool percentage). Company-retained profit is the remainder after the pool; it is not a beneficiary, unallocated commission, or rounding.',
+            style: TextStyle(color: Color(0xFF61736A), height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey<String>('profit-sharing-pool-percentage'),
+            controller: _poolController,
+            enabled: _canManage && _frozenPayload == null,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: <TextInputFormatter>[
+              FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}(?:\.\d{0,2})?')),
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Profit pool percentage',
+              hintText: 'Enter explicitly — no default',
+              suffixText: '%',
+              helperText: 'Per service · 0–100 · up to two decimal places',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() => _validationError = null),
+          ),
+        ]),
+      );
+
   Widget _scheduleEditor() => _Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '03', title: 'Set effective date'),
+          const _SectionHeading(number: '04', title: 'Set effective date'),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _canManage && _frozenPayload == null ? _chooseDateTime : null,
@@ -707,9 +800,10 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
 
   Widget _auditEditor() => _Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const _SectionHeading(number: '04', title: 'Record the reason'),
+          const _SectionHeading(number: '05', title: 'Record the reason'),
           const SizedBox(height: 12),
           TextField(
+            key: const ValueKey<String>('profit-sharing-audit-reason'),
             controller: _reasonController,
             enabled: _canManage && _frozenPayload == null,
             maxLines: 3,
@@ -840,6 +934,9 @@ class _VersionCard extends StatelessWidget {
     final String date = version['effectiveAt']?.toString() ?? 'Date not recorded';
     final String created = version['createdAt']?.toString() ?? '';
     final String creator = version['createdBy']?.toString() ?? '';
+    final bool legacy = version['policyVersion'] != 2 ||
+        version['poolPercentage'] is! num ||
+        !ProfitSharingSettingsScreenRole.isCompatible(percentages);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(15),
@@ -849,6 +946,18 @@ class _VersionCard extends StatelessWidget {
           Expanded(child: Text('Version ${version['id'] ?? '—'}', style: const TextStyle(color: Color(0xFF263C31), fontWeight: FontWeight.w900))),
           _StatusChip(enabled: version['enabled'] == true),
         ]),
+        if (legacy) ...<Widget>[
+          const SizedBox(height: 8),
+          const _InlineMessage(
+            message: 'Legacy version — preserved as recorded in backend history, but its former beneficiary layout is hidden here and is not compatible with current activation policy.',
+            danger: true,
+          ),
+        ],
+        if (!legacy) ...<Widget>[
+          const SizedBox(height: 7),
+          Text('Pool: ${version['poolPercentage']}% of verified positive net profit · policy v${version['policyVersion']}',
+              style: const TextStyle(color: Color(0xFF52645A), fontWeight: FontWeight.w800, fontSize: 12)),
+        ],
         const SizedBox(height: 7),
         Text('Effective $date', style: const TextStyle(color: Color(0xFF69776F), fontSize: 12)),
         if (created.isNotEmpty)
@@ -856,16 +965,33 @@ class _VersionCard extends StatelessWidget {
             creator.isEmpty ? 'Recorded $created' : 'Recorded $created · $creator',
             style: const TextStyle(color: Color(0xFF87928B), fontSize: 11),
           ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: percentages.entries.map((MapEntry<String, dynamic> entry) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-            decoration: BoxDecoration(color: const Color(0xFFF0F5EF), borderRadius: BorderRadius.circular(9)),
-            child: Text('${_roleNames[entry.key] ?? entry.key}: ${entry.value}%', style: const TextStyle(color: Color(0xFF44554A), fontSize: 11, fontWeight: FontWeight.w700)),
-          )).toList(),
-        ),
+        if (!legacy && percentages.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: percentages.entries
+                .where((MapEntry<String, dynamic> entry) =>
+                    _roleNames.containsKey(entry.key))
+                .map((MapEntry<String, dynamic> entry) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F5EF),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Text(
+                        '${_roleNames[entry.key]}: ${entry.value}%',
+                        style: const TextStyle(
+                          color: Color(0xFF44554A),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ))
+                .toList(),
+          ),
+        ],
         if ((version['reason']?.toString() ?? '').isNotEmpty) ...<Widget>[
           const SizedBox(height: 10),
           Text('Reason', style: TextStyle(color: const Color(0xFF168A3A), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
@@ -877,12 +1003,22 @@ class _VersionCard extends StatelessWidget {
   }
 
   static const Map<String, String> _roleNames = <String, String>{
-    'BUSINESS_NETWORK_AGENT': 'Business Network Agent',
     'AGGREGATOR': 'Aggregator',
     'STATE_MANAGER': 'State Manager',
     'ZONAL_MANAGER': 'Zonal Manager',
-    'HEAD_OFFICE': 'Head Office',
   };
+}
+
+class ProfitSharingSettingsScreenRole {
+  static const List<String> supported = <String>[
+    'AGGREGATOR',
+    'STATE_MANAGER',
+    'ZONAL_MANAGER',
+  ];
+
+  static bool isCompatible(Map<String, dynamic> percentages) =>
+      percentages.keys.toSet().containsAll(supported) &&
+      percentages.keys.every(supported.contains);
 }
 
 class _StatusChip extends StatelessWidget {

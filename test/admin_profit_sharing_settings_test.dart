@@ -48,6 +48,42 @@ Map<String, dynamic> version({Map<String, dynamic>? percentages}) =>
       'reason': 'Approved distribution update',
     };
 
+Map<String, dynamic> engine() => <String, dynamic>{
+      'success': true,
+      'data': <String, dynamic>{
+        'mode': 'BLOCKED',
+        'distributionLive': false,
+        'revision': 4,
+        'ready': false,
+        'storageBlockers': <String>[
+          'Settlement is not enabled for this environment.',
+        ],
+        'services': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'serviceType': 'AIRTIME',
+            'ruleId': 'airtime-rule-4',
+            'blockers': <String>[],
+          },
+          <String, dynamic>{
+            'serviceType': 'DATA',
+            'ruleId': 'data-rule-4',
+            'blockers': <String>[],
+          },
+        ],
+      },
+    };
+
+http.Response _settingsOrEngine(
+  http.Request request, {
+  required Map<String, dynamic> settingsResponse,
+}) =>
+    http.Response(
+      jsonEncode(
+        request.url.path.endsWith('/engine') ? engine() : settingsResponse,
+      ),
+      200,
+    );
+
 void main() {
   testWidgets('new service percentages are blank and readiness is prominent',
       (WidgetTester tester) async {
@@ -57,7 +93,7 @@ void main() {
       home: ProfitSharingSettingsScreen(
         tokenProvider: () async => 'test-token',
         client: MockClient((http.Request request) async =>
-            http.Response(jsonEncode(settings()), 200)),
+            _settingsOrEngine(request, settingsResponse: settings())),
       ),
     ));
     await tester.pumpAndSettle();
@@ -85,7 +121,7 @@ void main() {
       home: ProfitSharingSettingsScreen(
         tokenProvider: () async => 'test-token',
         client: MockClient((http.Request request) async =>
-            http.Response(jsonEncode(settings()), 200)),
+            _settingsOrEngine(request, settingsResponse: settings())),
       ),
     ));
     await tester.pumpAndSettle();
@@ -104,7 +140,7 @@ void main() {
       home: ProfitSharingSettingsScreen(
         tokenProvider: () async => 'test-token',
         client: MockClient((http.Request request) async =>
-            http.Response(jsonEncode(settings()), 200)),
+            _settingsOrEngine(request, settingsResponse: settings())),
       ),
     ));
     await tester.pumpAndSettle();
@@ -143,7 +179,7 @@ void main() {
       home: ProfitSharingSettingsScreen(
         tokenProvider: () async => 'test-token',
         client: MockClient((http.Request request) async =>
-            http.Response(jsonEncode(loaded), 200)),
+            _settingsOrEngine(request, settingsResponse: loaded)),
       ),
     ));
     await tester.pumpAndSettle();
@@ -169,7 +205,10 @@ void main() {
         client: MockClient((http.Request request) async {
           requests.add(request);
           if (request.method == 'GET') {
-            return http.Response(jsonEncode(settings()), 200);
+            return _settingsOrEngine(
+              request,
+              settingsResponse: settings(),
+            );
           }
           postCount++;
           if (postCount == 1) return http.Response('{}', 200);
@@ -222,7 +261,10 @@ void main() {
         jsonDecode(firstPost.body) as Map<String, dynamic>;
     await tester.tap(find.text('Retry same request'));
     await tester.pumpAndSettle();
-    expect(requests, hasLength(3));
+    expect(
+      requests.where((http.Request request) => request.method == 'POST'),
+      hasLength(2),
+    );
     expect(jsonDecode(requests.last.body), firstBody);
     final http.Request post = firstPost;
     expect(post.method, 'POST');
@@ -283,7 +325,7 @@ void main() {
       home: ProfitSharingSettingsScreen(
         tokenProvider: () async => 'test-token',
         client: MockClient((http.Request request) async =>
-            http.Response(jsonEncode(settings()), 200)),
+            _settingsOrEngine(request, settingsResponse: settings())),
       ),
     ));
     await tester.pumpAndSettle();

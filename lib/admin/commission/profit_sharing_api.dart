@@ -75,6 +75,50 @@ class ProfitSharingApi {
 
   Future<Map<String, dynamic>> getSettings() => _send('GET');
 
+  Future<Map<String, dynamic>> getEngine() => _send('GET', suffix: '/engine');
+
+  Future<Map<String, dynamic>> dryRun(String transactionId) {
+    final String id = transactionId.trim();
+    if (!RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(id)) {
+      throw const ProfitSharingApiException(
+        'Enter a valid 24-character transaction ID.',
+      );
+    }
+    return _send(
+      'POST',
+      suffix: '/dry-run',
+      body: <String, dynamic>{'transactionId': id},
+    );
+  }
+
+  Future<Map<String, dynamic>> activate(Map<String, dynamic> payload) {
+    final String mode = payload['mode']?.toString() ?? '';
+    if (mode != 'LIVE' && mode != 'PAUSED') {
+      throw const ProfitSharingApiException('Choose a valid distribution mode.');
+    }
+    if (payload['confirmation'] != true ||
+        payload['confirmationText'] != 'ACTIVATE FUTURE PROFIT SHARING' ||
+        payload['reason'] is! String ||
+        (payload['reason'] as String).trim().isEmpty ||
+        payload['currentPassword'] is! String ||
+        (payload['currentPassword'] as String).isEmpty ||
+        payload['services'] is! List ||
+        (payload['services'] as List).length != 1) {
+      throw const ProfitSharingApiException(
+        'The activation confirmation is incomplete.',
+      );
+    }
+    if (mode == 'LIVE' &&
+        (payload['revision'] is! num ||
+            payload['dryRunIds'] is! Map ||
+            (payload['dryRunIds'] as Map).length != 1)) {
+      throw const ProfitSharingApiException(
+        'A fresh eligible dry-run receipt is required for activation.',
+      );
+    }
+    return _send('POST', suffix: '/activation', body: payload);
+  }
+
   Future<Map<String, dynamic>> saveRule(Map<String, dynamic> payload) async {
     final Map<String, dynamic> root = await _send('POST', body: payload);
     final dynamic raw = root['data'];
@@ -113,11 +157,12 @@ class ProfitSharingApi {
 
   Future<Map<String, dynamic>> _send(
     String method, {
+    String suffix = '',
     Map<String, dynamic>? body,
   }) async {
     final String token = await _token();
     final Uri uri = Uri.parse(
-      '${_baseUrl.replaceFirst(RegExp(r'/+$'), '')}$endpoint',
+      '${_baseUrl.replaceFirst(RegExp(r'/+$'), '')}$endpoint$suffix',
     );
     final Map<String, String> headers = <String, String>{
       'Accept': 'application/json',

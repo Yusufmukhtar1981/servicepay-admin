@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import 'profit_sharing_activation_panel.dart';
 import 'profit_sharing_api.dart';
 
 class ProfitSharingSettingsScreen extends StatefulWidget {
@@ -62,6 +63,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   };
   final TextEditingController _reasonController = TextEditingController();
   Map<String, dynamic> _data = <String, dynamic>{};
+  Map<String, dynamic>? _engine;
   String? _service;
   DateTime? _effectiveAt;
   bool _enabled = true;
@@ -69,6 +71,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
   bool _saving = false;
   bool _canManage = false;
   bool _distributionLive = false;
+  bool _engineLoading = true;
+  String? _engineError;
   String _readiness = 'Loading distribution readiness…';
   String? _error;
   String? _validationError;
@@ -133,10 +137,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       setState(() {
         _data = data;
         _canManage = data['canManage'] == true;
-        _distributionLive = data['distributionLive'] == true;
-        _readiness = data['readinessMessage']?.toString().trim().isNotEmpty == true
-            ? data['readinessMessage'].toString()
-            : 'Distribution is not live. Saved rules do not move customer funds.';
+        _distributionLive = false;
+        _readiness = 'Checking live activation status with the backend…';
         final List<String> services = _services;
         if (_service == null || !services.contains(_service)) {
           _service = services.isEmpty ? null : services.first;
@@ -152,6 +154,111 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    await _loadEngine();
+  }
+
+  Future<void> _loadEngine() async {
+    if (mounted) {
+      setState(() {
+        _engineLoading = true;
+        _engineError = null;
+      });
+    }
+    try {
+      final Map<String, dynamic> response = await _api.getEngine();
+      final dynamic raw = response['data'];
+      if (raw is! Map) {
+        throw const ProfitSharingApiException('Engine status is incomplete.');
+      }
+      final Map<String, dynamic> engine = Map<String, dynamic>.from(raw);
+      final dynamic rawServices = engine['services'];
+      final bool validServices = rawServices is List &&
+          rawServices.every((dynamic item) =>
+              item is Map &&
+              item['serviceType'] is String &&
+              item['blockers'] is List);
+      if (!<String>['PAUSED', 'BLOCKED', 'LIVE'].contains(engine['mode']) ||
+          engine['distributionLive'] is! bool ||
+          engine['revision'] is! num ||
+          engine['ready'] is! bool ||
+          engine['storageBlockers'] is! List ||
+          !validServices) {
+        throw const ProfitSharingApiException(
+          'Backend engine status is incomplete or invalid.',
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _engine = engine;
+          _distributionLive =
+              engine['distributionLive'] == true && engine['mode'] == 'LIVE';
+          final List<String> blockers = _engineBlockers(engine);
+          _readiness = _distributionLive
+              ? 'The backend reports LIVE distribution. Revision ${engine['revision'] ?? 'unknown'}.'
+              : blockers.isNotEmpty
+                  ? blockers.join(' · ')
+                  : 'Backend mode: ${engine['mode'] ?? 'unknown'}. Distribution is not live.';
+        });
+      }
+    } on ProfitSharingApiException catch (exception) {
+      if (mounted) {
+        setState(() {
+          _engine = null;
+          _distributionLive = false;
+          _engineError = exception.message;
+          _readiness = 'Activation status could not be verified. Distribution is treated as not live.';
+        });
+      }
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _engine = null;
+          _distributionLive = false;
+          _engineError = 'Engine status request timed out.';
+          _readiness = 'Activation status could not be verified. Distribution is treated as not live.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _engine = null;
+          _distributionLive = false;
+          _engineError = 'Unable to verify backend activation status.';
+          _readiness = 'Activation status could not be verified. Distribution is treated as not live.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _engineLoading = false);
+    }
+  }
+
+  List<String> _engineBlockers([Map<String, dynamic>? source]) {
+    final Map<String, dynamic>? engine = source ?? _engine;
+    if (engine == null) return const <String>['Backend engine status unavailable.'];
+    final List<String> blockers = <String>[];
+    final dynamic storage = engine['storageBlockers'];
+    if (storage is List) {
+      blockers.addAll(storage.map((dynamic value) => value.toString()));
+    }
+    final dynamic services = engine['services'];
+    if (services is List) {
+      for (final dynamic rawService in services) {
+        if (rawService is! Map) continue;
+        final Map<String, dynamic> item = Map<String, dynamic>.from(rawService);
+        final dynamic rawBlockers = item['blockers'];
+        if (rawBlockers is List) {
+          for (final dynamic blocker in rawBlockers) {
+            final String label =
+                '${item['serviceType'] ?? 'Service'}: ${blocker.toString()}';
+            if (!blockers.contains(label)) blockers.add(label);
+          }
+        }
+      }
+    }
+    if (engine['ready'] != true && blockers.isEmpty) {
+      blockers.add('Backend readiness is not confirmed.');
+    }
+    return blockers;
   }
 
   void _populateCurrentRule() {
@@ -379,7 +486,20 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
         child: _loading && _data.isEmpty
             ? const _LoadingState()
             : _error != null && _data.isEmpty
-                ? _ErrorState(message: _error!, onRetry: () => _load())
+                ? Column(
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                        child: _readinessBanner(includeBlockers: true),
+                      ),
+                      Expanded(
+                        child: _ErrorState(
+                          message: _error!,
+                          onRetry: () => _load(),
+                        ),
+                      ),
+                    ],
+                  )
                 : RefreshIndicator(
                     onRefresh: () => _load(keepEditor: _frozenPayload != null),
                     child: ListView(
@@ -436,6 +556,14 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
                         ],
                         const SizedBox(height: 28),
                         _versionHistory(),
+                        const SizedBox(height: 18),
+                        ProfitSharingActivationPanel(
+                          api: _api,
+                          engine: _engine,
+                          service: _service,
+                          canManage: _canManage,
+                          refreshStatus: _loadEngine,
+                        ),
                       ],
                     ),
                   ),
@@ -443,7 +571,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
     );
   }
 
-  Widget _readinessBanner() => Container(
+  Widget _readinessBanner({bool includeBlockers = false}) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: _distributionLive ? const Color(0xFFE4F3E8) : const Color(0xFFFFF1D9),
@@ -458,10 +586,34 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-                Text(_distributionLive ? 'Distribution readiness' : 'Distribution is not live',
+                 Text(_distributionLive ? 'Distribution is LIVE' : 'Distribution is not live',
                     style: TextStyle(fontWeight: FontWeight.w900, color: _distributionLive ? ink : const Color(0xFF704A12))),
                 const SizedBox(height: 4),
                 Text(_readiness, style: const TextStyle(height: 1.4, color: Color(0xFF5B625B))),
+                 if (includeBlockers && _engine != null &&
+                     _engineBlockers().isNotEmpty)
+                   Padding(
+                     padding: const EdgeInsets.only(top: 7),
+                     child: Text(
+                       'Backend blockers: ${_engineBlockers().join(' · ')}',
+                       style: const TextStyle(
+                         color: Color(0xFF754333),
+                         fontWeight: FontWeight.w700,
+                         height: 1.35,
+                       ),
+                     ),
+                   ),
+                 if (_engineLoading)
+                   const Padding(
+                     padding: EdgeInsets.only(top: 7),
+                     child: LinearProgressIndicator(minHeight: 2),
+                   ),
+                 if (_engineError != null)
+                   Padding(
+                     padding: const EdgeInsets.only(top: 7),
+                     child: Text('Backend status error: $_engineError',
+                         style: const TextStyle(color: Color(0xFF8F352E), fontWeight: FontWeight.w700)),
+                   ),
                 if (!_distributionLive)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -478,6 +630,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
           const _SectionHeading(number: '01', title: 'Choose a service'),
           const SizedBox(height: 13),
           DropdownButtonFormField<String>(
+            key: const ValueKey<String>('profit-sharing-service-selector'),
             value: _services.contains(_service) ? _service : null,
             decoration: const InputDecoration(labelText: 'Service', border: OutlineInputBorder()),
             items: _services.map((String value) => DropdownMenuItem<String>(

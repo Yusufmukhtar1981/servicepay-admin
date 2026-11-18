@@ -145,8 +145,10 @@ void main() {
     expect(find.byKey(const ValueKey<String>('profit-sharing-use-allocation-suggestion')), findsNothing);
     expect(find.byKey(const ValueKey<String>('profit-sharing-pool-percentage')), findsNothing);
     expect(find.textContaining('40 / 35 / 25'), findsNothing);
-    await tester.drag(find.byType(ListView), const Offset(0, -1800));
-    await tester.pumpAndSettle();
+    await _scrollTo(
+      tester,
+      find.text('No saved rule for this service yet. Percentages are intentionally blank.'),
+    );
     expect(find.text('No saved rule for this service yet. Percentages are intentionally blank.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -362,9 +364,10 @@ void main() {
         isEmpty,
       );
     }
-    await tester.drag(find.byType(ListView), const Offset(0, -2800));
-    await tester.pumpAndSettle();
-    await tester.pumpAndSettle();
+    await _scrollTo(
+      tester,
+      find.textContaining('Legacy version — preserved as recorded'),
+    );
     expect(find.textContaining('Legacy version — preserved as recorded'), findsOneWidget);
     expect(find.textContaining('BUSINESS_NETWORK_AGENT'), findsNothing);
     expect(find.textContaining(': 20%'), findsNothing);
@@ -431,8 +434,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView), const Offset(0, -900));
-    await tester.pumpAndSettle();
     await _scrollTo(
       tester,
       find.text('Save rule'),
@@ -445,7 +446,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Outcome is unknown'), findsOneWidget);
     expect(find.text('Retry same request'), findsOneWidget);
-    final http.Request firstPost = requests.last;
+    final http.Request firstPost =
+        requests.lastWhere((http.Request request) => request.method == 'POST');
     final Map<String, dynamic> firstBody =
         jsonDecode(firstPost.body) as Map<String, dynamic>;
     await tester.tap(find.text('Retry same request'));
@@ -454,7 +456,12 @@ void main() {
       requests.where((http.Request request) => request.method == 'POST'),
       hasLength(2),
     );
-    expect(jsonDecode(requests.last.body), firstBody);
+    expect(
+      jsonDecode(requests.lastWhere(
+        (http.Request request) => request.method == 'POST',
+      ).body),
+      firstBody,
+    );
     final http.Request post = firstPost;
     expect(post.method, 'POST');
     expect(post.url.path, '/api/admin/product-commissions/profit-sharing');

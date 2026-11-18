@@ -416,6 +416,7 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Future rule saved. Distribution remains subject to platform readiness.')),
       );
+      await _loadEngine();
     } on ProfitSharingApiException catch (exception) {
       if (!mounted) return;
       if (exception.isConflict) {

@@ -126,13 +126,36 @@ class ProfitSharingApi {
 
   Future<Map<String, dynamic>> activate(Map<String, dynamic> payload) {
     final String mode = payload['mode']?.toString() ?? '';
+    final String? serviceAction = payload['serviceAction']?.toString();
+    final dynamic revision = payload['revision'];
     if (mode != 'LIVE' && mode != 'PAUSED') {
       throw const ProfitSharingApiException('Choose a valid distribution mode.');
     }
+    if (serviceAction != null &&
+        serviceAction != 'ENABLE' &&
+        serviceAction != 'DISABLE') {
+      throw const ProfitSharingApiException('Choose a valid service action.');
+    }
+    if ((serviceAction == 'ENABLE' && mode != 'LIVE') ||
+        (serviceAction == 'DISABLE' && mode != 'PAUSED')) {
+      throw const ProfitSharingApiException(
+        'The selected service action does not match the requested mode.',
+      );
+    }
+    if (revision is! num ||
+        !revision.isFinite ||
+        revision < 0 ||
+        revision != revision.roundToDouble()) {
+      throw const ProfitSharingApiException(
+        'A current non-negative integer engine revision is required.',
+      );
+    }
     if (payload['confirmation'] != true ||
-        payload['confirmationText'] != 'ACTIVATE FUTURE PROFIT SHARING' ||
+        (mode == 'LIVE' &&
+            payload['confirmationText'] !=
+                'ACTIVATE FUTURE PROFIT SHARING') ||
         payload['reason'] is! String ||
-        (payload['reason'] as String).trim().isEmpty ||
+        (payload['reason'] as String).trim().length < 10 ||
         payload['currentPassword'] is! String ||
         (payload['currentPassword'] as String).isEmpty ||
         payload['services'] is! List ||
@@ -142,9 +165,11 @@ class ProfitSharingApi {
       );
     }
     if (mode == 'LIVE' &&
-        (payload['revision'] is! num ||
+        (serviceAction != 'ENABLE' ||
             payload['dryRunIds'] is! Map ||
-            (payload['dryRunIds'] as Map).length != 1)) {
+            (payload['dryRunIds'] as Map).length != 1 ||
+            (payload['dryRunIds'] as Map).keys.first !=
+                (payload['services'] as List).single)) {
       throw const ProfitSharingApiException(
         'A fresh eligible dry-run receipt is required for activation.',
       );

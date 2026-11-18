@@ -59,10 +59,10 @@ class _ProfitSharingActivationPanelState
       _clearInputs();
       _receipt = null;
       _message = null;
-    } else if (_receipt != null &&
-        _currentRuleId != _receipt!['ruleId']) {
+    } else if (_receipt != null && _currentRuleId != _receipt!['ruleId']) {
       _receipt = null;
-      _message = 'The service rule changed. Run a new dry-run before activation.';
+      _message =
+          'The service rule changed. Run a new dry-run before activation.';
       _messageDanger = true;
     }
   }
@@ -84,10 +84,14 @@ class _ProfitSharingActivationPanelState
     _confirmationController.clear();
   }
 
-  Map<String, dynamic>? get _serviceStatus {
+  List<dynamic> get _serviceStatuses {
     final dynamic services = widget.engine?['services'];
-    if (services is! List || widget.service == null) return null;
-    for (final dynamic raw in services) {
+    return services is List ? services : const <dynamic>[];
+  }
+
+  Map<String, dynamic>? get _serviceStatus {
+    if (widget.service == null) return null;
+    for (final dynamic raw in _serviceStatuses) {
       if (raw is Map && raw['serviceType'] == widget.service) {
         return Map<String, dynamic>.from(raw);
       }
@@ -97,61 +101,56 @@ class _ProfitSharingActivationPanelState
 
   dynamic get _currentRuleId => _serviceStatus?['ruleId'];
 
-  List<String> get _blockers {
-    final Map<String, dynamic>? engine = widget.engine;
-    if (engine == null) return const <String>['Backend engine status unavailable.'];
-    final List<String> result = <String>[];
-    final dynamic storage = engine['storageBlockers'];
-    if (storage is List) {
-      result.addAll(storage.map((dynamic value) => value.toString()));
-    } else {
-      result.add('Backend storage readiness is unknown.');
-    }
-    final dynamic services = engine['services'];
-    if (services is List) {
-      for (final dynamic rawService in services) {
-        if (rawService is! Map || rawService['blockers'] is! List) continue;
-        final String serviceType = rawService['serviceType']?.toString() ?? 'Service';
-        for (final dynamic blocker in rawService['blockers'] as List) {
-          result.add('$serviceType: ${blocker.toString()}');
-        }
-      }
-    } else {
-      result.add('Backend service readiness is unknown.');
-    }
-    if (engine['ready'] != true && result.isEmpty) {
-      result.add('Global engine readiness is not confirmed.');
-    }
-    return result;
+  bool get _validRevision {
+    final dynamic revision = widget.engine?['revision'];
+    return revision is num &&
+        revision.isFinite &&
+        revision >= 0 &&
+        revision == revision.roundToDouble();
   }
 
   bool get _canActivate {
     final Map<String, dynamic>? engine = widget.engine;
     final Map<String, dynamic>? service = _serviceStatus;
-    final dynamic storage = engine?['storageBlockers'];
     final dynamic serviceBlockers = service?['blockers'];
+    final dynamic storageBlockers = engine?['storageBlockers'];
     return widget.canManage &&
         !_activationForbidden &&
         !_activationLoading &&
         !_dryRunLoading &&
         engine != null &&
-        (engine['mode'] == 'PAUSED' || engine['mode'] == 'BLOCKED') &&
-        storage is List &&
-        storage.isEmpty &&
+        <String>['PAUSED', 'BLOCKED', 'LIVE'].contains(engine['mode']) &&
+        _validRevision &&
+        storageBlockers is List &&
+        storageBlockers.isEmpty &&
         widget.service != null &&
         service != null &&
+        service['ready'] == true &&
         serviceBlockers is List &&
         serviceBlockers.isEmpty;
   }
 
-  bool get _canPause =>
+  bool get _canDisableService =>
       widget.canManage &&
       !_activationForbidden &&
       !_activationLoading &&
       widget.engine != null &&
-      widget.engine!['revision'] is num &&
+      _validRevision &&
       widget.service != null &&
-      _serviceStatus != null;
+      _serviceStatus != null &&
+      (_serviceStatus!['enabled'] == true || _serviceStatus!['live'] == true);
+
+  bool get _canPauseAll {
+    final bool hasActiveService = _serviceStatuses.any((dynamic item) =>
+        item is Map && (item['enabled'] == true || item['live'] == true));
+    return widget.canManage &&
+        !_activationForbidden &&
+        !_activationLoading &&
+        _validRevision &&
+        widget.engine != null &&
+        widget.service != null &&
+        (widget.engine!['mode'] == 'LIVE' || hasActiveService);
+  }
 
   bool get _eligibleReceipt =>
       _receipt != null &&
@@ -201,7 +200,8 @@ class _ProfitSharingActivationPanelState
       if (!mounted) return;
       setState(() {
         _receipt = receipt;
-        _message = 'Eligible dry-run receipt verified. No financial writes occurred.';
+        _message =
+            'Eligible dry-run receipt verified. No financial writes occurred.';
         _messageDanger = false;
       });
     } on ProfitSharingApiException catch (exception) {
@@ -216,7 +216,8 @@ class _ProfitSharingActivationPanelState
       if (mounted) {
         setState(() {
           _receipt = null;
-          _message = 'Dry-run timed out. No receipt is available; check status before trying again.';
+          _message =
+              'Dry-run timed out. No receipt is available; check status before trying again.';
           _messageDanger = true;
         });
       }
@@ -233,11 +234,17 @@ class _ProfitSharingActivationPanelState
     }
   }
 
-  Future<void> _submit(String mode) async {
+  Future<void> _submit(String mode, {String? serviceAction}) async {
     if (_activationLoading) return;
     final bool activateLive = mode == 'LIVE';
+    final bool disableService = serviceAction == 'DISABLE';
+    final bool globalPause = mode == 'PAUSED' && serviceAction == null;
     final String reason = _reasonController.text.trim();
-    if ((activateLive ? !_canActivate : !_canPause) ||
+    if ((activateLive
+            ? !_canActivate
+            : disableService
+                ? !_canDisableService
+                : !_canPauseAll) ||
         reason.length < 10 ||
         _passwordController.text.isEmpty ||
         (activateLive &&
@@ -247,20 +254,26 @@ class _ProfitSharingActivationPanelState
       setState(() {
         _message = activateLive
             ? 'Selected-service readiness, eligible dry-run receipt, typed confirmation, reason, and password are required.'
-            : 'Reason, current password, and explicit pause confirmation are required.';
+            : 'A valid pause scope, reason, and current password are required.';
         _messageDanger = true;
       });
       return;
     }
-    if (!activateLive) {
+    if (globalPause || disableService) {
       final bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('Pause all future admissions?'),
-          content: const Text(
-            'Stop new profit-sharing admissions for all active services. '
-            'Already admitted settlements and refunds will continue safely. '
-            'The backend will re-authenticate this request.',
+          title: Text(disableService
+              ? 'Disable ${_serviceNames[widget.service] ?? widget.service}?'
+              : 'Pause all future admissions?'),
+          content: Text(
+            globalPause
+                ? 'Stop new profit-sharing admissions for all active services. '
+                    'Already admitted settlements and refunds will continue safely. '
+                    'The backend will re-authenticate this request.'
+                : 'Stop new profit-sharing admissions for this service only. '
+                    'Already admitted settlements and refunds will continue safely. '
+                    'The backend will re-authenticate this request.',
           ),
           actions: <Widget>[
             TextButton(
@@ -269,7 +282,8 @@ class _ProfitSharingActivationPanelState
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Confirm pause'),
+              child: Text(
+                  disableService ? 'Confirm service pause' : 'Confirm pause'),
             ),
           ],
         ),
@@ -280,8 +294,12 @@ class _ProfitSharingActivationPanelState
       'mode': mode,
       'revision': widget.engine?['revision'],
       'services': <String>[widget.service!],
+      if (activateLive) 'serviceAction': 'ENABLE',
+      if (!activateLive && serviceAction != null)
+        'serviceAction': serviceAction,
       'confirmation': true,
-      'confirmationText': 'ACTIVATE FUTURE PROFIT SHARING',
+      if (activateLive)
+        'confirmationText': 'ACTIVATE FUTURE PROFIT SHARING',
       'reason': reason,
       'currentPassword': _passwordController.text,
       if (activateLive)
@@ -294,17 +312,49 @@ class _ProfitSharingActivationPanelState
       _message = null;
     });
     try {
-      await widget.api.activate(payload);
+      final Map<String, dynamic> response = await widget.api.activate(payload);
+      final dynamic rawResponseData = response['data'];
+      final Map<String, dynamic> responseData = rawResponseData is Map
+          ? Map<String, dynamic>.from(rawResponseData)
+          : <String, dynamic>{};
+      if ((responseData['serviceAction'] != null &&
+              responseData['serviceAction'] !=
+                  (activateLive ? 'ENABLE' : serviceAction)) ||
+          (responseData['serviceType'] != null &&
+              responseData['serviceType'] != widget.service)) {
+        throw const ProfitSharingApiException(
+          'The backend response did not match the requested service action. The outcome is being checked.',
+        );
+      }
+      await widget.refreshStatus();
+      await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
+      final Map<String, dynamic>? refreshedService = _serviceStatus;
+      final bool serviceIsLive = refreshedService?['live'] == true;
+      final bool serviceIsDisabled = refreshedService != null &&
+          refreshedService['enabled'] == false &&
+          refreshedService['live'] == false;
+      final bool confirmed = activateLive
+          ? serviceIsLive
+          : disableService
+              ? serviceIsDisabled
+              : widget.engine?['mode'] == 'PAUSED';
       setState(() {
-        _message = activateLive
-            ? 'Activation request was accepted by the backend.'
-            : 'Pause request was accepted by the backend.';
-        _messageDanger = false;
+        _message = confirmed
+            ? activateLive
+                ? 'Backend status confirms this service is LIVE.'
+                : disableService
+                    ? 'Backend status confirms this service is disabled. Other services retain their own status.'
+                    : 'Backend status confirms all future admissions are paused.'
+            : disableService
+                ? 'The selected service pause was accepted, but refreshed service status does not yet confirm it is disabled.'
+                : activateLive
+                    ? 'Activation was accepted, but refreshed service status does not confirm LIVE.'
+                    : 'Global pause was accepted, but refreshed engine status does not confirm PAUSED.';
+        _messageDanger = !confirmed;
         _receipt = null;
         _reasonController.clear();
       });
-      await widget.refreshStatus();
     } on ProfitSharingApiException catch (exception) {
       if (!mounted) return;
       setState(() {
@@ -347,11 +397,13 @@ class _ProfitSharingActivationPanelState
 
   @override
   Widget build(BuildContext context) {
-    final List<String> blockers = _blockers;
-    final List<dynamic> selectedBlockers =
-        _serviceStatus?['blockers'] is List
-            ? _serviceStatus!['blockers'] as List<dynamic>
-            : const <dynamic>[];
+    final List<dynamic> selectedBlockers = _serviceStatus?['blockers'] is List
+        ? _serviceStatus!['blockers'] as List<dynamic>
+        : const <dynamic>[];
+    final List<Map<String, dynamic>> serviceStatuses = _serviceStatuses
+        .whereType<Map>()
+        .map((Map raw) => Map<String, dynamic>.from(raw))
+        .toList();
     final bool eligibleReceipt = _eligibleReceipt;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -394,12 +446,13 @@ class _ProfitSharingActivationPanelState
           const SizedBox(height: 4),
           Text(
             'Selected service: ${_serviceNames[widget.service] ?? widget.service ?? 'None'} · '
-            'global readiness ${widget.engine?['ready'] == true ? 'ready' : 'not confirmed'}',
+            '${_serviceStatus?['live'] == true ? 'LIVE' : _serviceStatus?['enabled'] == true ? 'enabled' : 'not enabled'} · '
+            'service readiness ${_serviceStatus?['ready'] == true ? 'ready' : 'not ready'}',
             style: const TextStyle(color: Color(0xFF63736A), height: 1.4),
           ),
           const SizedBox(height: 9),
           Text(
-            'Backend blockers${blockers.isEmpty ? '' : ' (${blockers.length})'}',
+            'Configured service status',
             style: const TextStyle(fontWeight: FontWeight.w900, color: ink),
           ),
           const SizedBox(height: 4),
@@ -408,24 +461,29 @@ class _ProfitSharingActivationPanelState
               'Status unavailable; activation remains blocked.',
               style: TextStyle(color: Color(0xFF8F352E)),
             )
-          else if (blockers.isEmpty)
+          else if (serviceStatuses.isEmpty)
             const Text(
-              'No storage or service blockers reported.',
+              'No configured service status is available.',
               style: TextStyle(color: Color(0xFF63736A)),
             )
           else
-            ...blockers.map(
-              (String blocker) => Padding(
+            ...serviceStatuses.map((Map<String, dynamic> status) {
+              final String code =
+                  status['serviceType']?.toString() ?? 'Service';
+              final String state = status['live'] == true
+                  ? 'LIVE'
+                  : status['enabled'] == true
+                      ? 'enabled, not live'
+                      : 'not enabled';
+              return Padding(
                 padding: const EdgeInsets.only(top: 3),
                 child: Text(
-                  blocker,
-                  style: const TextStyle(
-                    color: Color(0xFF754333),
-                    height: 1.35,
-                  ),
+                  '${_serviceNames[code] ?? code}: $state',
+                  style:
+                      const TextStyle(color: Color(0xFF63736A), height: 1.35),
                 ),
-              ),
-            ),
+              );
+            }),
           if (widget.service != null && _serviceStatus == null)
             const Padding(
               padding: EdgeInsets.only(top: 5),
@@ -449,9 +507,7 @@ class _ProfitSharingActivationPanelState
             key: const ValueKey<String>('profit-sharing-expand-controls'),
             onPressed: () => setState(() => _expanded = !_expanded),
             icon: Icon(
-              _expanded
-                  ? Icons.expand_less_rounded
-                  : Icons.expand_more_rounded,
+              _expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
             ),
             label: Text(
               _expanded
@@ -474,7 +530,8 @@ class _ProfitSharingActivationPanelState
               decoration: const InputDecoration(
                 labelText: 'Transaction ID for dry-run',
                 hintText: '24-character transaction ID',
-                helperText: 'Transaction ID only. No amount or evidence flags are accepted.',
+                helperText:
+                    'Transaction ID only. No amount or evidence flags are accepted.',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -555,7 +612,8 @@ class _ProfitSharingActivationPanelState
               enableSuggestions: false,
               decoration: const InputDecoration(
                 labelText: 'Current password',
-                helperText: 'Used for this request only and cleared after submission.',
+                helperText:
+                    'Used for this request only and cleared after submission.',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -569,6 +627,7 @@ class _ProfitSharingActivationPanelState
               autocorrect: false,
               decoration: const InputDecoration(
                 labelText: 'Type ACTIVATE FUTURE PROFIT SHARING',
+                helperText: 'Required for activation only; pauses use a separate confirmation dialog.',
                 border: OutlineInputBorder(),
               ),
               onChanged: (_) => setState(() {}),
@@ -629,9 +688,20 @@ class _ProfitSharingActivationPanelState
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _canPause ? () => _submit('PAUSED') : null,
+                onPressed: _canDisableService
+                    ? () => _submit('PAUSED', serviceAction: 'DISABLE')
+                    : null,
                 icon: const Icon(Icons.pause_circle_outline_rounded),
-                label: const Text('Pause all future admissions'),
+                label: const Text('Pause selected service'),
+              ),
+            ),
+            const SizedBox(height: 7),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _canPauseAll ? () => _submit('PAUSED') : null,
+                icon: const Icon(Icons.pause_circle_outline_rounded),
+                label: const Text('Emergency pause all services'),
               ),
             ),
             const SizedBox(height: 4),
@@ -650,9 +720,12 @@ class _ProfitSharingActivationPanelState
     for (final MapEntry<String, String> field in <MapEntry<String, String>>[
       const MapEntry<String, String>('netProfitKobo', 'Verified net profit'),
       const MapEntry<String, String>('poolKobo', 'Profit pool'),
-      const MapEntry<String, String>('headOfficeKobo', 'Head Office share · company custody'),
-      const MapEntry<String, String>('beneficiaryKobo', 'Other beneficiary shares'),
-      const MapEntry<String, String>('unallocatedKobo', 'Unallocated commission'),
+      const MapEntry<String, String>(
+          'headOfficeKobo', 'Head Office share · company custody'),
+      const MapEntry<String, String>(
+          'beneficiaryKobo', 'Other beneficiary shares'),
+      const MapEntry<String, String>(
+          'unallocatedKobo', 'Unallocated commission'),
       const MapEntry<String, String>('roundingKobo', 'Rounding'),
     ]) {
       final dynamic amount = plan[field.key];

@@ -42,6 +42,9 @@ Map<String, dynamic> _engine({
           <String, dynamic>{
             'serviceType': 'AIRTIME',
             'ruleId': 'rule-airtime-12',
+            'ready': true,
+            'enabled': false,
+            'live': false,
             'blockers': serviceBlockers,
           },
         ],
@@ -63,6 +66,183 @@ Future<void> _scrollTo(WidgetTester tester, Finder target) async {
 }
 
 void main() {
+  test('API rejects ENABLE without a fresh selected-service dry-run', () {
+    final ProfitSharingApi api = ProfitSharingApi(
+      baseUrl: 'https://servicepay.test/api',
+      tokenProvider: () async => 'session-token',
+      client: MockClient((http.Request request) async => http.Response('{}', 500)),
+    );
+    addTearDown(api.close);
+    expect(
+      () => api.activate(<String, dynamic>{
+        'mode': 'LIVE',
+        'serviceAction': 'ENABLE',
+        'revision': 12,
+        'services': <String>['DATA'],
+        'confirmation': true,
+        'confirmationText': 'ACTIVATE FUTURE PROFIT SHARING',
+        'reason': 'Approved readiness review',
+        'currentPassword': 'current-password',
+      }),
+      throwsA(isA<ProfitSharingApiException>()),
+    );
+    for (final Object? invalidRevision in <Object?>[-1, 1.5]) {
+      for (final String? serviceAction in <String?>['DISABLE', null]) {
+        expect(
+          () => api.activate(<String, dynamic>{
+            'mode': 'PAUSED',
+            if (serviceAction != null) 'serviceAction': serviceAction,
+            'revision': invalidRevision,
+            'services': <String>['DATA'],
+            'confirmation': true,
+            'reason': 'Pause DATA safely',
+            'currentPassword': 'current-password',
+          }),
+          throwsA(isA<ProfitSharingApiException>()),
+        );
+      }
+    }
+  });
+
+  testWidgets('service pause submits scoped DISABLE and verifies refreshed status',
+      (WidgetTester tester) async {
+    final List<http.Request> requests = <http.Request>[];
+    Map<String, dynamic> engine = _engine(
+      mode: 'LIVE',
+      live: true,
+      services: <Map<String, dynamic>>[
+        <String, dynamic>{
+          'serviceType': 'DATA',
+          'ruleId': 'data-rule',
+          'ready': true,
+          'enabled': true,
+          'live': true,
+          'blockers': <String>[],
+        },
+      ],
+    )['data'] as Map<String, dynamic>;
+    final ProfitSharingApi api = ProfitSharingApi(
+      baseUrl: 'https://servicepay.test/api',
+      tokenProvider: () async => 'session-token',
+      client: MockClient((http.Request request) async {
+        requests.add(request);
+        return http.Response(jsonEncode(<String, dynamic>{
+          'success': true,
+          'data': <String, dynamic>{
+            'mode': 'LIVE',
+            'revision': 13,
+            'serviceAction': 'DISABLE',
+            'serviceType': 'DATA',
+            'activeServices': <String>[],
+          },
+        }), 200);
+      }),
+    );
+    addTearDown(api.close);
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
+      home: StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) => Scaffold(
+          body: SingleChildScrollView(
+            child: ProfitSharingActivationPanel(
+              api: api,
+              engine: engine,
+              service: 'DATA',
+              canManage: true,
+              refreshStatus: () async {
+                update(() {
+                  engine = _engine(
+                    mode: 'LIVE',
+                    live: true,
+                    services: <Map<String, dynamic>>[
+                      <String, dynamic>{
+                        'serviceType': 'DATA',
+                        'ruleId': 'data-rule',
+                        'ready': true,
+                        'enabled': false,
+                        'live': false,
+                        'blockers': <String>[],
+                      },
+                    ],
+                  )['data'] as Map<String, dynamic>;
+                });
+              },
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+      const ValueKey<String>('profit-sharing-expand-controls'),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profit-sharing-activation-reason')),
+      'Pause DATA after review',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profit-sharing-current-password')),
+      'current-password',
+    );
+    await _scrollTo(tester, find.text('Pause selected service'));
+    await tester.tap(find.text('Pause selected service'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirm service pause'));
+    await tester.pumpAndSettle();
+
+    final Map<String, dynamic> body =
+        jsonDecode(requests.single.body) as Map<String, dynamic>;
+    expect(body['mode'], 'PAUSED');
+    expect(body['serviceAction'], 'DISABLE');
+    expect(body['services'], <String>['DATA']);
+    expect(body['revision'], 12);
+    expect(body.containsKey('dryRunIds'), isFalse);
+    expect(body['reason'], 'Pause DATA after review');
+    expect(body['currentPassword'], 'current-password');
+    expect(find.textContaining('Backend status confirms this service is disabled'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('permission denial keeps selected service enable disabled',
+      (WidgetTester tester) async {
+    final ProfitSharingApi api = ProfitSharingApi(
+      baseUrl: 'https://servicepay.test/api',
+      tokenProvider: () async => 'session-token',
+      client: MockClient((http.Request request) async => http.Response('{}', 500)),
+    );
+    addTearDown(api.close);
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ProfitSharingActivationPanel(
+            api: api,
+            engine: _engine()['data'] as Map<String, dynamic>,
+            service: 'AIRTIME',
+            canManage: false,
+            refreshStatus: () async {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+      const ValueKey<String>('profit-sharing-expand-controls'),
+    ));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FilledButton>(
+        find.byKey(const ValueKey<String>('profit-sharing-activate')),
+      ).onPressed,
+      isNull,
+    );
+    expect(find.text('Your account cannot perform activation or pause actions.'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('global pause scope is explicit and requires confirmation before sending',
       (WidgetTester tester) async {
     final List<http.Request> requests = <http.Request>[];
@@ -95,14 +275,17 @@ void main() {
       final Finder field = find.byKey(ValueKey<String>(entry.key));
       await _scrollTo(tester, field); await tester.enterText(field, entry.value);
     }
-    final Finder pause = find.text('Pause all future admissions');
+    final Finder pause = find.text('Emergency pause all services');
     await _scrollTo(tester, pause); await tester.tap(pause); await tester.pumpAndSettle();
     expect(find.textContaining('all active services'), findsOneWidget);
     expect(find.textContaining('Already admitted settlements and refunds'), findsOneWidget);
     expect(requests, isEmpty);
     await tester.tap(find.text('Confirm pause')); await tester.pumpAndSettle();
     expect(requests, hasLength(1)); expect(refreshes, 1);
-    expect((jsonDecode(requests.single.body) as Map)['mode'], 'PAUSED');
+    final Map<String, dynamic> pauseBody =
+        jsonDecode(requests.single.body) as Map<String, dynamic>;
+    expect(pauseBody['mode'], 'PAUSED');
+    expect(pauseBody.containsKey('confirmationText'), isFalse);
     final TextField password = tester.widget<TextField>(
       find.byKey(const ValueKey<String>('profit-sharing-current-password')));
     expect(password.controller!.text, isEmpty);
@@ -190,14 +373,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Distribution is not live'), findsOneWidget);
     expect(find.text('Distribution is LIVE'), findsNothing);
-    final Finder selectedBlocker =
-        find.text('AIRTIME: Production adapter is not registered.');
+    final Finder storageBlocker =
+        find.textContaining('Ledger write path unavailable.');
+    expect(storageBlocker, findsOneWidget);
+    final Finder selectedBlocker = find.textContaining(
+      'Selected service blockers: Production adapter is not registered.',
+    );
     await _scrollTo(tester, selectedBlocker);
     expect(selectedBlocker, findsOneWidget);
-    final Finder storageBlocker =
-        find.text('Ledger write path unavailable.');
-    await _scrollTo(tester, storageBlocker);
-    expect(storageBlocker, findsOneWidget);
     final Finder controls = find.byKey(
       const ValueKey<String>('profit-sharing-expand-controls'),
     );
@@ -272,6 +455,12 @@ void main() {
     await _scrollTo(tester, controls);
     await tester.tap(controls);
     await tester.pumpAndSettle();
+    expect(
+      tester.widget<FilledButton>(
+        find.byKey(const ValueKey<String>('profit-sharing-activate')),
+      ).onPressed,
+      isNull,
+    );
     await _scrollTo(tester, find.text('Run zero-write dry-run'));
     await tester.enterText(
       find.byKey(const ValueKey<String>('profit-sharing-transaction-id')),
@@ -327,6 +516,7 @@ void main() {
     final Map<String, dynamic> body =
         jsonDecode(activation.body) as Map<String, dynamic>;
     expect(body['mode'], 'LIVE');
+    expect(body['serviceAction'], 'ENABLE');
     expect(body['revision'], 12);
     expect(body['services'], <String>['AIRTIME']);
     expect(body['confirmation'], true);
@@ -403,91 +593,82 @@ void main() {
   });
 
   testWidgets(
-      'selected DATA can reactivate in BLOCKED mode when only AIRTIME is blocked',
+      'selected DATA can enable independently while LIVE and AIRTIME is blocked',
       (WidgetTester tester) async {
     final List<http.Request> requests = <http.Request>[];
-    bool distributionLive = false;
-    final List<Map<String, dynamic>> initialServices = <Map<String, dynamic>>[
-      <String, dynamic>{
-        'serviceType': 'AIRTIME',
-        'ruleId': 'airtime-rule',
-        'blockers': <String>['Airtime adapter is not registered.'],
-      },
-      <String, dynamic>{
-        'serviceType': 'DATA',
-        'ruleId': 'data-rule',
-        'blockers': <String>[],
-      },
-    ];
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
+    final ProfitSharingApi api = ProfitSharingApi(
+      baseUrl: 'https://servicepay.test/api',
+      tokenProvider: () async => 'session-token',
+      client: MockClient((http.Request request) async {
+        requests.add(request);
+        if (request.url.path.endsWith('/dry-run')) {
+          return http.Response(jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{
+              'id': 'data-receipt',
+              'plan': <String, dynamic>{'eligible': true, 'poolKobo': 880},
+              'serviceType': 'DATA',
+              'ruleId': 'data-rule',
+              'adapterVersion': 'test-v1',
+              'financialWrites': 0,
+            },
+          }), 200);
+        }
+        if (request.url.path.endsWith('/activation')) {
+          return http.Response(jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{
+              'mode': 'LIVE',
+              'serviceAction': 'ENABLE',
+              'serviceType': 'DATA',
+              'revision': 13,
+            },
+          }), 200);
+        }
+        return http.Response('{}', 404);
+      }),
+    );
+    addTearDown(api.close);
     await tester.pumpWidget(MaterialApp(
-      home: ProfitSharingSettingsScreen(
-        tokenProvider: () async => 'session-token',
-        client: MockClient((http.Request request) async {
-          requests.add(request);
-          if (request.url.path.endsWith('/engine')) {
-            return http.Response(
-              jsonEncode(_engine(
-                mode: distributionLive ? 'LIVE' : 'BLOCKED',
-                live: distributionLive,
-                ready: false,
-                services: initialServices,
-              )),
-              200,
-            );
-          }
-          if (request.url.path.endsWith('/dry-run')) {
-            return http.Response(
-              jsonEncode(<String, dynamic>{
-                'success': true,
-                'data': <String, dynamic>{
-                  'id': 'data-receipt',
-                  'plan': <String, dynamic>{'eligible': true, 'poolKobo': 880},
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ProfitSharingActivationPanel(
+            api: api,
+            engine: _engine(
+              mode: 'LIVE',
+              live: true,
+              ready: false,
+              services: <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'serviceType': 'AIRTIME',
+                  'ruleId': 'airtime-rule',
+                  'ready': false,
+                  'enabled': true,
+                  'live': true,
+                  'blockers': <String>['Airtime adapter is not registered.'],
+                },
+                <String, dynamic>{
                   'serviceType': 'DATA',
                   'ruleId': 'data-rule',
-                  'adapterVersion': 'test-v1',
-                  'financialWrites': 0,
+                  'ready': true,
+                  'enabled': false,
+                  'live': false,
+                  'blockers': <String>[],
                 },
-              }),
-              200,
-            );
-          }
-          if (request.url.path.endsWith('/activation')) {
-            distributionLive = true;
-            return http.Response(
-              jsonEncode(_engine(
-                mode: 'LIVE',
-                live: true,
-                ready: false,
-                services: initialServices,
-              )),
-              200,
-            );
-          }
-          return http.Response(
-            jsonEncode(_settings(services: <String>['AIRTIME', 'DATA'])),
-            200,
-          );
-        }),
+              ],
+            )['data'] as Map<String, dynamic>,
+            service: 'DATA',
+            canManage: true,
+            refreshStatus: () async {},
+          ),
+        ),
       ),
     ));
     await tester.pumpAndSettle();
-
-    final Finder servicePicker = find.byKey(
-      const ValueKey<String>('profit-sharing-service-selector'),
-    );
-    await _scrollTo(tester, servicePicker);
-    await tester.tap(servicePicker);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Data').last);
-    await tester.pumpAndSettle();
-
-    final Finder controls = find.byKey(
+    await tester.tap(find.byKey(
       const ValueKey<String>('profit-sharing-expand-controls'),
-    );
-    await _scrollTo(tester, controls);
-    await tester.tap(controls);
+    ));
     await tester.pumpAndSettle();
     await _scrollTo(tester, find.text('Run zero-write dry-run'));
     await tester.enterText(
@@ -496,42 +677,25 @@ void main() {
     );
     await tester.tap(find.text('Run zero-write dry-run'));
     await tester.pumpAndSettle();
-
-    await _scrollTo(
-      tester,
-      find.byKey(const ValueKey<String>('profit-sharing-activation-reason')),
-    );
     await tester.enterText(
       find.byKey(const ValueKey<String>('profit-sharing-activation-reason')),
       'Scoped DATA adapter reviewed',
-    );
-    await _scrollTo(
-      tester,
-      find.byKey(const ValueKey<String>('profit-sharing-current-password')),
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('profit-sharing-current-password')),
       'current-password',
     );
-    await _scrollTo(
-      tester,
-      find.byKey(
-        const ValueKey<String>('profit-sharing-activation-confirmation'),
-      ),
-    );
     await tester.enterText(
-      find.byKey(
-        const ValueKey<String>('profit-sharing-activation-confirmation'),
-      ),
+      find.byKey(const ValueKey<String>('profit-sharing-activation-confirmation')),
       'ACTIVATE FUTURE PROFIT SHARING',
     );
     await _scrollTo(
       tester,
       find.byKey(const ValueKey<String>('profit-sharing-activate')),
     );
-    await tester.tap(
-      find.byKey(const ValueKey<String>('profit-sharing-activate')),
-    );
+    await tester.tap(find.byKey(
+      const ValueKey<String>('profit-sharing-activate'),
+    ));
     await tester.pumpAndSettle();
 
     final http.Request activation = requests.firstWhere(
@@ -540,9 +704,12 @@ void main() {
     final Map<String, dynamic> body =
         jsonDecode(activation.body) as Map<String, dynamic>;
     expect(body['mode'], 'LIVE');
+    expect(body['serviceAction'], 'ENABLE');
     expect(body['services'], <String>['DATA']);
     expect(body['dryRunIds'], <String, String>{'DATA': 'data-receipt'});
+    expect(body['reason'], 'Scoped DATA adapter reviewed');
     expect(body['currentPassword'], 'current-password');
+    expect(body['confirmationText'], 'ACTIVATE FUTURE PROFIT SHARING');
     expect(requests.where((http.Request request) =>
         request.url.path.endsWith('/activation')), hasLength(1));
     expect(tester.takeException(), isNull);

@@ -77,6 +77,39 @@ class ProfitSharingApi {
 
   Future<Map<String, dynamic>> getEngine() => _send('GET', suffix: '/engine');
 
+  Future<Map<String, dynamic>> getSettlements({
+    int page = 1,
+    int limit = 25,
+    String? from,
+    String? to,
+  }) {
+    if (page < 1 || limit < 1 || limit > 100) {
+      throw const ProfitSharingApiException('Choose a valid settlement history page.');
+    }
+    final DateTime? fromDate =
+        from == null ? null : DateTime.tryParse(from);
+    final DateTime? toDate = to == null ? null : DateTime.tryParse(to);
+    if ((from != null && fromDate == null) ||
+        (to != null && toDate == null) ||
+        (fromDate != null &&
+            toDate != null &&
+            fromDate.isAfter(toDate))) {
+      throw const ProfitSharingApiException(
+        'Choose a valid settlement report period.',
+      );
+    }
+    return _send(
+      'GET',
+      suffix: '/settlements',
+      query: <String, String>{
+        'page': '$page',
+        'limit': '$limit',
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> dryRun(String transactionId) {
     final String id = transactionId.trim();
     if (!RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(id)) {
@@ -220,12 +253,13 @@ class ProfitSharingApi {
   Future<Map<String, dynamic>> _send(
     String method, {
     String suffix = '',
+    Map<String, String>? query,
     Map<String, dynamic>? body,
   }) async {
     final String token = await _token();
     final Uri uri = Uri.parse(
       '${_baseUrl.replaceFirst(RegExp(r'/+$'), '')}$endpoint$suffix',
-    );
+    ).replace(queryParameters: query);
     final Map<String, String> headers = <String, String>{
       'Accept': 'application/json',
       'Authorization': 'Bearer $token',

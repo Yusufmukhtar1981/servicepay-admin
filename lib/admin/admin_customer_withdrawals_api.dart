@@ -86,6 +86,40 @@ class AdminCustomerWithdrawalsApi {
     );
   }
 
+  /// Records an attested payout from commission custody through its dedicated route.
+  Future<Map<String, dynamic>> approveCommission(
+    String id, {
+    required String payoutReference,
+    required String adminNote,
+    required bool manualPaymentConfirmed,
+    required num expectedAmount,
+    required String expectedAccountNumber,
+    required String currentPassword,
+  }) {
+    final String reference = payoutReference.trim();
+    if (id.trim().isEmpty ||
+        reference.isEmpty ||
+        reference.length > 120 ||
+        !manualPaymentConfirmed ||
+        expectedAmount <= 0 ||
+        expectedAccountNumber.trim().isEmpty ||
+        currentPassword.isEmpty) {
+      throw ArgumentError('Commission approval requires fresh credentials and complete payout confirmation.');
+    }
+    return _request(
+      'POST',
+      '/withdrawals/commission/admin/${Uri.encodeComponent(id)}/approve',
+      payload: <String, dynamic>{
+        'payoutReference': reference,
+        'adminNote': adminNote.trim(),
+        'manualPaymentConfirmed': true,
+        'expectedAmount': expectedAmount,
+        'expectedAccountNumber': expectedAccountNumber,
+        'currentPassword': currentPassword,
+      },
+    );
+  }
+
   /// Uses the established rejection/refund route for a withdrawal request.
   Future<Map<String, dynamic>> reject(
     String id, {
@@ -102,6 +136,27 @@ class AdminCustomerWithdrawalsApi {
       'POST',
       '/withdrawals/admin/${Uri.encodeComponent(id)}/reject',
       payload: <String, dynamic>{'adminNote': note},
+    );
+  }
+
+  Future<Map<String, dynamic>> rejectCommission(
+    String id, {
+    required String reason,
+    required String currentPassword,
+  }) {
+    final String note = reason.trim();
+    if (id.trim().isEmpty ||
+        note.length < 10 ||
+        currentPassword.isEmpty) {
+      throw ArgumentError('Commission rejection requires a reason and fresh admin password.');
+    }
+    return _request(
+      'POST',
+      '/withdrawals/commission/admin/${Uri.encodeComponent(id)}/reject',
+      payload: <String, dynamic>{
+        'adminNote': note,
+        'currentPassword': currentPassword,
+      },
     );
   }
 

@@ -587,6 +587,8 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
                         const SizedBox(height: 28),
                         _versionHistory(),
                         const SizedBox(height: 18),
+                        ProfitSharingSettlementHistory(api: _api),
+                        const SizedBox(height: 18),
                         ProfitSharingActivationPanel(
                           api: _api,
                           engine: _engine,
@@ -801,6 +803,436 @@ class _ProfitSharingSettingsScreenState extends State<ProfitSharingSettingsScree
           else
             ..._versions.map((Map<String, dynamic> version) => _VersionCard(version: version)),
         ],
+      );
+}
+
+/// Read-only view of backend-recorded future profit-sharing custody.
+class ProfitSharingSettlementHistory extends StatefulWidget {
+  const ProfitSharingSettlementHistory({super.key, required this.api});
+
+  final ProfitSharingApi api;
+
+  static String formatKobo(dynamic value) {
+    if (value is! int) return 'Unavailable';
+    final bool negative = value < 0;
+    final String digits = value.abs().toString().padLeft(3, '0');
+    final String whole = digits.substring(0, digits.length - 2);
+    final String grouped = whole.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (Match match) => ',',
+    );
+    return '${negative ? '-' : ''}₦$grouped.${digits.substring(digits.length - 2)}';
+  }
+
+  static bool isHeldEntry(dynamic accountId) {
+    final String id = accountId?.toString() ?? '';
+    return id != 'head-office' &&
+        !RegExp(r'^beneficiary:[a-fA-F0-9]{24}$').hasMatch(id);
+  }
+
+  @override
+  State<ProfitSharingSettlementHistory> createState() =>
+      _ProfitSharingSettlementHistoryState();
+}
+
+class _ProfitSharingSettlementHistoryState
+    extends State<ProfitSharingSettlementHistory> {
+  static const int _limit = 25;
+  Map<String, dynamic>? _data;
+  String? _error;
+  bool _loading = true;
+  int _page = 1;
+  int _total = 0;
+  int _requestVersion = 0;
+  DateTime? _from;
+  DateTime? _to;
+  String? _periodError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({int? page}) async {
+    final int requestVersion = ++_requestVersion;
+    final int requestedPage = page ?? _page;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final Map<String, dynamic> response =
+          await widget.api.getSettlements(
+        page: requestedPage,
+        limit: _limit,
+        from: _from == null ? null : _dateQuery(_from!),
+        to: _to == null ? null : _dateQuery(_to!),
+      );
+      final dynamic raw = response['data'];
+      if (raw is! Map) {
+        throw const ProfitSharingApiException(
+          'Settlement history returned incomplete data.',
+        );
+      }
+      final Map<String, dynamic> data = Map<String, dynamic>.from(raw);
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _data = data;
+        _page = data['page'] is int ? data['page'] as int : requestedPage;
+        _total = data['total'] is int ? data['total'] as int : 0;
+      });
+    } on TimeoutException {
+      if (mounted && requestVersion == _requestVersion) {
+        setState(() => _error = 'Settlement history request timed out.');
+      }
+    } catch (_) {
+      if (mounted && requestVersion == _requestVersion) {
+        setState(() => _error = 'Unable to load settlement history. Retry to check again.');
+      }
+    } finally {
+      if (mounted && requestVersion == _requestVersion) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  String _dateQuery(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+
+  String _dateLabel(DateTime? value, String emptyLabel) => value == null
+      ? emptyLabel
+      : '${value.day.toString().padLeft(2, '0')}/'
+          '${value.month.toString().padLeft(2, '0')}/'
+          '${value.year}';
+
+  Future<void> _choosePeriodDate({required bool isFrom}) async {
+    final DateTime now = DateTime.now();
+    final DateTime firstDate = DateTime(2000);
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: (isFrom ? _from : _to) ?? (isFrom ? _to : _from) ?? now,
+      firstDate: firstDate,
+      lastDate: now,
+    );
+    if (picked == null || !mounted) return;
+    final DateTime date = DateTime(picked.year, picked.month, picked.day);
+    final DateTime? nextFrom = isFrom ? date : _from;
+    final DateTime? nextTo = isFrom ? _to : date;
+    if (nextFrom != null && nextTo != null) {
+      if (nextFrom.isAfter(nextTo)) {
+        setState(() => _periodError = 'From date must be on or before the to date.');
+        return;
+      }
+      if (nextTo.difference(nextFrom).inDays > 93) {
+        setState(() => _periodError = 'Choose a reporting window of 93 days or less.');
+        return;
+      }
+    }
+    setState(() {
+      _from = nextFrom;
+      _to = nextTo;
+      _page = 1;
+      _periodError = null;
+    });
+    await _load(page: 1);
+  }
+
+  Future<void> _clearPeriod() async {
+    setState(() {
+      _from = null;
+      _to = null;
+      _page = 1;
+      _periodError = null;
+    });
+    await _load(page: 1);
+  }
+
+  List<Map<String, dynamic>> _maps(dynamic value) => value is List
+      ? value.whereType<Map>().map((Map item) => Map<String, dynamic>.from(item)).toList()
+      : <Map<String, dynamic>>[];
+
+  Widget _metric(String label, dynamic value) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: <Widget>[
+            Expanded(child: Text(label, style: const TextStyle(color: Color(0xFF66766D)))),
+            Text(
+              ProfitSharingSettlementHistory.formatKobo(value),
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, dynamic> summary = _data?['summary'] is Map
+        ? Map<String, dynamic>.from(_data!['summary'] as Map)
+        : <String, dynamic>{};
+    final Map<String, dynamic> account = _data?['companyAccount'] is Map
+        ? Map<String, dynamic>.from(_data!['companyAccount'] as Map)
+        : <String, dynamic>{};
+    final List<Map<String, dynamic>> allocations = _maps(summary['allocations']);
+    final List<Map<String, dynamic>> items = _maps(_data?['items']);
+    final bool hasNext = _total > 0 && _page * _limit < _total;
+
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Settlement custody history',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Color(0xFF20372F),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh settlement history',
+                onPressed: _loading ? null : () => _load(),
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const Text(
+            'Future profit-sharing records only. Legacy main-wallet commissions are excluded. '
+            'History does not indicate that distribution is live.',
+            style: TextStyle(height: 1.4, color: Color(0xFF65746C), fontSize: 12),
+          ),
+          const SizedBox(height: 11),
+          const Text(
+            'Optional period filters · narrow large reports within the 93-day / 10,000-event service bound.',
+            style: TextStyle(
+              height: 1.35,
+              color: Color(0xFF65746C),
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              OutlinedButton.icon(
+                key: const ValueKey<String>('settlement-period-from'),
+                onPressed: _loading ? null : () => _choosePeriodDate(isFrom: true),
+                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                label: Text(_dateLabel(_from, 'From date')),
+              ),
+              OutlinedButton.icon(
+                key: const ValueKey<String>('settlement-period-to'),
+                onPressed: _loading ? null : () => _choosePeriodDate(isFrom: false),
+                icon: const Icon(Icons.event_outlined, size: 16),
+                label: Text(_dateLabel(_to, 'To date')),
+              ),
+              if (_from != null || _to != null)
+                TextButton(
+                  onPressed: _loading ? null : _clearPeriod,
+                  child: const Text('Clear period'),
+                ),
+            ],
+          ),
+          if (_periodError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                _periodError!,
+                style: const TextStyle(
+                  color: Color(0xFF8F352E),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          const SizedBox(height: 15),
+          if (_loading && _data == null)
+            const Column(
+              children: <Widget>[
+                LinearProgressIndicator(minHeight: 2),
+                SizedBox(height: 14),
+                _HistorySkeleton(),
+              ],
+            )
+          else if (_error != null && _data == null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(_error!, key: const ValueKey<String>('settlement-history-error')),
+                TextButton.icon(
+                  onPressed: _loading ? null : () => _load(),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry history'),
+                ),
+              ],
+            )
+          else ...<Widget>[
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(_error!, style: const TextStyle(color: Color(0xFF8F352E))),
+              ),
+            if (_loading) const LinearProgressIndicator(minHeight: 2),
+            const Text('Profit-sharing totals', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            _metric('Company profit', summary['companyProfitKobo']),
+            _metric('Beneficiary credits', summary['creditedKobo']),
+            _metric('Beneficiary reversals', summary['reversedKobo']),
+            _metric('Beneficiary net allocated', summary['netAllocatedKobo']),
+            _metric('Held / unallocated custody', summary['heldKobo']),
+            if (summary['heldKobo'] is int && summary['heldKobo'] != 0)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'Held / unallocated funds are not credited to a beneficiary role.',
+                  key: ValueKey<String>('settlement-held-warning'),
+                  style: TextStyle(
+                    color: Color(0xFF8D5F1B),
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            const Divider(height: 20),
+            const Text('Company custody account', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            _metric('Available', account['availableKobo']),
+            _metric('Reserved', account['reservedKobo']),
+            _metric('Withdrawn', account['withdrawnKobo']),
+            _metric('Recovery debt', account['recoveryDebtKobo']),
+            _metric('Earned', account['earnedKobo']),
+            _metric('Reversed', account['reversedKobo']),
+            if (allocations.isNotEmpty) ...<Widget>[
+              const Divider(height: 20),
+              const Text('Allocation by role', style: TextStyle(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              ...allocations.map((Map<String, dynamic> allocation) => Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text((allocation['role'] ?? 'Role unavailable').toString(),
+                            style: const TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 3),
+                        Text('Credited ${ProfitSharingSettlementHistory.formatKobo(allocation['creditedKobo'])} · '
+                            'Reversed ${ProfitSharingSettlementHistory.formatKobo(allocation['reversedKobo'])} · '
+                            'Net ${ProfitSharingSettlementHistory.formatKobo(allocation['netKobo'])} · '
+                            'Held / unallocated ${ProfitSharingSettlementHistory.formatKobo(allocation['heldKobo'])}',
+                            style: const TextStyle(color: Color(0xFF66766D), fontSize: 12)),
+                      ],
+                    ),
+                  )),
+            ],
+            const Divider(height: 20),
+            const Text('Settlement entries', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            if (items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('No future profit-sharing settlements recorded yet.',
+                    key: ValueKey<String>('settlement-history-empty'),
+                    style: TextStyle(color: Color(0xFF66766D))),
+              )
+            else
+              ...items.map((Map<String, dynamic> item) {
+                final List<Map<String, dynamic>> entries = _maps(item['entries']);
+                final String created = item['createdAt']?.toString() ?? 'Date unavailable';
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 9),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F7F2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('${item['kind'] ?? 'Settlement'} · ${item['serviceType'] ?? 'Service unavailable'}',
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 3),
+                      Text('${item['reference'] ?? item['id'] ?? 'Reference unavailable'} · $created',
+                          style: const TextStyle(color: Color(0xFF66766D), fontSize: 12)),
+                      const SizedBox(height: 5),
+                      Text('Amount ${ProfitSharingSettlementHistory.formatKobo(item['amountKobo'])} · '
+                          'Company profit ${ProfitSharingSettlementHistory.formatKobo(item['companyProfitKobo'])}',
+                          style: const TextStyle(fontSize: 12)),
+                      if (entries.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 5),
+                        ...entries.map((Map<String, dynamic> entry) {
+                          final String accountId =
+                              entry['accountId']?.toString() ?? '';
+                          final bool held =
+                              ProfitSharingSettlementHistory.isHeldEntry(
+                            accountId,
+                          );
+                          return Text(
+                              held
+                                  ? 'Held / unallocated custody · not a beneficiary credit · '
+                                      '${ProfitSharingSettlementHistory.formatKobo(entry['amountKobo'])}'
+                                  : 'Beneficiary allocation · ${entry['role'] ?? 'Role unavailable'} · '
+                                      '${ProfitSharingSettlementHistory.formatKobo(entry['amountKobo'])} · '
+                                      'Account $accountId',
+                              style: const TextStyle(color: Color(0xFF66766D), fontSize: 12),
+                            );
+                        }),
+                      ],
+                      if (item['code'] != null && item['code'].toString().isNotEmpty)
+                        Text('Record code ${item['code']}',
+                            style: const TextStyle(color: Color(0xFF66766D), fontSize: 11)),
+                    ],
+                  ),
+                );
+              }),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                Text('Page $_page${_total > 0 ? ' · $_total records' : ''}',
+                    style: const TextStyle(color: Color(0xFF66766D), fontSize: 12)),
+                Row(
+                  children: <Widget>[
+                    IconButton(
+                      tooltip: 'Previous history page',
+                      onPressed: _loading || _page <= 1 ? null : () => _load(page: _page - 1),
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Next history page',
+                      onPressed: _loading || !hasNext ? null : () => _load(page: _page + 1),
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HistorySkeleton extends StatelessWidget {
+  const _HistorySkeleton();
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: List<Widget>.generate(
+          3,
+          (int index) => Container(
+            height: 34,
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5ECE5),
+              borderRadius: BorderRadius.circular(9),
+            ),
+          ),
+        ),
       );
 }
 

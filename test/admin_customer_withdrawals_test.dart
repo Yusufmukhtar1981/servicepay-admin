@@ -45,6 +45,28 @@ void main() {
       expectedAccountNumber: '0012345678',
     );
     await api.reject('request-43', reason: 'Invalid beneficiary details');
+    await api.approveCommission(
+      'commission-44',
+      payoutReference: 'custody-ref',
+      adminNote: 'custody payout',
+      manualPaymentConfirmed: true,
+      expectedAmount: 7412,
+      expectedAccountNumber: '0099887766',
+      currentPassword: 'fresh-secret',
+    );
+    await api.rejectCommission(
+      'commission-45',
+      reason: 'Custody review failed',
+      currentPassword: 'fresh-secret',
+    );
+    expect(
+      () => api.rejectCommission(
+        'commission-46',
+        reason: 'Too short',
+        currentPassword: 'fresh-secret',
+      ),
+      throwsArgumentError,
+    );
 
     expect(
       requests[0].url.toString(),
@@ -67,6 +89,26 @@ void main() {
     expect(requests[3].url.path, '/api/withdrawals/admin/request-43/reject');
     expect(jsonDecode(requests[3].body), <String, dynamic>{
       'adminNote': 'Invalid beneficiary details',
+    });
+    expect(
+      requests[4].url.path,
+      '/api/withdrawals/commission/admin/commission-44/approve',
+    );
+    expect(jsonDecode(requests[4].body), <String, dynamic>{
+      'payoutReference': 'custody-ref',
+      'adminNote': 'custody payout',
+      'manualPaymentConfirmed': true,
+      'expectedAmount': 7412,
+      'expectedAccountNumber': '0099887766',
+      'currentPassword': 'fresh-secret',
+    });
+    expect(
+      requests[5].url.path,
+      '/api/withdrawals/commission/admin/commission-45/reject',
+    );
+    expect(jsonDecode(requests[5].body), <String, dynamic>{
+      'adminNote': 'Custody review failed',
+      'currentPassword': 'fresh-secret',
     });
     api.close();
   });
@@ -272,6 +314,92 @@ void main() {
     expect(api.requestedStatuses.last, 'APPROVED');
   });
 
+  testWidgets('commission-custody rows identify source and require fresh password',
+      (WidgetTester tester) async {
+    final _FakeCustomerWithdrawalsApi api = _FakeCustomerWithdrawalsApi()
+      ..commissionSource = true;
+    await tester.pumpWidget(MaterialApp(
+      home: AdminCustomerWithdrawalsScreen(
+        api: api,
+        initialAccess: const AdminAccess(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Funding source: Commission custody'), findsOneWidget);
+    await tester.tap(find.text('Mark paid'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Payout / bank transfer reference'),
+      'custody-transfer',
+    );
+    await tester.ensureVisible(find.byType(CheckboxListTile));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Confirm transfer already completed'));
+    await tester.tap(find.text('Confirm transfer already completed'));
+    await tester.pumpAndSettle();
+    expect(find.text('Confirm commission-custody approve'), findsOneWidget);
+    expect(api.commissionPassword, isNull);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Current admin password'),
+      'fresh-now',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Continue to approval'));
+    await tester.tap(find.text('Continue to approval'));
+    await tester.pumpAndSettle();
+    expect(api.commissionPassword, 'fresh-now');
+    expect(api.markPaidReference, 'custody-transfer');
+    expect(api.expectedAmount, 5000);
+  });
+
+  testWidgets('commission rejection requires a fresh password and ten-character reason',
+      (WidgetTester tester) async {
+    final _FakeCustomerWithdrawalsApi api = _FakeCustomerWithdrawalsApi()
+      ..commissionSource = true;
+    await tester.pumpWidget(MaterialApp(
+      home: AdminCustomerWithdrawalsScreen(
+        api: api,
+        initialAccess: const AdminAccess(
+          role: 'HEAD_OFFICE',
+          permissions: <String>{},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reject'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use at least 10 characters.'), findsOneWidget);
+    final Finder reason = find.widgetWithText(TextField, 'Reason for rejection');
+    final Finder password = find.widgetWithText(TextField, 'Current admin password');
+    await tester.enterText(reason, '123456789');
+    await tester.enterText(password, 'fresh-now');
+    await tester.pump();
+    final Finder reject = find.text('Reject request');
+    expect(
+      tester.widget<FilledButton>(
+        find.ancestor(of: reject, matching: find.byType(FilledButton)).first,
+      ).onPressed,
+      isNull,
+    );
+    await tester.enterText(reason, '1234567890');
+    await tester.pump();
+    expect(
+      tester.widget<FilledButton>(
+        find.ancestor(of: reject, matching: find.byType(FilledButton)).first,
+      ).onPressed,
+      isNotNull,
+    );
+    await tester.ensureVisible(reject);
+    await tester.tap(reject);
+    await tester.pumpAndSettle();
+    expect(api.commissionRejectionReason, '1234567890');
+    expect(api.commissionPassword, 'fresh-now');
+  });
+
   testWidgets('failed action and failed refresh leave request pending', (
     WidgetTester tester,
   ) async {
@@ -418,6 +546,9 @@ class _FakeCustomerWithdrawalsApi extends AdminCustomerWithdrawalsApi {
   bool failMarkPaid = false;
   bool failNextList = false;
   bool hasBeenPaid = false;
+  bool commissionSource = false;
+  String? commissionPassword;
+  String? commissionRejectionReason;
 
   @override
   Future<List<Map<String, dynamic>>> list({String status = ''}) async {
@@ -434,6 +565,7 @@ class _FakeCustomerWithdrawalsApi extends AdminCustomerWithdrawalsApi {
         'bankName': 'Example Bank',
         'accountNumber': '0012345678',
         'accountName': 'Ada Example',
+        if (commissionSource) 'fundingSource': 'COMMISSION_CUSTODY',
         'reference': 'request-ref-1',
         'user': <String, dynamic>{
           'fullName': 'Ada Example',
@@ -470,6 +602,36 @@ class _FakeCustomerWithdrawalsApi extends AdminCustomerWithdrawalsApi {
     required String reason,
   }) async {
     rejectionReason = reason;
+    return <String, dynamic>{'success': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> approveCommission(
+    String id, {
+    required String payoutReference,
+    required String adminNote,
+    required bool manualPaymentConfirmed,
+    required num expectedAmount,
+    required String expectedAccountNumber,
+    required String currentPassword,
+  }) async {
+    commissionPassword = currentPassword;
+    markPaidReference = payoutReference;
+    this.manualPaymentConfirmed = manualPaymentConfirmed;
+    this.expectedAmount = expectedAmount;
+    this.expectedAccountNumber = expectedAccountNumber;
+    hasBeenPaid = true;
+    return <String, dynamic>{'success': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> rejectCommission(
+    String id, {
+    required String reason,
+    required String currentPassword,
+  }) async {
+    commissionRejectionReason = reason;
+    commissionPassword = currentPassword;
     return <String, dynamic>{'success': true};
   }
 }

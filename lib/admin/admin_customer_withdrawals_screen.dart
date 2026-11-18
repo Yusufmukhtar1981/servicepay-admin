@@ -33,6 +33,10 @@ class _AdminCustomerWithdrawalsScreenState
   bool _acting = false;
   int _loadVersion = 0;
 
+  bool _commissionSource(Map<String, dynamic> item) =>
+      item['fundingSource']?.toString().trim().toUpperCase() ==
+      'COMMISSION_CUSTODY';
+
   bool get _authorized {
     final AdminAccess? access = widget.initialAccess;
     return access != null &&
@@ -79,9 +83,11 @@ class _AdminCustomerWithdrawalsScreenState
   String _errorMessage(Object error) =>
       error.toString().replaceFirst('Exception: ', '');
 
-  Future<String?> _askForRejectionReason() async {
+  Future<(String, String?)?> _askForRejectionReason(
+      {required bool commission}) async {
     String reason = '';
-    return showDialog<String>(
+    String password = '';
+    return showDialog<(String, String?)>(
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setDialogState) =>
@@ -91,9 +97,10 @@ class _AdminCustomerWithdrawalsScreenState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Text(
-                'The existing rejection flow returns the held withdrawal amount '
-                'to the customer’s wallet.',
+              Text(
+                commission
+                    ? 'This request is funded from company commission custody. Rejection uses its custody-specific route.'
+                    : 'The existing rejection flow returns the held withdrawal amount to the customer’s wallet.',
               ),
               const SizedBox(height: 12),
               TextField(
@@ -101,11 +108,26 @@ class _AdminCustomerWithdrawalsScreenState
                 maxLength: 180,
                 onChanged: (String value) =>
                     setDialogState(() => reason = value),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Reason for rejection',
+                  helperText:
+                      commission ? 'Use at least 10 characters.' : null,
                   border: OutlineInputBorder(),
                 ),
               ),
+              if (commission) ...<Widget>[
+                const SizedBox(height: 8),
+                TextField(
+                  obscureText: true,
+                  onChanged: (String value) =>
+                      setDialogState(() => password = value),
+                  decoration: const InputDecoration(
+                    labelText: 'Current admin password',
+                    helperText: 'Required for this commission-custody action only.',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ],
           ),
           actions: <Widget>[
@@ -114,9 +136,13 @@ class _AdminCustomerWithdrawalsScreenState
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: reason.trim().isEmpty
+              onPressed: reason.trim().length < (commission ? 10 : 1) ||
+                      (commission && password.isEmpty)
                   ? null
-                  : () => Navigator.pop(dialogContext, reason.trim()),
+                  : () => Navigator.pop(
+                        dialogContext,
+                        (reason.trim(), commission ? password : null),
+                      ),
               child: const Text('Reject request'),
             ),
           ],
@@ -131,9 +157,19 @@ class _AdminCustomerWithdrawalsScreenState
       _showMessage('This withdrawal has no valid request ID.', error: true);
       return;
     }
-    final String? reason = await _askForRejectionReason();
-    if (reason == null || !mounted) return;
-    await _runAction(() => _api.reject(id, reason: reason));
+    final (String, String?)? details =
+        await _askForRejectionReason(commission: _commissionSource(item));
+    if (details == null || !mounted) return;
+    await _runAction(() {
+      if (_commissionSource(item)) {
+        return _api.rejectCommission(
+          id,
+          reason: details.$1,
+          currentPassword: details.$2 ?? '',
+        );
+      }
+      return _api.reject(id, reason: details.$1);
+    });
   }
 
   Future<void> _markPaid(Map<String, dynamic> item) async {
@@ -153,14 +189,73 @@ class _AdminCustomerWithdrawalsScreenState
     }
     final (String, String)? details = await _paymentDetails(item);
     if (details == null || !mounted) return;
+    final String? currentPassword = _commissionSource(item)
+        ? await _askForCurrentPassword(action: 'approve')
+        : null;
+    if (_commissionSource(item) && (currentPassword == null || !mounted)) return;
     await _runAction(
-      () => _api.markPaid(
-        id,
-        payoutReference: details.$1,
-        adminNote: details.$2,
-        manualPaymentConfirmed: true,
-        expectedAmount: amount,
-        expectedAccountNumber: accountNumber,
+      () => _commissionSource(item)
+          ? _api.approveCommission(
+              id,
+              payoutReference: details.$1,
+              adminNote: details.$2,
+              manualPaymentConfirmed: true,
+              expectedAmount: amount,
+              expectedAccountNumber: accountNumber,
+              currentPassword: currentPassword!,
+            )
+          : _api.markPaid(
+              id,
+              payoutReference: details.$1,
+              adminNote: details.$2,
+              manualPaymentConfirmed: true,
+              expectedAmount: amount,
+              expectedAccountNumber: accountNumber,
+            ),
+    );
+  }
+
+  Future<String?> _askForCurrentPassword({required String action}) {
+    String password = '';
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: Text('Confirm commission-custody $action'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'Enter your current admin password for this action. It is sent only with this request and is not saved.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                autofocus: true,
+                obscureText: true,
+                onChanged: (String value) =>
+                    setDialogState(() => password = value),
+                decoration: const InputDecoration(
+                  labelText: 'Current admin password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: password.isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, password),
+              child: Text(action == 'approve' ? 'Continue to approval' : 'Confirm'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -460,6 +555,19 @@ class _AdminCustomerWithdrawalsScreenState
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
+                                if (_commissionSource(item))
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      'Funding source: Commission custody',
+                                      key: ValueKey<String>('commission-custody-source'),
+                                      style: TextStyle(
+                                        color: Color(0xFF315F48),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
                                 const SizedBox(height: 6),
                                 Text(
                                   '${_text(user['phone'])} • ${_text(user['email'])}\n'

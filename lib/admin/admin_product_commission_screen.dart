@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'commission/profit_sharing_settings_screen.dart';
+
 class AdminProductCommissionScreen extends StatefulWidget {
   const AdminProductCommissionScreen({super.key});
 
@@ -1288,6 +1290,26 @@ class _AdminProductCommissionScreenState
                     ),
                   ),
                 ],
+              ),
+            ),
+            OutlinedButton.icon(
+              key: const Key('open-profit-sharing-settings'),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProfitSharingSettingsScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.pie_chart_outline_rounded),
+              label: const Text('Configure profit sharing'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primaryGreen,
+                minimumSize: const Size.fromHeight(48),
+                side: const BorderSide(color: primaryGreen),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
             const SizedBox(height: 20),

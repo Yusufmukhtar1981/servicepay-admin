@@ -66,6 +66,7 @@ import 'revenue_account_screen.dart';
 import 'financial_control_screen.dart';
 import 'executive_control_screen.dart';
 import 'business_network/business_network_screen.dart';
+import 'enterprise_devices/enterprise_devices_screen.dart';
 
 const Set<String> fullAccessAdminRoles = <String>{
   'HEAD_OFFICE',
@@ -240,6 +241,12 @@ class AdminMainNavigation extends StatefulWidget {
     }
     if (access.isHeadOffice) {
       labels.add('Staff Management');
+    }
+    if (canAccessEnterpriseDevicesNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('SERVICEPAY ENTERPRISE DEVICES');
     }
     if (canViewHeadOfficePerformance(access)) {
       labels.add('Management Performance');
@@ -545,6 +552,27 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.groups_outlined,
         activeIcon: Icons.groups_rounded,
         label: 'Staff Management',
+      );
+    }
+
+    if (canAccessEnterpriseDevicesNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: EnterpriseDevicesScreen(
+          canManage: canManageEnterpriseDevices(
+            role: adminRole,
+            permissions: permissions,
+          ),
+          canEnroll: canEnrollEnterpriseDevices(
+            role: adminRole,
+            permissions: permissions,
+          ),
+        ),
+        icon: Icons.phonelink_lock_outlined,
+        activeIcon: Icons.phonelink_lock_rounded,
+        label: 'SERVICEPAY ENTERPRISE DEVICES',
       );
     }
 

@@ -2,14 +2,15 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'admin_api_configuration.dart';
 
 class AdminPrivacyRequestsApi {
   AdminPrivacyRequestsApi({
     http.Client? client,
     this.baseUrl =
-        'https://api.servicepay.ng/api/admin/control-center/account-deletion-requests',
-  }) : _client = client ?? http.Client(),
-       _ownsClient = client == null;
+        '${AdminApiConfiguration.baseUrl}/admin/control-center/account-deletion-requests',
+  })  : _client = client ?? http.Client(),
+        _ownsClient = client == null;
 
   final http.Client _client;
   final bool _ownsClient;
@@ -21,17 +22,18 @@ class AdminPrivacyRequestsApi {
     String kind = '',
     int page = 1,
     int limit = 50,
-  }) => _request(
-    'GET',
-    '',
-    query: <String, String>{
-      'search': search.trim(),
-      'status': status,
-      'kind': kind,
-      'page': '$page',
-      'limit': '$limit',
-    }..removeWhere((_, String value) => value.isEmpty),
-  );
+  }) =>
+      _request(
+        'GET',
+        '',
+        query: <String, String>{
+          'search': search.trim(),
+          'status': status,
+          'kind': kind,
+          'page': '$page',
+          'limit': '$limit',
+        }..removeWhere((_, String value) => value.isEmpty),
+      );
 
   Future<Map<String, dynamic>> detail(String id) =>
       _request('GET', '/${Uri.encodeComponent(id)}');
@@ -40,11 +42,20 @@ class AdminPrivacyRequestsApi {
     String id, {
     required String status,
     String note = '',
-  }) => _request(
-    'PATCH',
-    '/${Uri.encodeComponent(id)}',
-    payload: <String, dynamic>{'status': status, 'note': note.trim()},
-  );
+    String? currentPassword,
+    Map<String, dynamic>? completionEvidence,
+  }) =>
+      _request(
+        'PATCH',
+        '/${Uri.encodeComponent(id)}',
+        payload: <String, dynamic>{
+          'status': status,
+          'note': note.trim(),
+          if (currentPassword != null) 'currentPassword': currentPassword,
+          if (completionEvidence != null)
+            'completionEvidence': completionEvidence,
+        },
+      );
 
   Future<Map<String, dynamic>> _request(
     String method,
@@ -53,13 +64,12 @@ class AdminPrivacyRequestsApi {
     Map<String, dynamic>? payload,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    String token =
-        (prefs.getString('auth_token') ??
-                prefs.getString('token') ??
-                prefs.getString('access_token') ??
-                '')
-            .trim()
-            .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
+    String token = (prefs.getString('auth_token') ??
+            prefs.getString('token') ??
+            prefs.getString('access_token') ??
+            '')
+        .trim()
+        .replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
     if (token.isEmpty) {
       throw const AdminPrivacyRequestsException(
         'Your Admin session was not found. Please sign in again.',
@@ -73,11 +83,11 @@ class AdminPrivacyRequestsApi {
     };
     final response = method == 'PATCH'
         ? await _client
-              .patch(uri, headers: headers, body: jsonEncode(payload))
-              .timeout(const Duration(seconds: 30))
+            .patch(uri, headers: headers, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 30))
         : await _client
-              .get(uri, headers: headers)
-              .timeout(const Duration(seconds: 30));
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 30));
     dynamic decoded;
     try {
       decoded = jsonDecode(response.body);

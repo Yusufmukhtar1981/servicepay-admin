@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../lib/admin/admin_privacy_requests_api.dart';
+import '../lib/admin/admin_api_configuration.dart';
 
 void main() {
   setUp(() {
@@ -56,6 +57,38 @@ void main() {
     expect(captured.method, 'PATCH');
     expect(jsonDecode(captured.body)['status'], 'APPROVED');
     expect(jsonDecode(captured.body)['note'], 'Identity details verified.');
+    api.close();
+  });
+
+  test(
+      'completion transmits fresh authentication and evidence without saving them',
+      () async {
+    late http.Request captured;
+    final api = AdminPrivacyRequestsApi(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(jsonEncode({'success': true, 'data': {}}), 200);
+      }),
+    );
+    await api.update(
+      'fixture-id',
+      status: 'COMPLETED',
+      note: 'Disposable test evidence only.',
+      currentPassword: 'local-test-only-password',
+      completionEvidence: {
+        'confirmation': 'DELETE FIXTURE',
+        'otherSystemsReviewed': true,
+        'processorsReviewed': true,
+        'financialObligationsReviewed': true,
+      },
+    );
+    expect(captured.url.toString(),
+        '${AdminApiConfiguration.baseUrl}/admin/control-center/account-deletion-requests/fixture-id');
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(body['currentPassword'], 'local-test-only-password');
+    expect(body['completionEvidence']['confirmation'], 'DELETE FIXTURE');
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getKeys(), {'auth_token'});
     api.close();
   });
 }

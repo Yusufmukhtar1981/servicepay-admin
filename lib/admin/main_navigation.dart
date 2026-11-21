@@ -47,6 +47,7 @@ import 'admin_customer_support_screen.dart';
 import 'admin_ai_support_center_screen.dart';
 import 'admin_staff_workspace_screens.dart';
 import 'admin_customer_360_screen.dart';
+import 'admin_virtual_account_management_screen.dart';
 import 'admin_transactions_screen.dart';
 import 'admin_transaction_intelligence_screen.dart';
 import 'customer_intelligence_screen.dart';
@@ -65,6 +66,8 @@ import 'provider_management_screen.dart';
 import 'revenue_account_screen.dart';
 import 'financial_control_screen.dart';
 import 'executive_control_screen.dart';
+import 'admin_executive_dashboard_screen.dart';
+import 'staff_control_centre_scoped.dart';
 import 'business_network/business_network_screen.dart';
 import 'enterprise_devices/enterprise_devices_screen.dart';
 
@@ -182,6 +185,45 @@ int preferredMarketingWorkspaceIndex({
   return index < 0 ? 0 : index;
 }
 
+/// Scoped Operations staff administration for non-Head-Office managers with
+/// the explicit capability. Head Office keeps its existing Staff Management.
+/// Read-only Head Office dashboard for non-HO staff holding the explicit
+/// operations.executive.view capability (no wildcard, never client-granted).
+@visibleForTesting
+bool canAccessScopedHeadOfficeDashboardNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+  return !access.isHeadOffice &&
+      permissions
+          .map((String permission) => permission.trim().toLowerCase())
+          .contains(AdminPermissions.operationsExecutiveView);
+}
+
+@visibleForTesting
+bool canAccessScopedOperationsStaffNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  final AdminAccess access = AdminAccess(role: role, permissions: permissions);
+  return !access.isHeadOffice &&
+      permissions
+          .map((String permission) => permission.trim().toLowerCase())
+          .contains(AdminPermissions.operationsStaffManage);
+}
+
+@visibleForTesting
+bool canAccessVirtualAccountManagementNavigation({
+  required String role,
+  required Set<String> permissions,
+}) {
+  return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE' ||
+      permissions
+          .map((String permission) => permission.trim().toLowerCase())
+          .contains(AdminPermissions.operationsVirtualAccountsView);
+}
+
 @visibleForTesting
 bool canAccessPendingResolutionNavigation({
   required String role,
@@ -242,6 +284,18 @@ class AdminMainNavigation extends StatefulWidget {
     if (access.isHeadOffice) {
       labels.add('Staff Management');
     }
+    if (canAccessScopedOperationsStaffNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Staff Management');
+    }
+    if (canAccessScopedHeadOfficeDashboardNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Head Office Dashboard');
+    }
     if (canAccessEnterpriseDevicesNavigation(
       role: access.role,
       permissions: access.permissions,
@@ -274,6 +328,12 @@ class AdminMainNavigation extends StatefulWidget {
       permissions: access.permissions,
     )) {
       labels.add('Pending Resolution');
+    }
+    if (canAccessVirtualAccountManagementNavigation(
+      role: access.role,
+      permissions: access.permissions,
+    )) {
+      labels.add('Virtual Account Management');
     }
     if (access.hasBusinessPartnerAdmin(AdminPermissions.businessPartnersView)) {
       labels.add('Business Partners');
@@ -555,6 +615,41 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
+    if (canAccessScopedOperationsStaffNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: StaffManagementScreen(
+          role: adminRole,
+          scoped: true,
+          access: AdminAccess(role: adminRole, permissions: permissions),
+        ),
+        icon: Icons.badge_outlined,
+        activeIcon: Icons.badge_rounded,
+        label: 'Staff Management',
+      );
+    }
+
+    if (canAccessScopedHeadOfficeDashboardNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      final AdminStaffControlCentreApi dashboardApi =
+          AdminStaffControlCentreApi();
+      addNavigationPage(
+        page: AdminExecutiveDashboardScreen(
+          // Actual STAFF identity; export/configuration stay permission-gated
+          // by the existing screen. Module shortcuts are not wired here.
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+          dashboardLoader: dashboardApi.headOfficeDashboard,
+        ),
+        icon: Icons.space_dashboard_outlined,
+        activeIcon: Icons.space_dashboard_rounded,
+        label: 'Head Office Dashboard',
+      );
+    }
+
     if (canAccessEnterpriseDevicesNavigation(
       role: adminRole,
       permissions: permissions,
@@ -720,6 +815,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         icon: Icons.person_search_outlined,
         activeIcon: Icons.person_search_rounded,
         label: 'Customer 360',
+      );
+    }
+
+    if (canAccessVirtualAccountManagementNavigation(
+      role: adminRole,
+      permissions: permissions,
+    )) {
+      addNavigationPage(
+        page: const AdminVirtualAccountManagementScreen(),
+        icon: Icons.account_balance_outlined,
+        activeIcon: Icons.account_balance_rounded,
+        label: 'Virtual Account Management',
       );
     }
 

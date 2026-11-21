@@ -46,6 +46,14 @@ abstract final class AdminPermissions {
   static const supportResolve = 'support.resolve';
   static const operationsWorkspaceView = 'operations.workspace.view';
   static const supportWorkspaceView = 'support.workspace.view';
+  static const operationsVirtualAccountsView =
+      'operations.virtual_accounts.view';
+  static const operationsVirtualAccountsGenerate =
+      'operations.virtual_accounts.generate';
+  static const operationsVirtualAccountsBulk =
+      'operations.virtual_accounts.bulk';
+  static const operationsStaffManage = 'operations.staff.manage';
+  static const operationsExecutiveView = 'operations.executive.view';
   static const kycView = 'kyc.view';
   static const trustView = 'trust.view';
   static const notificationsView = 'notifications.view';

@@ -7,6 +7,7 @@ import 'admin_staff_workspace_api.dart';
 import 'admin_roles_permissions_screen.dart' show StaffHistoryDialog;
 import 'phase1_operations_api.dart';
 import 'roles_permissions_screen.dart';
+import 'staff_control_centre_scoped.dart';
 
 class StaffManagementScreen extends StatefulWidget {
   const StaffManagementScreen({
@@ -15,12 +16,21 @@ class StaffManagementScreen extends StatefulWidget {
     this.staffApi,
     this.workspaceApi,
     this.role = '',
+    this.scoped = false,
+    this.controlCentreApi,
+    this.access,
   });
 
   final Phase1OperationsApi? api;
   final AdminRolesPermissionsApi? staffApi;
   final AdminStaffWorkspaceApi? workspaceApi;
   final String role;
+
+  /// Operations Manager scope: support-staff and manager administration via
+  /// the control-centre endpoints. Head Office default mode is unchanged.
+  final bool scoped;
+  final AdminStaffControlCentreApi? controlCentreApi;
+  final AdminAccess? access;
 
   @override
   State<StaffManagementScreen> createState() => _StaffManagementScreenState();
@@ -50,6 +60,18 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         'SERVICEPAY_SUPER_ADMIN',
       }.contains(AdminAccess.normalizeRole(widget.role));
 
+  late final AdminStaffControlCentreApi controlCentreApi =
+      widget.controlCentreApi ?? AdminStaffControlCentreApi();
+  StaffControlCentreOptions scopedOptions = const StaffControlCentreOptions();
+  int _managerDirectoryVersion = 0;
+
+  bool get _scoped => widget.scoped;
+  bool get _scopedAuthorized =>
+      _scoped &&
+      canUseScopedStaffControlCentre(
+          widget.access ?? AdminAccess(role: widget.role, permissions: const {}));
+  bool get _hasAccess => _scoped ? _scopedAuthorized : isHeadOffice;
+
   @override
   void initState() {
     super.initState();
@@ -60,12 +82,14 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   void dispose() {
     searchController.dispose();
     if (widget.workspaceApi == null) workspaceApi.close();
+    if (_scoped && widget.controlCentreApi == null) controlCentreApi.close();
     super.dispose();
   }
 
   Future<void> loadStaff({
     bool refresh = false,
   }) async {
+    if (_scoped) return _loadScopedStaff(refresh: refresh);
     if (!isHeadOffice) {
       if (mounted) {
         setState(() {
@@ -121,6 +145,63 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     }
   }
 
+  Future<void> _loadScopedStaff({bool refresh = false}) async {
+    if (!_scopedAuthorized) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+          errorMessage =
+              'This account does not have access to operations staff management.';
+          staff = <Map<String, dynamic>>[];
+        });
+      }
+      return;
+    }
+    setState(() {
+      if (refresh) {
+        isRefreshing = true;
+      } else {
+        isLoading = true;
+      }
+    });
+    try {
+      final results = await Future.wait<dynamic>([
+        controlCentreApi.loadStaff(search: searchController.text),
+        controlCentreApi.options(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        staff = results[0] as List<Map<String, dynamic>>;
+        scopedOptions = results[1] as StaffControlCentreOptions;
+        errorMessage = '';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => errorMessage =
+            error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _scopedCreate(ScopedAccountKind kind) async {
+    final created = await showScopedAccountForm(context,
+        api: controlCentreApi, options: scopedOptions, kind: kind);
+    if (!created || !mounted) return;
+    _showMessage(kind == ScopedAccountKind.support
+        ? 'Support staff created. They must change the password at first login.'
+        : 'Manager account created.');
+    setState(() => _managerDirectoryVersion++);
+    await loadStaff(refresh: true);
+  }
+
   String textValue(
     Map<String, dynamic> data,
     List<String> keys, {
@@ -169,8 +250,24 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       return;
     }
 
+    String? scopedReason;
+    if (_scoped) {
+      scopedReason = await showStaffReasonDialog(
+        context,
+        title: newStatus == 'ACTIVE' ? 'Activate staff?' : 'Suspend staff?',
+        summary:
+            'Status for ${textValue(staffMember, const ['fullName', 'name'], fallback: 'this staff member')} will change to $newStatus.',
+        action: newStatus == 'ACTIVE' ? 'Activate' : 'Suspend',
+      );
+      if (scopedReason == null || !mounted) return;
+    }
+
     try {
-      await staffApi.updateStaffStatus(staffId, newStatus);
+      if (_scoped) {
+        await controlCentreApi.updateStatus(staffId, newStatus, scopedReason!);
+      } else {
+        await staffApi.updateStaffStatus(staffId, newStatus);
+      }
 
       if (!mounted) {
         return;
@@ -290,8 +387,21 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     email.dispose();
     phone.dispose();
     if (values == null) return;
+    String? scopedReason;
+    if (_scoped) {
+      if (!mounted) return;
+      scopedReason = await showStaffReasonDialog(context,
+          title: 'Save staff changes?',
+          summary: 'Name, phone and email changes are recorded with your reason.',
+          action: 'Save');
+      if (scopedReason == null) return;
+    }
     try {
-      await staffApi.updateStaff(id, values);
+      if (_scoped) {
+        await controlCentreApi.updateStaff(id, values, scopedReason!);
+      } else {
+        await staffApi.updateStaff(id, values);
+      }
       _showMessage('Staff account updated.');
       await loadStaff(refresh: true);
     } catch (error) {
@@ -807,6 +917,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                     onPressed: () => editStaff(item),
                     icon: const Icon(Icons.edit_outlined),
                     label: const Text('Edit')),
+                if (!_scoped) ...[
                 TextButton.icon(
                     onPressed: () => assignRole(item),
                     icon: const Icon(Icons.badge_outlined),
@@ -819,13 +930,15 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                     onPressed: () => resetPassword(item),
                     icon: const Icon(Icons.password_outlined),
                     label: const Text('Reset password')),
+                ],
+                if (isHeadOffice)
                 TextButton.icon(
                     onPressed: () => showStaffHistory(item),
                     icon: const Icon(Icons.history),
                     label: const Text('History')),
                 OutlinedButton.icon(
                   onPressed: () {
-                    if (!active && !hasActiveAssignedRole(item)) {
+                    if (!_scoped && !active && !hasActiveAssignedRole(item)) {
                       _showMessage(
                         'Assign a valid active role before activating this account.',
                         failure: true,
@@ -851,14 +964,17 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   Widget build(
     BuildContext context,
   ) {
-    if (!isHeadOffice) {
+    if (!_hasAccess) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Staff Management')),
-        body: const Center(
+        appBar: AppBar(
+            title: Text(_scoped ? 'Operations Staff' : 'Staff Management')),
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: Text(
-              'Access denied. Staff administration requires a Head Office session.',
+              _scoped
+                  ? 'Access denied. Operations staff administration requires the operations.staff.manage permission.'
+                  : 'Access denied. Staff administration requires a Head Office session.',
               textAlign: TextAlign.center,
             ),
           ),
@@ -868,8 +984,8 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9F8),
       appBar: AppBar(
-        title: const Text(
-          'Staff Management',
+        title: Text(
+          _scoped ? 'Operations Staff' : 'Staff Management',
           style: TextStyle(
             fontWeight: FontWeight.w900,
           ),
@@ -889,7 +1005,16 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           ),
         ],
       ),
-      floatingActionButton: isHeadOffice
+      floatingActionButton: _scoped
+          ? (scopedOptions.canCreateSupport
+              ? FloatingActionButton.extended(
+                  key: const Key('scoped-create-support'),
+                  onPressed: () => _scopedCreate(ScopedAccountKind.support),
+                  icon: const Icon(Icons.support_agent_rounded),
+                  label: Text('Create ${scopedOptions.supportRoleLabel}'),
+                )
+              : null)
+          : isHeadOffice
           ? FloatingActionButton.extended(
               onPressed: () async {
                 final bool? created = await Navigator.of(context).push<bool>(
@@ -919,6 +1044,32 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
+            if (_scoped) ...[
+              Wrap(spacing: 10, runSpacing: 10, children: [
+                if (scopedOptions.canCreateZonal)
+                  FilledButton.icon(
+                    key: const Key('scoped-create-zonal'),
+                    onPressed: () => _scopedCreate(ScopedAccountKind.zonal),
+                    icon: const Icon(Icons.hub_outlined),
+                    label: const Text('Create Zonal Manager'),
+                  ),
+                if (scopedOptions.canCreateState)
+                  OutlinedButton.icon(
+                    key: const Key('scoped-create-state'),
+                    onPressed: () => _scopedCreate(ScopedAccountKind.state),
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Create State Manager'),
+                  ),
+              ]),
+              if (scopedOptions.managerTypes.contains('STATE_MANAGER') &&
+                  scopedOptions.zonalManagers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                      'State Managers need an active Zonal Manager. None are available.',
+                      style: TextStyle(color: Color(0xFF6B7280))),
+                ),
+            ] else ...[
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -933,6 +1084,36 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                       fontSize: 16,
                     ),
                   ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const Key('ho-manager-appointments'),
+                onPressed: () async {
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => Scaffold(
+                        body: StaffManagementScreen(
+                          role: widget.role,
+                          scoped: true,
+                          access: widget.access ??
+                              AdminAccess(
+                                  role: widget.role,
+                                  permissions: const <String>{}),
+                          controlCentreApi: widget.controlCentreApi,
+                        ),
+                      ),
+                    ),
+                  );
+                  if (mounted) await loadStaff(refresh: true);
+                },
+                icon: const Icon(Icons.hub_outlined),
+                label: const Text(
+                  'Manager appointments & access',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
             ),
@@ -958,6 +1139,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                 ),
               ),
             ),
+            ],
             const SizedBox(height: 14),
             TextField(
               controller: searchController,
@@ -1057,6 +1239,13 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
             else
               ...staff.map(
                 buildStaffCard,
+              ),
+            if (_scoped && _scopedAuthorized)
+              ScopedManagerDirectory(
+                key: ValueKey('managers-$_managerDirectoryVersion'),
+                api: controlCentreApi,
+                profiles: scopedOptions.zonalPermissionProfiles,
+                onChanged: () => loadStaff(refresh: true),
               ),
             const SizedBox(height: 90),
           ],

@@ -5,6 +5,7 @@ import 'admin_permissions.dart';
 import 'account_security_recovery.dart';
 import 'customer_profile_admin.dart';
 import 'customer_virtual_account_admin.dart';
+import 'customer_360_directory.dart';
 
 class AdminCustomer360Screen extends StatefulWidget {
   const AdminCustomer360Screen({
@@ -89,6 +90,17 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
     // their dedicated capability/permission checks.
     return access != null &&
         AdminAccess.normalizeRole(access.role) == 'HEAD_OFFICE';
+  }
+
+  /// Virtual-account visibility only. Head Office or explicit
+  /// operations.virtual_accounts.view; does not affect profile editing.
+  bool _canViewVirtualAccount() {
+    final access = _access;
+    if (access == null) return false;
+    return AdminAccess.normalizeRole(access.role) == 'HEAD_OFFICE' ||
+        access.permissions
+            .map((p) => p.trim().toLowerCase())
+            .contains(AdminPermissions.operationsVirtualAccountsView);
   }
 
   Future<void> _find() async {
@@ -307,6 +319,12 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
                 _customer == null &&
                 _error == null)
               _emptyState(),
+            AdminCustomer360Directory(
+              api: _api,
+              onOpenProfile: _select,
+              onOpenVirtualAccount:
+                  _canViewVirtualAccount() ? _showVirtualAccount : null,
+            ),
           ],
         ),
       ),
@@ -460,7 +478,10 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
   Widget _profileActions(Map<String, dynamic> profile) {
     final canEdit = _hasProfilePermission();
     final canViewHistory = _hasProfilePermission();
-    if (!canEdit && !canViewHistory) return const SizedBox.shrink();
+    final canViewAccount = _canViewVirtualAccount();
+    if (!canEdit && !canViewHistory && !canViewAccount) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: _Card(
@@ -487,7 +508,7 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
                 icon: const Icon(Icons.history_rounded),
                 label: const Text('Edit History'),
               ),
-            if (_hasProfilePermission())
+            if (_canViewVirtualAccount())
               OutlinedButton.icon(
                 key: const Key('customer360-virtual-account'),
                 onPressed: () => _showVirtualAccount(profile),
@@ -544,7 +565,7 @@ class _AdminCustomer360ScreenState extends State<AdminCustomer360Screen> {
   }
 
   Future<void> _showVirtualAccount(Map<String, dynamic> profile) async {
-    if (!_hasProfilePermission()) return;
+    if (!_canViewVirtualAccount()) return;
     final customerId = _profileCustomerId(profile);
     if (customerId.isEmpty) return;
     await showDialog<void>(

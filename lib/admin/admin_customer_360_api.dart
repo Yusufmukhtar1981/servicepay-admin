@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'admin_api_configuration.dart';
 
 class AdminCustomer360Page {
   const AdminCustomer360Page({required this.items, required this.pagination});
@@ -15,13 +16,33 @@ class AdminCustomer360Api {
       : _client = client ?? http.Client(),
         _ownsClient = client == null;
 
-  static const baseUrl = 'https://api.servicepay.ng/api/admin/customer360';
+  static const baseUrl = '${AdminApiConfiguration.baseUrl}/admin/customer360';
   final http.Client _client;
   final bool _ownsClient;
 
   Future<List<Map<String, dynamic>>> search(String query) async {
     final response = await _request('search', query: {'query': query.trim()});
     return _items(response);
+  }
+
+  Future<AdminCustomer360Page> directory({
+    int page = 1,
+    int limit = 20,
+    String search = '',
+    String status = '',
+    String account = '',
+  }) async {
+    final response = await _request('directory', query: {
+      'page': '$page', 'limit': '$limit', 'q': search.trim(),
+      'status': status, 'account': account,
+    }..removeWhere((key, value) => value.isEmpty));
+    final data = _map(response['data']);
+    if (data['items'] is! List || data['pagination'] is! Map) {
+      throw Exception('The customer directory returned an invalid response.');
+    }
+    return AdminCustomer360Page(
+      items: _items(response), pagination: _map(data['pagination']),
+    );
   }
 
   Future<Map<String, dynamic>> overview(String customerId) async {

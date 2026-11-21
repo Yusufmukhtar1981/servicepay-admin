@@ -7,6 +7,44 @@ const _privacyGreen = Color(0xFF08783E);
 const _privacyInk = Color(0xFF17352B);
 const _privacyPaper = Color(0xFFF5F8F6);
 
+String? validateAccountDeletionCompletion({
+  required String note,
+  required String password,
+  required String reference,
+  required Map<String, dynamic> evidence,
+  DateTime? now,
+}) {
+  if (note.trim().length < 10) {
+    return 'Enter a meaningful review note of at least 10 characters.';
+  }
+  if (reference.trim().isEmpty ||
+      evidence['confirmation'] != 'DELETE $reference') {
+    return 'Type DELETE $reference exactly to confirm.';
+  }
+  for (final key in [
+    'associatedDataReviewReference',
+    'processorRequestsReference',
+    'retentionPolicyReference',
+    'retentionScope',
+  ]) {
+    final text = '${evidence[key] ?? ''}'.trim();
+    if (text.length < 15 || text.length > 1500) {
+      return 'Complete every evidence and retention field with 15–1500 characters.';
+    }
+  }
+  final review = DateTime.tryParse('${evidence['retentionReviewBy'] ?? ''}');
+  if (review == null || !review.isAfter(now ?? DateTime.now())) {
+    return 'Select a future policy-based retention review date.';
+  }
+  if (evidence['otherSystemsReviewed'] != true ||
+      evidence['processorsReviewed'] != true ||
+      evidence['financialObligationsReviewed'] != true) {
+    return 'Complete all three review attestations before proceeding.';
+  }
+  if (password.isEmpty) return 'Enter your current Head Office password.';
+  return null;
+}
+
 class AdminPrivacyRequestsScreen extends StatefulWidget {
   const AdminPrivacyRequestsScreen({super.key, this.api});
   final AdminPrivacyRequestsApi? api;
@@ -531,6 +569,7 @@ class _PrivacyRequestDialog extends StatelessWidget {
     bool processorsReviewed = false;
     bool financialReviewed = false;
     bool busy = false;
+    String? validationError;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => _PrivacyDialogBuilder(
@@ -638,7 +677,7 @@ class _PrivacyRequestDialog extends StatelessWidget {
                           lastDate: DateTime(today.year + 20),
                         );
                         if (date != null && dialogContext.mounted) {
-                          reviewDate.text = date.toIso8601String();
+                          reviewDate.text = date.toUtc().toIso8601String();
                         }
                       },
                     ),
@@ -692,6 +731,17 @@ class _PrivacyRequestDialog extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (validationError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          validationError!,
+                          style: const TextStyle(color: Color(0xFFB42318)),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -706,29 +756,44 @@ class _PrivacyRequestDialog extends StatelessWidget {
               onPressed: busy
                   ? null
                   : () async {
+                      final evidence = completing
+                          ? <String, dynamic>{
+                              'confirmation': confirmation.text.trim(),
+                              'associatedDataReviewReference':
+                                  associated.text.trim(),
+                              'processorRequestsReference':
+                                  processors.text.trim(),
+                              'retentionPolicyReference': policy.text.trim(),
+                              'retentionScope': scope.text.trim(),
+                              'retentionReviewBy': reviewDate.text,
+                              'otherSystemsReviewed': associatedReviewed,
+                              'processorsReviewed': processorsReviewed,
+                              'financialObligationsReviewed': financialReviewed,
+                            }
+                          : null;
+                      final error = completing
+                          ? validateAccountDeletionCompletion(
+                              note: note.text,
+                              password: password.text,
+                              reference: _text(request['referenceId'], ''),
+                              evidence: evidence!,
+                            )
+                          : (const ['REJECTED', 'COMPLETED'].contains(status) &&
+                                  note.text.trim().length < 10)
+                              ? 'Enter a meaningful review note of at least 10 characters.'
+                              : null;
+                      if (error != null) {
+                        setState(() => validationError = error);
+                        return;
+                      }
+                      setState(() => validationError = null);
                       setState(() => busy = true);
                       try {
                         await onTransition(
                           status,
                           note.text,
                           completing ? password.text : null,
-                          completing
-                              ? <String, dynamic>{
-                                  'confirmation': confirmation.text.trim(),
-                                  'associatedDataReviewReference':
-                                      associated.text.trim(),
-                                  'processorRequestsReference':
-                                      processors.text.trim(),
-                                  'retentionPolicyReference':
-                                      policy.text.trim(),
-                                  'retentionScope': scope.text.trim(),
-                                  'retentionReviewBy': reviewDate.text,
-                                  'otherSystemsReviewed': associatedReviewed,
-                                  'processorsReviewed': processorsReviewed,
-                                  'financialObligationsReviewed':
-                                      financialReviewed,
-                                }
-                              : null,
+                          evidence,
                         );
                         if (dialogContext.mounted) {
                           Navigator.of(dialogContext).pop(true);

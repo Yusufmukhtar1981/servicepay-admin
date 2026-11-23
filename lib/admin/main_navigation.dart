@@ -65,6 +65,7 @@ import 'hierarchy_management_screen.dart';
 import 'provider_management_screen.dart';
 import 'revenue_account_screen.dart';
 import 'financial_control_screen.dart';
+import 'expense_management/expense_management_screen.dart';
 import 'executive_control_screen.dart';
 import 'admin_executive_dashboard_screen.dart';
 import 'staff_control_centre_scoped.dart';
@@ -143,6 +144,11 @@ bool canAccessRevenueAccountNavigation({
 @visibleForTesting
 bool canAccessFinancialControlNavigation({required String role}) {
   return AdminAccess.normalizeRole(role) == 'HEAD_OFFICE';
+}
+
+@visibleForTesting
+bool canAccessExpenseManagementNavigation({required Set<String> permissions}) {
+  return permissions.contains('expenses.view');
 }
 
 @visibleForTesting
@@ -766,9 +772,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
+    if (canAccessExpenseManagementNavigation(permissions: permissions)) {
+      addNavigationPage(
+        page: const ExpenseManagementScreen(),
+        icon: Icons.request_quote_outlined,
+        activeIcon: Icons.request_quote_rounded,
+        label: 'Financial Management',
+      );
+    }
+
     if (canAccessFinancialControlNavigation(role: adminRole)) {
       addNavigationPage(
-        page: const FinancialControlScreen(),
+        page: const FinancialControlScreen(expenseManagementEnabled: true),
         icon: Icons.account_balance_outlined,
         activeIcon: Icons.account_balance_rounded,
         label: 'FINANCIAL CONTROL CENTER',

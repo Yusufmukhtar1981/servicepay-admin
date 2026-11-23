@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'financial_control_api.dart';
 import 'financial_control_charts.dart';
+import 'expense_management/expense_management_screen.dart';
 
 const Color _ink = Color(0xff173e35);
 const Color _green = Color(0xff176b58);
@@ -11,8 +12,9 @@ const Color _paper = Color(0xfff3f7f4);
 const Color _line = Color(0xffdce7e1);
 
 class FinancialControlScreen extends StatefulWidget {
-  const FinancialControlScreen({super.key, this.api});
+  const FinancialControlScreen({super.key, this.api, this.expenseManagementEnabled = false});
   final FinancialControlApi? api;
+  final bool expenseManagementEnabled;
 
   @override
   State<FinancialControlScreen> createState() => _FinancialControlScreenState();
@@ -1031,6 +1033,12 @@ class _FinancialControlScreenState extends State<FinancialControlScreen>
   }
 
   Future<void> _showExpenseForm() async {
+    if (widget.expenseManagementEnabled) {
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => const ExpenseManagementScreen(initialSection: 'new'),
+      ));
+      return;
+    }
     final bool? recorded = await showDialog<bool>(
       context: context,
       barrierDismissible: false,

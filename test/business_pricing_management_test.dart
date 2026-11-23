@@ -101,6 +101,7 @@ Map<String, dynamic> airtimeResponse() => <String, dynamic>{
             'name': 'MTN',
             'categories': <String, dynamic>{
               'AGENT': <String, dynamic>{
+                'configured': true,
                 'enabled': true,
                 'markupBps': 175,
                 'updatedBy': 'Head Office',
@@ -160,7 +161,8 @@ void main() {
         findsOneWidget);
     expect(find.text('Provider discounts and invoice cost are not known.'),
         findsOneWidget);
-    expect(find.text('Inherits customer markup'), findsOneWidget);
+    expect(find.text('Not configured · unavailable'), findsOneWidget);
+    expect(find.text('Inherits customer markup'), findsNothing);
     expect(find.text('Independent rule'), findsOneWidget);
     expect(find.text('Provider cost · unknown until invoice'), findsOneWidget);
     expect(

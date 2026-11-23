@@ -17,6 +17,8 @@ class _ReviewDialog extends StatefulWidget {
 
 class _ReviewDialogState extends State<_ReviewDialog> {
   final group = TextEditingController();
+  final configurationReason = TextEditingController();
+  bool configurationEdited = false;
   final Set<String> services = {};
   List<Map<String, dynamic>> serviceCatalogue = [];
   bool serviceCatalogueLoading = true;
@@ -87,6 +89,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
   @override
   void dispose() {
     group.dispose();
+    configurationReason.dispose();
     super.dispose();
   }
 
@@ -144,7 +147,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'These settings are separate from application approval. No services are granted by approving.',
+                    'Approval activates requested services currently permitted by Head Office. Select a restricted service list here or explicitly save an access change. Prices must be configured separately.',
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
@@ -184,6 +187,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
                       onChanged: configurationBusy
                           ? null
                           : (value) => setState(() {
+                                configurationEdited = true;
                                 if (value == true) {
                                   services.add(code);
                                 } else {
@@ -196,6 +200,13 @@ class _ReviewDialogState extends State<_ReviewDialog> {
                   controller: group,
                   decoration:
                       const InputDecoration(labelText: 'Commission group'),
+                ),
+                TextField(
+                  controller: configurationReason,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: 'Required access-change reason',
+                  ),
                 ),
                 Align(
                   alignment: Alignment.centerRight,
@@ -278,6 +289,8 @@ class _ReviewDialogState extends State<_ReviewDialog> {
       await widget.api.post('profiles/${widget.profile['_id']}/review', {
         'status': nextStatus,
         'revision': widget.profile['revision'] ?? 0,
+        if (nextStatus == 'APPROVED' && configurationEdited)
+          'services': services.toList(),
       });
       if (!mounted) return;
       if (closeAfter) Navigator.of(context).pop();
@@ -300,6 +313,8 @@ class _ReviewDialogState extends State<_ReviewDialog> {
         'status': widget.profile['status'] ?? 'SUBMITTED',
         'revision': widget.profile['revision'] ?? 0,
         'services': services.toList(),
+        'configurationOnly': true,
+        'reason': configurationReason.text.trim(),
       };
       if (group.text.trim().isNotEmpty) body['group'] = group.text.trim();
       await widget.api.post('profiles/${widget.profile['_id']}/review', body);
@@ -307,6 +322,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Advanced settings saved.')),
       );
+      Navigator.of(context).pop();
       widget.onDone();
     } catch (error) {
       if (mounted) {

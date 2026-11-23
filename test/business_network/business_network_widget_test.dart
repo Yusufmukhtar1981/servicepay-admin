@@ -25,6 +25,106 @@ Future<void> _scrollToBusinessElement(
 }
 
 void main() {
+  testWidgets('approved business access uses an explicit audited configuration action',
+      (tester) async {
+    tester.view.physicalSize = const Size(1100, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    Map<String, dynamic>? saved;
+    final profile = <String, dynamic>{
+      '_id': 'approved-fixture', 'kind': 'AGENT', 'status': 'APPROVED',
+      'revision': 8, 'services': [], 'group': 'STANDARD',
+      'details': {'businessName': 'Fixture Business', 'preferredServices': ['DATA']},
+    };
+    final client = MockClient((request) async {
+      dynamic data;
+      if (request.method == 'POST') {
+        expect(request.url.path, '/api/business-network/admin/profiles/approved-fixture/review');
+        saved = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+        data = {'profile': profile};
+      } else if (request.url.path.endsWith('/admin/premium')) {
+        data = {'serviceCatalogue': {'AGENT': [
+          {'code': 'DATA', 'label': 'Data', 'available': true, 'processable': true},
+        ]}};
+      } else if (request.url.path.endsWith('/admin/profiles/approved-fixture')) {
+        data = {'profile': profile};
+      } else {
+        expect(request.url.path, '/api/business-network/admin/profiles');
+        data = {'items': [profile], 'total': 1};
+      }
+      return http.Response(jsonEncode({'success': true, 'data': data}), 200);
+    });
+    await tester.pumpWidget(MaterialApp(home: BusinessNetworkScreen(
+      initialSection: 2, api: BusinessNetworkAdminApi(client: client,
+        tokenProvider: () async => 'admin-fixture', baseUrl: 'https://example.invalid/api'),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manage'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Advanced controls'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Data'));
+    final reason = find.byWidgetPredicate((widget) => widget is TextField &&
+      widget.decoration?.labelText == 'Required access-change reason');
+    await tester.enterText(reason, 'Reviewed requested Data access');
+    tester.testTextInput.hide();
+    await tester.tap(find.text('Save advanced settings'));
+    await tester.pumpAndSettle();
+    expect(saved, {'status': 'APPROVED', 'revision': 8, 'services': ['DATA'],
+      'group': 'STANDARD', 'configurationOnly': true,
+      'reason': 'Reviewed requested Data access'});
+    expect(find.text('Advanced controls'), findsNothing,
+      reason: 'A saved dialog must close rather than reuse a stale revision');
+    await tester.pumpWidget(const SizedBox.shrink());
+    client.close();
+  });
+
+  testWidgets('Merchant funding minimum saves only the audited revisioned policy',
+      (tester) async {
+    Map<String, dynamic>? saved;
+    final client = MockClient((request) async {
+      expect(request.url.path, '/api/business-network/admin/settings');
+      if (request.method == 'PUT') {
+        saved = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+      }
+      return http.Response(jsonEncode({
+        'success': true,
+        'data': {
+          'categories': ['Retail'], 'features': {},
+          'revision': saved == null ? 7 : 8,
+          'merchantMinimumFundingKobo': saved?['merchantMinimumFundingKobo'] ?? 5000000,
+        },
+      }), 200);
+    });
+    await tester.pumpWidget(MaterialApp(home: BusinessNetworkScreen(
+      initialSection: 12,
+      api: BusinessNetworkAdminApi(client: client,
+        tokenProvider: () async => 'admin-fixture',
+        baseUrl: 'https://example.invalid/api'),
+    )));
+    await tester.pumpAndSettle();
+    final amount = find.byWidgetPredicate((widget) => widget is TextField &&
+      widget.decoration?.labelText == 'Merchant minimum (NGN)');
+    final reason = find.byWidgetPredicate((widget) => widget is TextField &&
+      widget.decoration?.labelText == 'Required change reason');
+    await _scrollToBusinessElement(tester, amount);
+    expect(tester.widget<TextField>(amount).controller?.text, '50000.00');
+    await tester.enterText(amount, '60000.00');
+    await tester.enterText(reason, 'Approved policy fixture');
+    tester.testTextInput.hide();
+    await _scrollToBusinessElement(tester, find.text('Save Merchant minimum'));
+    await tester.tap(find.text('Save Merchant minimum'));
+    await tester.pumpAndSettle();
+    expect(saved, {
+      'merchantMinimumFundingKobo': 6000000,
+      'revision': 7, 'reason': 'Approved policy fixture',
+    });
+    expect(find.text('Merchant funding minimum saved.'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    client.close();
+  });
+
   testWidgets('overview renders API metrics without mock totals',
       (tester) async {
     final client = MockClient((request) async {

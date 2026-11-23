@@ -717,7 +717,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
     final dynamic rawRule = categories[category];
     final Map<String, dynamic> rule =
         rawRule is Map ? Map<String, dynamic>.from(rawRule) : {};
-    final bool inherited = rawRule == null;
+    final bool configured = rule['configured'] == true;
     final bool saving = _airtimeSaving.contains(key);
     return Container(
       padding: const EdgeInsets.all(10),
@@ -735,7 +735,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
                   style: const TextStyle(
                       color: _ink, fontWeight: FontWeight.w800, fontSize: 12)),
             ),
-            Text(inherited ? 'Inherits customer markup' : 'Independent rule',
+            Text(configured ? 'Independent rule' : 'Not configured · unavailable',
                 style: const TextStyle(
                     color: Color(0xFF756340), fontSize: 10)),
           ]),
@@ -883,7 +883,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
                     ],
                   ),
                 ),
-                _tag('Provider cost  ${_money(item['providerCost'])}'),
+                _tag('Catalogue cost quote  ${_money(item['providerCost'])}'),
               ],
             ),
             const SizedBox(height: 11),
@@ -939,7 +939,6 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
     final Map<String, dynamic> rule =
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     final bool configured = rule['configured'] == true;
-    final bool inherited = rule['inherited'] == true || !configured;
     final double? price = _number(_prices[key]?.text);
     final double? cost = _number(item['providerCost']);
     final double margin = price == null || cost == null ? 0 : price - cost;
@@ -964,7 +963,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
           ]),
           const SizedBox(height: 4),
           Text(
-            '${inherited ? 'Inherited price' : 'Configured'} · '
+            '${configured ? 'Configured' : 'Not configured · unavailable'} · '
             'Effective ${_money(rule['effectivePrice'])}',
             style: const TextStyle(color: Color(0xFF68786D), fontSize: 12),
           ),
@@ -1012,7 +1011,7 @@ class _BusinessPricingManagementState extends State<BusinessPricingManagement> {
             runSpacing: 6,
             children: <Widget>[
               Text(
-                'Margin ${price == null || cost == null ? '—' : '${margin >= 0 ? '+' : ''}₦${_amount(margin)}'}',
+                'Quoted margin (not settled profit) ${price == null || cost == null ? '—' : '${margin >= 0 ? '+' : ''}₦${_amount(margin)}'}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

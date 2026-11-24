@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'admin_api_configuration.dart';
 
 /// Phase 1 Head Office/manager operations client.
 ///
@@ -10,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class Phase1OperationsApi {
   Phase1OperationsApi({
     http.Client? client,
-    this.baseUrl = 'https://api.servicepay.ng/api',
+    this.baseUrl = AdminApiConfiguration.baseUrl,
     Future<SharedPreferences> Function()? preferencesLoader,
   })  : _client = client ?? http.Client(),
         _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
@@ -61,6 +62,8 @@ class Phase1OperationsApi {
     bool includeInactive = false,
     int page = 1,
     int limit = 25,
+    String assignment = 'ALL',
+    String status = 'ALL',
   }) =>
       _request(
         'GET',
@@ -72,8 +75,24 @@ class Phase1OperationsApi {
           if (includeInactive) 'includeInactive': 'true',
           'page': page.toString(),
           'limit': limit.toString(),
+          if (assignment != 'ALL') 'assignment': assignment,
+          if (status != 'ALL') 'status': status,
         },
       );
+
+  Future<Map<String, dynamic>> assignCustomers({
+    required List<Map<String, dynamic>> customers,
+    required String parentId,
+    required String reason,
+    required String requestId,
+  }) =>
+      _request('POST', '/admin/hierarchy/customer-assignments/bulk',
+          body: <String, dynamic>{
+            'customers': customers,
+            'parentId': parentId,
+            'reason': reason,
+            'requestId': requestId,
+          });
 
   Future<Map<String, dynamic>> roleUsers({
     required String role,

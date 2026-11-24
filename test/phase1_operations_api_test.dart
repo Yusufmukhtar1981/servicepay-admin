@@ -183,7 +183,8 @@ void main() {
     expect(requests[2].url.queryParameters['type'], 'REASSIGNMENT');
   });
 
-  test('role assignment uses the guarded HEAD OFFICE endpoint contract', () async {
+  test('role assignment uses the guarded HEAD OFFICE endpoint contract',
+      () async {
     SharedPreferences.setMockInitialValues({'auth_token': 'token'});
     final requests = <http.Request>[];
     final api = Phase1OperationsApi(
@@ -234,8 +235,10 @@ void main() {
       throwsA(
         isA<Phase1OperationsException>()
             .having((error) => error.statusCode, 'statusCode', 409)
-            .having((error) => error.code, 'code', 'HIERARCHY_HISTORY_UNVERIFIED')
-            .having((error) => error.message, 'message', 'This user has legacy transactions.'),
+            .having(
+                (error) => error.code, 'code', 'HIERARCHY_HISTORY_UNVERIFIED')
+            .having((error) => error.message, 'message',
+                'This user has legacy transactions.'),
       ),
     );
 
@@ -319,7 +322,7 @@ void main() {
     final api = Phase1OperationsApi(
       client: MockClient((request) async {
         requests.add(request);
-        if (request.url.path == '/api/admin/role-users') {
+        if (request.url.path == '/api/admin/hierarchy/users') {
           final role = request.url.queryParameters['role'];
           return http.Response(
             jsonEncode({
@@ -397,7 +400,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(requests.where((request) => request.url.path == '/api/admin/role-users'),
+    expect(
+        requests.where(
+            (request) => request.url.path == '/api/admin/hierarchy/users'),
         isNotEmpty);
     expect(find.text('Unable to load hierarchy users'), findsNothing);
     expect(find.text('No matching users found.'), findsNothing);
@@ -411,14 +416,14 @@ void main() {
     expect(find.text('Confirm reassignment'), findsOneWidget);
     expect(find.text('Current reporting line'), findsOneWidget);
     expect(find.text('Zonal Manager: Zonal Old (zonal-old)'), findsOneWidget);
-    await tester.enterText(find.byType(TextField).last, 'Coverage correction for region');
+    await tester.enterText(
+        find.byType(TextField).last, 'Coverage correction for region');
     await tester.tap(find.text('Save assignment'));
     await tester.pumpAndSettle();
     expect(
-      requests.any(
-          (http.Request request) =>
-              request.url.path == '/api/admin/role-users/hierarchy-assignments' &&
-              request.method == 'PATCH'),
+      requests.any((http.Request request) =>
+          request.url.path == '/api/admin/role-users/hierarchy-assignments' &&
+          request.method == 'PATCH'),
       isTrue,
     );
     final http.Request patch = requests.firstWhere((http.Request request) =>
@@ -510,7 +515,7 @@ void main() {
       final api = Phase1OperationsApi(
         client: MockClient((request) async {
           requests.add(request);
-          if (request.url.path == '/api/admin/role-users') {
+          if (request.url.path == '/api/admin/hierarchy/users') {
             final String role = request.url.queryParameters['role'] ?? '';
             if (role == scenario['role']) {
               targetListLoads++;
@@ -599,7 +604,10 @@ void main() {
       expect(find.text(scenario['parentName'] as String), findsOneWidget);
       for (final Map<String, dynamic> excluded
           in scenario['excluded'] as List<Map<String, dynamic>>) {
-        expect(find.text(excluded['fullName'] as String), findsNothing);
+        // Customer reporting lines may cross states/zones; the backend still
+        // validates the complete destination lineage. Staff moves may not.
+        expect(find.text(excluded['fullName'] as String),
+            scenario['role'] == 'CUSTOMER' ? findsOneWidget : findsNothing);
       }
 
       await tester.tap(find.text(scenario['parentName'] as String));
@@ -618,8 +626,7 @@ void main() {
       final http.Request assignment = requests.firstWhere(
         (http.Request request) =>
             request.method == 'PATCH' &&
-            request.url.path ==
-                '/api/admin/role-users/hierarchy-assignments',
+            request.url.path == '/api/admin/role-users/hierarchy-assignments',
       );
       final Map<String, dynamic> payload =
           Map<String, dynamic>.from(jsonDecode(assignment.body) as Map);
@@ -647,7 +654,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'auth_token': 'token'});
     final api = Phase1OperationsApi(
       client: MockClient((request) async {
-        if (request.url.path == '/api/admin/role-users') {
+        if (request.url.path == '/api/admin/hierarchy/users') {
           final String role = request.url.queryParameters['role'] ?? '';
           final Map<String, dynamic> user = switch (role) {
             'AGENT' => {
@@ -765,7 +772,8 @@ void main() {
     await tester.tap(find.text('Save assignment'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Assignment blocked:'), findsOneWidget);
-    expect(find.textContaining('Legacy history blocks assignment.'), findsNothing);
+    expect(
+        find.textContaining('Legacy history blocks assignment.'), findsNothing);
   });
 
   testWidgets('reporting chain drills down through actual parent IDs',
@@ -783,15 +791,29 @@ void main() {
         requests.add(request);
         final role = request.url.queryParameters['role'];
         final data = switch (role) {
-          'ZONAL_MANAGER' => {'_id': 'zone-1', 'fullName': 'Zone One', 'role': role},
-          'STATE_MANAGER' => {'_id': 'state-1', 'fullName': 'State One', 'role': role},
-          'AGENT' => {'_id': 'agent-1', 'fullName': 'Aggregator One', 'role': role},
+          'ZONAL_MANAGER' => {
+              '_id': 'zone-1',
+              'fullName': 'Zone One',
+              'role': role
+            },
+          'STATE_MANAGER' => {
+              '_id': 'state-1',
+              'fullName': 'State One',
+              'role': role
+            },
+          'AGENT' => {
+              '_id': 'agent-1',
+              'fullName': 'Aggregator One',
+              'role': role
+            },
           _ => {'_id': 'customer-1', 'fullName': 'Customer One', 'role': role},
         };
-        return http.Response(jsonEncode({
-          'users': [data],
-          'pagination': {'pages': 1, 'total': 1},
-        }), 200);
+        return http.Response(
+            jsonEncode({
+              'users': [data],
+              'pagination': {'pages': 1, 'total': 1},
+            }),
+            200);
       }),
     );
     await tester.pumpWidget(MaterialApp(

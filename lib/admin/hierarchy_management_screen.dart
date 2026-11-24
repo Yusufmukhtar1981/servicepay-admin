@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'admin_permissions.dart';
 import 'admin_management_access.dart';
 import 'hierarchy_downline_dialog.dart';
+import 'hierarchy_bulk_assignment_dialog.dart';
 import 'phase1_operations_api.dart';
 
 /// Head Office's safe, explicit reporting-chain assignment surface.
@@ -42,6 +43,14 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
   String? _pendingAssignmentIntent;
   String? _pendingAssignmentRequestId;
   List<Map<String, dynamic>> _users = <Map<String, dynamic>>[];
+  final Set<String> _selectedCustomers = {};
+  String _assignmentFilter = 'ALL';
+  String _statusFilter = 'ALL';
+  Map<String, dynamic>? _aggregatorFilter;
+  int _page = 1;
+  int _pages = 1;
+  int _total = 0;
+  int _loadVersion = 0;
 
   static const List<Map<String, String>> _roleOptions = <Map<String, String>>[
     {
@@ -87,15 +96,28 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
   }
 
   Future<void> _load() async {
+    if (!_canManage) {
+      setState(() => _loading = false);
+      return;
+    }
+    final version = ++_loadVersion;
     setState(() {
       _loading = true;
       _error = '';
+      _selectedCustomers.clear();
     });
     try {
       final String query = _search.text.trim();
-      final Map<String, dynamic> users = await _api.roleUsers(
+      final Map<String, dynamic> users = await _api.hierarchyUsers(
         role: _selectedRole,
         search: query,
+        includeInactive: true,
+        page: _page,
+        assignment: _selectedRole == 'CUSTOMER' ? _assignmentFilter : 'ALL',
+        status: _statusFilter,
+        parentId: _selectedRole == 'CUSTOMER' && _aggregatorFilter != null
+            ? _id(_aggregatorFilter!)
+            : '',
       );
       List<Map<String, dynamic>> parse(dynamic raw) {
         return raw is List
@@ -106,13 +128,19 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
             : <Map<String, dynamic>>[];
       }
 
-      if (!mounted) return;
+      if (!mounted || version != _loadVersion) return;
       setState(() {
         _users = parse(users['users']);
+        final pagination = users['pagination'];
+        _pages =
+            pagination is Map ? (pagination['pages'] as num?)?.toInt() ?? 1 : 1;
+        _total = pagination is Map
+            ? (pagination['total'] as num?)?.toInt() ?? _users.length
+            : _users.length;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || version != _loadVersion) return;
       setState(() {
         _loading = false;
         _error = error.toString().replaceFirst('Exception: ', '');
@@ -122,7 +150,31 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
 
   void _searchChanged(String _) {
     _debounce?.cancel();
+    _page = 1;
     _debounce = Timer(const Duration(milliseconds: 450), _load);
+  }
+
+  Future<void> _bulkAssign() async {
+    if (_saving || _reviewing || !_canManage || _selectedCustomers.isEmpty)
+      return;
+    final customers = _users
+        .where((u) => _selectedCustomers.contains(_id(u)))
+        .map((u) => Map<String, dynamic>.from(u))
+        .toList();
+    setState(() => _reviewing = true);
+    try {
+      final parent = await _chooseParent({'role': 'CUSTOMER'});
+      if (parent == null || !mounted) return;
+      await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => HierarchyBulkAssignmentDialog(
+            api: _api, customers: customers, parent: parent),
+      );
+      if (mounted) await _load();
+    } finally {
+      if (mounted) setState(() => _reviewing = false);
+    }
   }
 
   Future<void> _assign(Map<String, dynamic> user) async {
@@ -179,12 +231,14 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
       final DialogRoute<bool> reviewRoute = DialogRoute<bool>(
         context: context,
         themes: InheritedTheme.capture(
-            from: context, to: Navigator.of(context, rootNavigator: true).context),
+            from: context,
+            to: Navigator.of(context, rootNavigator: true).context),
         builder: (BuildContext dialogContext) => AlertDialog(
           title: Text(directParentId.isEmpty
               ? 'Confirm assignment'
               : 'Confirm reassignment'),
-          content: SingleChildScrollView(child: Column(
+          content: SingleChildScrollView(
+              child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -195,7 +249,8 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
               Text(
                   'New $_parentRoleLabel: ${_name(parent)} (${_text(parent, '_id', '')})'),
               if (_selectedRole == 'CUSTOMER')
-                Text('New reporting state / zone: ${_text(parent, 'state')} / ${_text(parent, 'zone')}. '
+                Text(
+                    'New reporting state / zone: ${_text(parent, 'state')} / ${_text(parent, 'zone')}. '
                     'Existing transactions, commissions, address and balances stay unchanged.',
                     style: const TextStyle(fontSize: 12)),
               const SizedBox(height: 16),
@@ -254,7 +309,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
       if (_pendingAssignmentIntent != assignmentIntent) {
         _pendingAssignmentIntent = assignmentIntent;
         _pendingAssignmentRequestId =
-            '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}';
+            '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 30)}';
       }
       final Map<String, dynamic> result = await _api.assignRoleUser(
         userId: userId,
@@ -362,11 +417,13 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
 
   Future<Map<String, dynamic>?> _chooseParent(Map<String, dynamic> user) async {
     String filter = '';
+    int parentPage = 1;
     Timer? debounce;
     final String currentParentId = _text(user, '_currentParentId', '');
-    Future<Map<String, dynamic>> fetch() => _api.roleUsers(
+    Future<Map<String, dynamic>> fetch() => _api.hierarchyUsers(
           role: _parentRole,
           search: filter,
+          page: parentPage,
         );
     Future<Map<String, dynamic>> request = fetch();
     return showDialog<Map<String, dynamic>>(
@@ -380,10 +437,11 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
               height: 420,
               child: Column(
                 children: <Widget>[
-                  ..._lineageRows(user),
+                  Text(currentParentId.isEmpty
+                      ? 'Choose an active manager. Full lineage is checked before saving.'
+                      : 'Current parent: ${_text(user['currentParent'] is Map ? Map<String, dynamic>.from(user['currentParent']) : <String, dynamic>{}, 'fullName', currentParentId)}'),
                   const Divider(height: 18),
                   TextField(
-                    autofocus: true,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search),
                       labelText: 'Search name, phone, email, state or zone',
@@ -394,6 +452,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                         if (context.mounted) {
                           setDialogState(() {
                             filter = value;
+                            parentPage = 1;
                             request = fetch();
                           });
                         }
@@ -444,6 +503,35 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                         }).toList();
                         return Column(
                           children: <Widget>[
+                            Row(children: [
+                              Expanded(child: Text('Page $parentPage')),
+                              IconButton(
+                                tooltip: 'Previous managers',
+                                onPressed: parentPage <= 1
+                                    ? null
+                                    : () => setDialogState(() {
+                                          parentPage--;
+                                          request = fetch();
+                                        }),
+                                icon: const Icon(Icons.chevron_left),
+                              ),
+                              IconButton(
+                                tooltip: 'Next managers',
+                                onPressed:
+                                    snapshot.data!['pagination'] is! Map ||
+                                            parentPage >=
+                                                ((snapshot.data!['pagination']
+                                                            ['pages'] as num?)
+                                                        ?.toInt() ??
+                                                    1)
+                                        ? null
+                                        : () => setDialogState(() {
+                                              parentPage++;
+                                              request = fetch();
+                                            }),
+                                icon: const Icon(Icons.chevron_right),
+                              ),
+                            ]),
                             Expanded(
                               child: eligible.isEmpty
                                   ? const Center(
@@ -455,7 +543,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                                           const Divider(height: 1),
                                       itemBuilder: (_, int index) {
                                         final Map<String, dynamic> candidate =
-                                              eligible[index];
+                                            eligible[index];
                                         return ListTile(
                                           leading: CircleAvatar(
                                               child: Text(_name(candidate)
@@ -464,7 +552,7 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                                           title: Text(_name(candidate)),
                                           subtitle: Text(
                                               '${_text(candidate, 'phone')} · ${_text(candidate, 'email')}\n'
-                                               '${_text(candidate, 'state', _text(candidate, 'zone'))}'),
+                                              '${_text(candidate, 'state', _text(candidate, 'zone'))}'),
                                           isThreeLine: true,
                                           onTap: () => Navigator.pop(
                                               dialogContext, candidate),
@@ -545,8 +633,8 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                           width: 220,
                           child: TextField(
                               controller: user,
-                              decoration: const InputDecoration(
-                                  labelText: 'User ID'))),
+                              decoration:
+                                  const InputDecoration(labelText: 'User ID'))),
                       SizedBox(
                           width: 180,
                           child: TextField(
@@ -604,9 +692,9 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                       ),
                       FilledButton.icon(
                           onPressed: () => setDialogState(() {
-                            page = 1;
-                            request = fetch();
-                          }),
+                                page = 1;
+                                request = fetch();
+                              }),
                           icon: const Icon(Icons.filter_alt),
                           label: const Text('Apply filters')),
                     ],
@@ -619,7 +707,8 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                           (_, AsyncSnapshot<Map<String, dynamic>> snapshot) {
                         if (snapshot.hasError) {
                           return Center(
-                            child: Text('Unable to load history: ${snapshot.error}'),
+                            child: Text(
+                                'Unable to load history: ${snapshot.error}'),
                           );
                         }
                         if (!snapshot.hasData) {
@@ -669,19 +758,19 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
                                 children: <Widget>[
                                   IconButton(
                                       onPressed: page > 1
-                                           ? () => setDialogState(() {
-                                               page--;
-                                               request = fetch();
-                                             })
+                                          ? () => setDialogState(() {
+                                                page--;
+                                                request = fetch();
+                                              })
                                           : null,
                                       icon: const Icon(Icons.chevron_left)),
                                   Text('Page $page of $totalPages'),
                                   IconButton(
                                       onPressed: page < totalPages
-                                           ? () => setDialogState(() {
-                                               page++;
-                                               request = fetch();
-                                             })
+                                          ? () => setDialogState(() {
+                                                page++;
+                                                request = fetch();
+                                              })
                                           : null,
                                       icon: const Icon(Icons.chevron_right)),
                                 ]),
@@ -739,15 +828,18 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(_selectedRole == 'CUSTOMER' ? 'Customer Assignments' : 'Hierarchy Management',
-                        style: const TextStyle(
-                            fontSize: 26, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 6),
-                    const Text(
-                        'Move current reporting lines without changing roles or historical financial ownership.'),
-                  ],
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                      _selectedRole == 'CUSTOMER'
+                          ? 'Customer Assignments'
+                          : 'Hierarchy Management',
+                      style: const TextStyle(
+                          fontSize: 26, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  const Text(
+                      'Move current reporting lines without changing roles or historical financial ownership.'),
+                ],
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -794,23 +886,29 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
           ),
           const SizedBox(height: 16),
           SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SegmentedButton<String>(
-            segments: _roleOptions
-                .map((Map<String, String> item) => ButtonSegment<String>(
-                      value: item['role']!,
-                      label: Text(item['label']!),
-                    ))
-                .toList(),
-            selected: <String>{_selectedRole},
-            onSelectionChanged: (Set<String> value) {
-              setState(() => _selectedRole = value.first);
-              _load();
-            },
-          )),
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<String>(
+                segments: _roleOptions
+                    .map((Map<String, String> item) => ButtonSegment<String>(
+                          value: item['role']!,
+                          label: Text(item['label']!),
+                        ))
+                    .toList(),
+                selected: <String>{_selectedRole},
+                onSelectionChanged: _saving || _reviewing
+                    ? null
+                    : (Set<String> value) {
+                        setState(() {
+                          _selectedRole = value.first;
+                          _page = 1;
+                        });
+                        _load();
+                      },
+              )),
           const SizedBox(height: 12),
           TextField(
             controller: _search,
+            enabled: !_saving && !_reviewing,
             onChanged: _searchChanged,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
@@ -819,11 +917,130 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
               suffixIcon: IconButton(
                   onPressed: () {
                     _search.clear();
+                    _page = 1;
                     _load();
                   },
                   icon: const Icon(Icons.clear)),
             ),
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              DropdownButton<String>(
+                value: _statusFilter,
+                items: const [
+                  'ALL',
+                  'ACTIVE',
+                  'INACTIVE',
+                  'SUSPENDED',
+                  'BLOCKED',
+                  'PENDING'
+                ]
+                    .map((value) => DropdownMenuItem(
+                        value: value,
+                        child: Text(
+                            value == 'ALL' ? 'All account statuses' : value)))
+                    .toList(),
+                onChanged: _saving || _reviewing
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _statusFilter = value!;
+                          _page = 1;
+                        });
+                        _load();
+                      },
+              ),
+              if (_selectedRole == 'CUSTOMER') ...[
+                DropdownButton<String>(
+                  value: _assignmentFilter,
+                  items: const ['ALL', 'ASSIGNED', 'UNASSIGNED']
+                      .map((value) => DropdownMenuItem(
+                          value: value,
+                          child:
+                              Text(value == 'ALL' ? 'All assignments' : value)))
+                      .toList(),
+                  onChanged: _saving || _reviewing
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _assignmentFilter = value!;
+                            _page = 1;
+                            if (value == 'UNASSIGNED') _aggregatorFilter = null;
+                          });
+                          _load();
+                        },
+                ),
+                OutlinedButton(
+                  onPressed: _saving || _reviewing
+                      ? null
+                      : () async {
+                          setState(() => _reviewing = true);
+                          try {
+                            final parent =
+                                await _chooseParent({'role': 'CUSTOMER'});
+                            if (parent != null && mounted) {
+                              setState(() {
+                                _aggregatorFilter = parent;
+                                _assignmentFilter = 'ASSIGNED';
+                                _page = 1;
+                              });
+                              await _load();
+                            }
+                          } finally {
+                            if (mounted) setState(() => _reviewing = false);
+                          }
+                        },
+                  child: Text(_aggregatorFilter == null
+                      ? 'Filter by Aggregator'
+                      : _name(_aggregatorFilter!)),
+                ),
+                if (_aggregatorFilter != null)
+                  TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _aggregatorFilter = null;
+                          _page = 1;
+                        });
+                        _load();
+                      },
+                      child: const Text('Clear Aggregator filter')),
+                FilledButton.icon(
+                  onPressed: _saving || _reviewing || _selectedCustomers.isEmpty
+                      ? null
+                      : _bulkAssign,
+                  icon: const Icon(Icons.group_add_outlined),
+                  label: Text('Assign selected (${_selectedCustomers.length})'),
+                ),
+              ],
+            ],
+          ),
+          Row(children: [
+            Expanded(
+                child: Text(
+                    '$_total users · Page $_page of ${_pages < 1 ? 1 : _pages}')),
+            IconButton(
+                tooltip: 'Previous page',
+                icon: const Icon(Icons.chevron_left),
+                onPressed: _loading || _saving || _reviewing || _page <= 1
+                    ? null
+                    : () {
+                        _page--;
+                        _load();
+                      }),
+            IconButton(
+                tooltip: 'Next page',
+                icon: const Icon(Icons.chevron_right),
+                onPressed: _loading || _saving || _reviewing || _page >= _pages
+                    ? null
+                    : () {
+                        _page++;
+                        _load();
+                      }),
+          ]),
           const SizedBox(height: 16),
           if (_loading)
             const LinearProgressIndicator()
@@ -863,19 +1080,37 @@ class _HierarchyManagementScreenState extends State<HierarchyManagementScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        leading: CircleAvatar(
-            child: Text(_name(user).substring(0, 1).toUpperCase())),
+        leading: _selectedRole == 'CUSTOMER'
+            ? Checkbox(
+                value: _selectedCustomers.contains(_id(user)),
+                onChanged: _loading ||
+                        _saving ||
+                        _reviewing ||
+                        user['status'] != 'ACTIVE'
+                    ? null
+                    : (value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedCustomers.add(_id(user));
+                          } else {
+                            _selectedCustomers.remove(_id(user));
+                          }
+                        });
+                      },
+              )
+            : CircleAvatar(
+                child: Text(_name(user).substring(0, 1).toUpperCase())),
         title: Text(_name(user),
             style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text('${_text(user, 'phone')} · ${_text(user, 'email')}\n'
-            '${_text(user, 'zone', '').isEmpty ? '' : 'Zone: ${_text(user, 'zone')} · ' }'
-            '${_text(user, 'state', '').isEmpty ? '' : 'State: ${_text(user, 'state')} · ' }'
-            'Review to inspect the verified current reporting line'),
-        isThreeLine: true,
+            '${_text(user, 'zone', '').isEmpty ? '' : 'Zone: ${_text(user, 'zone')} · '}'
+            '${_text(user, 'state', '').isEmpty ? '' : 'State: ${_text(user, 'state')} · '}'
+            'Aggregator / parent: ${user['currentParent'] is Map ? user['currentParent']['fullName'] : 'Unassigned'}\n'
+            'Status: ${_text(user, 'status')}'
+            '${user['lastAssignment'] is Map ? '\nLast direct assignment: ${user['lastAssignment']['actorName']} · ${user['lastAssignment']['createdAt']}' : ''}'),
         trailing: FilledButton.tonal(
           onPressed: _saving || _reviewing ? null : () => _assign(user),
-          child:
-              const Text('Review / assign'),
+          child: const Text('Review / assign'),
         ),
       ),
     );

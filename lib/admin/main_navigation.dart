@@ -65,6 +65,7 @@ import 'hierarchy_management_screen.dart';
 import 'provider_management_screen.dart';
 import 'revenue_account_screen.dart';
 import 'financial_control_screen.dart';
+import 'expense_management/expense_api.dart';
 import 'expense_management/expense_management_screen.dart';
 import 'executive_control_screen.dart';
 import 'admin_executive_dashboard_screen.dart';
@@ -148,8 +149,69 @@ bool canAccessFinancialControlNavigation({required String role}) {
 
 @visibleForTesting
 bool canAccessExpenseManagementNavigation({required Set<String> permissions}) {
-  return permissions.contains('expenses.view');
+  return expenseNavigationPermissions.any(permissions.contains);
 }
+
+/// Explicit permissions admitting Financial Management. Wildcards never count.
+const Set<String> expenseNavigationPermissions = <String>{
+  'expenses.view',
+  'expenses.requests.create',
+  'expenses.requests.department',
+  'expenses.approve',
+  'expenses.pay',
+};
+
+/// Request-only staff open My Expense Requests rather than the finance
+/// dashboard; finance totals stay behind expenses.view.
+@visibleForTesting
+String initialExpenseSection({required Set<String> permissions}) =>
+    permissions.contains('expenses.view') ? 'dashboard' : 'my';
+
+/// Keys a per-person expense grant may add, read only from the module's own
+/// GET /readiness. Nothing else from that response affects navigation.
+const Set<String> expenseGrantPermissionKeys = <String>{
+  'expenses.requests.create',
+  'expenses.requests.department',
+  'expenses.approve',
+  'expenses.view',
+  'expenses.pay',
+  'expenses.documents',
+};
+
+/// Merges only the six allowed expense keys from readiness data.permissions.
+@visibleForTesting
+Set<String> mergeExpenseGrantPermissions(Set<String> base, Object? readiness) {
+  final Set<String> merged = <String>{...base};
+  if (readiness is Map && readiness['permissions'] is List) {
+    for (final Object? p in readiness['permissions'] as List) {
+      final String key = '${p ?? ''}'.trim().toLowerCase();
+      if (expenseGrantPermissionKeys.contains(key)) merged.add(key);
+    }
+  }
+  return merged;
+}
+
+/// Probes expense readiness for HEAD_OFFICE/STAFF. Any failure (403 = no
+/// assigned expense access, network, parse) leaves permissions unchanged.
+@visibleForTesting
+Future<Set<String>> probeExpenseGrantPermissions(
+    {required String role,
+    required Set<String> base,
+    ExpenseManagementApi? api}) async {
+  if (role != 'HEAD_OFFICE' && role != 'STAFF') return base;
+  try {
+    final Map<String, dynamic> data =
+        await (api ?? ExpenseManagementApi()).readiness();
+    return mergeExpenseGrantPermissions(base, data);
+  } catch (_) {
+    return base;
+  }
+}
+
+Widget expenseManagementPage(Set<String> permissions) => ExpenseManagementScreen(
+      key: const ValueKey<String>('financial-management'),
+      initialSection: initialExpenseSection(permissions: permissions),
+    );
 
 @visibleForTesting
 bool canAccessExecutiveControlNavigation({
@@ -412,6 +474,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
 
   Set<String> permissions = <String>{};
 
+  /// Staff permissions plus per-person expense grants; used only for
+  /// Financial Management navigation.
+  Set<String> expensePermissions = <String>{};
+
   List<Widget> pages = <Widget>[];
 
   List<BottomNavigationBarItem> items = <BottomNavigationBarItem>[];
@@ -526,6 +592,15 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           icon: Icons.insights_outlined,
           activeIcon: Icons.insights_rounded,
           label: 'Marketing',
+        );
+      }
+      if (canAccessExpenseManagementNavigation(
+          permissions: expensePermissions)) {
+        addNavigationPage(
+          page: expenseManagementPage(expensePermissions),
+          icon: Icons.request_quote_outlined,
+          activeIcon: Icons.request_quote_rounded,
+          label: 'Financial Management',
         );
       }
       currentIndex = 0;
@@ -772,9 +847,10 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
-    if (canAccessExpenseManagementNavigation(permissions: permissions)) {
+    if (canAccessExpenseManagementNavigation(
+        permissions: expensePermissions)) {
       addNavigationPage(
-        page: const ExpenseManagementScreen(),
+        page: expenseManagementPage(expensePermissions),
         icon: Icons.request_quote_outlined,
         activeIcon: Icons.request_quote_rounded,
         label: 'Financial Management',
@@ -1396,12 +1472,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
         return;
       }
 
+      final Set<String> mergedExpensePermissions =
+          await probeExpenseGrantPermissions(
+              role: role, base: normalizedPermissions);
+
       if (!mounted) {
         return;
       }
 
       setState(() {
         adminRole = role;
+
+        expensePermissions = mergedExpensePermissions;
 
         staffRoleName = prefs.getString('staff_role_name') ?? '';
 

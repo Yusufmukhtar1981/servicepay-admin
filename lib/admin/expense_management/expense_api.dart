@@ -254,7 +254,14 @@ class ExpenseManagementApi {
   Future<Map<String, dynamic>> uploadDocument(
     ExpenseDocumentUpload upload, {
     int maxBytes = defaultMaxDocumentBytes,
-  }) async {
+  }) =>
+      _uploadTo(uri('/documents'), upload, maxBytes);
+
+  Future<Map<String, dynamic>> _uploadTo(
+    Uri target,
+    ExpenseDocumentUpload upload,
+    int maxBytes,
+  ) async {
     final String ext = upload.filename.contains('.')
         ? upload.filename.split('.').last.toLowerCase()
         : '';
@@ -273,7 +280,7 @@ class ExpenseManagementApi {
     _checkKey(upload.idempotencyKey);
     final String token = await _requiredToken();
     final http.MultipartRequest request =
-        http.MultipartRequest('POST', uri('/documents'))
+        http.MultipartRequest('POST', target)
           ..headers.addAll(<String, String>{
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
@@ -298,6 +305,184 @@ class ExpenseManagementApi {
           outcomeUnknown: true);
     }
     return Map<String, dynamic>.from(document);
+  }
+
+  // ---------------- Department expense requests ----------------
+  static const Set<String> requestScopes = <String>{
+    'my',
+    'department',
+    'assigned',
+    'approved',
+    'payments',
+  };
+  static const Set<String> reasonRequiredActions = <String>{
+    'REJECT',
+    'REQUEST_CHANGES',
+    'CANCEL',
+    'BEGIN_REVIEW',
+    'SEND_FOR_APPROVAL',
+    'PAY',
+  };
+
+  Future<Map<String, dynamic>> requestReferences() =>
+      _get('/requests/references');
+
+  Future<Map<String, dynamic>> listRequests({
+    required String scope,
+    int page = 1,
+    int pageSize = 25,
+    String status = '',
+    String department = '',
+  }) {
+    if (!requestScopes.contains(scope)) {
+      throw const ExpenseApiException('Unknown request list.');
+    }
+    return _get('/requests', <String, String>{
+      'scope': scope,
+      'page': '$page',
+      'pageSize': '$pageSize',
+      'status': status,
+      'department': department,
+    });
+  }
+
+  Future<Map<String, dynamic>> expenseRequest(String id) =>
+      _get('/requests/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> requestAudit(String id) =>
+      _get('/requests/${Uri.encodeComponent(id)}/audit');
+
+  Future<Map<String, dynamic>> requestNotifications() =>
+      _get('/requests/notifications');
+
+  /// [submit] false saves a draft; true submits under the configured policy.
+  Future<Map<String, dynamic>> createRequest(
+    Map<String, dynamic> fields, {
+    required bool submit,
+    required String idempotencyKey,
+  }) =>
+      _send('POST', '/requests', idempotencyKey,
+          <String, dynamic>{...fields, 'submit': submit});
+
+  Future<Map<String, dynamic>> updateRequest(
+    String id, {
+    required Map<String, dynamic> request,
+    required int expectedVersion,
+    required String reason,
+    required String idempotencyKey,
+  }) =>
+      _send('PATCH', '/requests/${Uri.encodeComponent(id)}', idempotencyKey,
+          <String, dynamic>{
+            'request': request,
+            'expectedVersion': expectedVersion,
+            'reason': reason,
+          });
+
+  Future<Map<String, dynamic>> requestAction(
+    String id, {
+    required String action,
+    required int expectedVersion,
+    required String reason,
+    required String idempotencyKey,
+    String? comments,
+    Map<String, dynamic>? payment,
+  }) {
+    if (reasonRequiredActions.contains(action) && reason.trim().length < 10) {
+      throw const ExpenseApiException(
+          'A reason of at least 10 characters is required.');
+    }
+    if (action == 'PAY' && payment == null) {
+      throw const ExpenseApiException('Payment details are required.');
+    }
+    return _send(
+        'POST',
+        '/requests/${Uri.encodeComponent(id)}/actions',
+        idempotencyKey, <String, dynamic>{
+      'action': action,
+      'expectedVersion': expectedVersion,
+      'reason': reason.trim(),
+      if (comments != null && comments.trim().isNotEmpty)
+        'comments': comments.trim(),
+      if (action == 'PAY') ...<String, dynamic>{
+        'payment': payment,
+        'confirmExternalPayment': true,
+      },
+    });
+  }
+
+  /// Private request attachment / proof of payment. Same limits and stable
+  /// key semantics as [uploadDocument].
+  Future<Map<String, dynamic>> uploadRequestDocument(
+    ExpenseDocumentUpload upload, {
+    int maxBytes = defaultMaxDocumentBytes,
+  }) =>
+      _uploadTo(uri('/requests/documents'), upload, maxBytes);
+
+  Future<String> downloadRequestDocument(String requestId, String documentId,
+          {String fallbackName = 'request-document'}) =>
+      _downloadFile(
+        uri('/requests/${Uri.encodeComponent(requestId)}/documents/${Uri.encodeComponent(documentId)}/download'),
+        fallbackName,
+        const <String>{'application/pdf', 'image/jpeg', 'image/png'},
+      );
+
+  /// Own, not-yet-attached upload (form preview only).
+  Future<String> downloadUnattachedRequestDocument(String documentId,
+          {String fallbackName = 'request-document'}) =>
+      _downloadFile(
+        uri('/requests/documents/${Uri.encodeComponent(documentId)}/download'),
+        fallbackName,
+        const <String>{'application/pdf', 'image/jpeg', 'image/png'},
+      );
+
+  // ---------------- Approval policies & assignments ----------------
+  Future<Map<String, dynamic>> approvalPolicies() => _get('/approval-policies');
+
+  Future<Map<String, dynamic>> saveApprovalPolicy({
+    String? id,
+    required Map<String, dynamic> fields,
+    required int expectedVersion,
+    required String reason,
+    required String idempotencyKey,
+  }) {
+    final Map<String, dynamic> body = <String, dynamic>{
+      ...fields,
+      'reason': reason,
+      'expectedVersion': id == null ? -1 : expectedVersion,
+    };
+    return id == null
+        ? _send('POST', '/approval-policies', idempotencyKey, body)
+        : _send('PATCH', '/approval-policies/${Uri.encodeComponent(id)}',
+            idempotencyKey, body);
+  }
+
+  /// Adds ONLY the capabilities set to true; never revokes.
+  Future<Map<String, dynamic>> assignRequestCapabilities({
+    required String userId,
+    required Map<String, bool> capabilities,
+    required String expectedRoleId,
+    required String reason,
+    required String idempotencyKey,
+  }) {
+    final Map<String, bool> grants = Map<String, bool>.from(capabilities)
+      ..removeWhere((String k, bool v) =>
+          v != true ||
+          !const <String>{'requester', 'departmentManager', 'approver', 'finance'}
+              .contains(k));
+    if (grants.isEmpty) {
+      throw const ExpenseApiException('Select at least one capability to add.');
+    }
+    if (reason.trim().length < 10) {
+      throw const ExpenseApiException(
+          'A reason of at least 10 characters is required.');
+    }
+    return _send('POST', '/requests/assignments', idempotencyKey,
+        <String, dynamic>{
+      'userId': userId,
+      'capabilities': grants,
+      'expectedRoleId': expectedRoleId,
+      'reason': reason.trim(),
+    });
   }
 
   // ---------------- Downloads ----------------

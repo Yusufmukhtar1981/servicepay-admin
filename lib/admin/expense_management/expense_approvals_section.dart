@@ -4,6 +4,7 @@ import 'expense_api.dart';
 import 'expense_common.dart';
 import 'expense_list_section.dart';
 import 'expense_management_screen.dart';
+import 'expense_requests_section.dart';
 
 class ExpenseApprovalsSection extends StatelessWidget {
   const ExpenseApprovalsSection({super.key, required this.ctx});
@@ -12,7 +13,30 @@ class ExpenseApprovalsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ExpenseAccess a = ctx.access;
+    if (!ctx.financeAccess) {
+      // Request reviewers without finance-wide access see only assigned requests.
+      return RequestScopeSection(ctx: ctx, scope: 'assigned');
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+      if (ctx.canReviewRequests) ...<Widget>[
+        const Text('Assigned department requests', style: TextStyle(fontWeight: FontWeight.w800, color: expInk, fontSize: 15)),
+        const SizedBox(height: 8),
+        RequestScopeSection(ctx: ctx, scope: 'assigned'),
+        const SizedBox(height: 18),
+        const Text('Legacy expense approvals', style: TextStyle(fontWeight: FontWeight.w800, color: expInk, fontSize: 15)),
+        const SizedBox(height: 8),
+      ],
+      if (ctx.canConfigurePolicies) ...<Widget>[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => ctx.goTo('policies'),
+            icon: const Icon(Icons.rule_outlined, size: 17),
+            label: const Text('Department request policies are configured in Approval Policy Configuration'),
+          ),
+        ),
+        const SizedBox(height: 6),
+      ],
       if (a.has(ExpensePermissions.approve)) ...<Widget>[
         const ExpenseNotice('Expenses awaiting review. You only see Approve or Reject on records where you are the authorized reviewer for the current step and are not the submitter.'),
         const SizedBox(height: 12),

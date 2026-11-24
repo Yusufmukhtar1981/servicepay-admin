@@ -35,7 +35,16 @@ class ExpenseDocumentPicker extends StatefulWidget {
     required this.maxBytes,
     required this.maxDocuments,
     this.enabled = true,
+    this.uploader,
+    this.onPreview,
+    this.uploadLabel = 'Upload receipt or invoice',
+    this.buttonKey = const Key('expense-upload-document'),
   });
+  /// Alternate private upload endpoint (e.g. department requests).
+  final Future<Map<String, dynamic>> Function(ExpenseDocumentUpload upload, int maxBytes)? uploader;
+  final void Function(Map<String, dynamic> document)? onPreview;
+  final String uploadLabel;
+  final Key buttonKey;
   final ExpenseManagementApi api;
   final List<Map<String, dynamic>> documents;
   final ValueChanged<List<Map<String, dynamic>>> onChanged;
@@ -97,12 +106,14 @@ class _ExpenseDocumentPickerState extends State<ExpenseDocumentPicker> {
       doc.error = null;
     });
     try {
-      final Map<String, dynamic> stored = await widget.api.uploadDocument(
-        ExpenseDocumentUpload(bytes: doc.bytes, filename: doc.name, idempotencyKey: doc.key),
-        maxBytes: widget.maxBytes,
-      );
+      final ExpenseDocumentUpload upload =
+          ExpenseDocumentUpload(bytes: doc.bytes, filename: doc.name, idempotencyKey: doc.key);
+      final Map<String, dynamic> stored = widget.uploader != null
+          ? await widget.uploader!(upload, widget.maxBytes)
+          : await widget.api.uploadDocument(upload, maxBytes: widget.maxBytes);
       if (!mounted) return;
-      if (text(stored['state']) != 'READY' && text(stored['state']) != 'ATTACHED') {
+      final String state = text(stored['state']);
+      if (!(widget.uploader != null && state.isEmpty) && state != 'READY' && state != 'ATTACHED') {
         setState(() {
           doc.uploading = false;
           doc.outcomeUnknown = true;
@@ -127,10 +138,10 @@ class _ExpenseDocumentPickerState extends State<ExpenseDocumentPicker> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
       Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: <Widget>[
         OutlinedButton.icon(
-          key: const Key('expense-upload-document'),
+          key: widget.buttonKey,
           onPressed: widget.enabled ? _pick : null,
           icon: const Icon(Icons.upload_file_outlined, size: 18),
-          label: const Text('Upload receipt or invoice'),
+          label: Text(widget.uploadLabel),
         ),
         Text('PDF, JPEG or PNG, up to ${fileSize(widget.maxBytes)} each, max ${widget.maxDocuments}. Stored privately.',
             style: const TextStyle(color: expMuted, fontSize: 11.5)),
@@ -143,6 +154,7 @@ class _ExpenseDocumentPickerState extends State<ExpenseDocumentPicker> {
           leading: Icon(text(d['mimeType']) == 'application/pdf' ? Icons.picture_as_pdf_outlined : Icons.image_outlined, color: expGreen),
           title: Text(text(d['name'], fallback: 'Document'), overflow: TextOverflow.ellipsis),
           subtitle: Text('${fileSize(d['size'])} · stored'),
+          onTap: widget.onPreview == null ? null : () => widget.onPreview!(d),
           trailing: IconButton(
             tooltip: 'Remove from this expense',
             onPressed: widget.enabled

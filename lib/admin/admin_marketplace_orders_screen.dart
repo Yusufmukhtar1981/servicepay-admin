@@ -3,9 +3,10 @@ part of 'admin_marketplace_operations_screens.dart';
 // ---------------------------------------------------------------- Orders
 
 class AdminMarketplaceOrdersScreen extends StatefulWidget {
-  const AdminMarketplaceOrdersScreen({super.key, this.api, this.merchantId});
+  const AdminMarketplaceOrdersScreen({super.key, this.api, this.merchantId, this.commissionHistory = false});
   final AdminMarketplaceOperationsApi? api;
   final String? merchantId;
+  final bool commissionHistory;
   @override
   State<AdminMarketplaceOrdersScreen> createState() => _OrdersState();
 }
@@ -49,6 +50,7 @@ class _OrdersState extends State<AdminMarketplaceOrdersScreen> {
           from: range == null ? null : _isoDay(range!.start),
           to: range == null ? null : _isoDay(range!.end),
           merchantId: widget.merchantId,
+          fundsStatus: widget.commissionHistory ? 'SETTLED' : null,
           page: p);
       if (mounted) setState(() => page = r);
     } catch (e) {
@@ -63,11 +65,18 @@ class _OrdersState extends State<AdminMarketplaceOrdersScreen> {
     final items = page?.items ?? const [];
     return Scaffold(
       backgroundColor: _canvas,
-      appBar: AppBar(title: const Text('Marketplace Orders')),
+      appBar: AppBar(title: Text(widget.commissionHistory
+          ? 'Commission Transaction History' : 'Marketplace Orders')),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
           child: Column(children: [
+            if (widget.commissionHistory) ...[
+              const Text('Settled orders only. Commission amounts come from stored '
+                  'financial snapshots; open an order for details. This is not an '
+                  'external bank payout statement.'),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: q,
               onSubmitted: (_) => _load(),
@@ -137,7 +146,9 @@ class _OrdersState extends State<AdminMarketplaceOrdersScreen> {
         title: Text(mpText(o['orderReference'] ?? o['reference'] ?? o['_id']),
             style: const TextStyle(fontWeight: FontWeight.w700, fontFamily: 'monospace')),
         subtitle: Text(
-            '${mpText(buyer['fullName'] ?? o['customerName'])}  -  ${mpText(o['fulfillmentMethod'])}\n${mpDate(o['createdAt'])}',
+            widget.commissionHistory
+                ? 'Commission: ${mpMoney(o['commissionAmount'])} · Merchant net: ${mpMoney(o['merchantNetAmount'])}\n${mpDate(o['createdAt'])}'
+                : '${mpText(buyer['fullName'] ?? o['customerName'])}  -  ${mpText(o['fulfillmentMethod'])}\n${mpDate(o['createdAt'])}',
             style: const TextStyle(color: _muted, height: 1.35)),
         isThreeLine: true,
         trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [

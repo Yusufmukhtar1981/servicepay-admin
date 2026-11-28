@@ -147,12 +147,13 @@ class AdminMarketplaceOperationsApi {
 
   Future<MarketplacePage> orders({
     String? q, String? status, String? paymentStatus, String? from,
-    String? to, String? merchantId, int page = 1, int limit = 20,
+    String? to, String? merchantId, String? fundsStatus, int page = 1, int limit = 20,
   }) async {
     final res = await _client.get(
       _uri('/orders', {
         'q': q, 'status': status, 'paymentStatus': paymentStatus,
         'from': from, 'to': to, 'merchantId': merchantId,
+        'fundsStatus': fundsStatus,
         'page': '$page', 'limit': '$limit',
       }),
       headers: await _headers(),

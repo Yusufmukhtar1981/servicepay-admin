@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'fintech_screen_registry.dart';
+import 'admin_marketplace_management_screen.dart';
 
 import 'admin_announcements_api.dart';
 import 'admin_announcements_screen.dart';
@@ -39,6 +40,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // Center. The legacy dashboard remains available through its tab.
   int _selectedIndex = 0;
   String _search = '';
+  AdminAccess? _marketplaceAccess;
+
+  @override
+  void initState() {
+    super.initState();
+    _marketplaceAccess = widget.initialAccess;
+    if (_marketplaceAccess == null) {
+      AdminSessionStore.loadAccess().then((access) {
+        if (mounted) setState(() => _marketplaceAccess = access);
+      }).catchError((Object _) {
+        // Remain fail-closed until a valid session can be loaded.
+      });
+    }
+  }
 
   static const Color _primary = Color(0xFF08783E);
   static const Color _dark = Color(0xFF10231A);
@@ -204,6 +219,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ],
     ),
     _FintechSection(
+      title: 'Marketplace Management',
+      icon: Icons.storefront_rounded,
+      items: [
+        _FintechItem('Marketplace Management', Icons.dashboard_outlined),
+        _FintechItem('Merchant Management', Icons.storefront_outlined),
+        _FintechItem('Marketplace Orders', Icons.shopping_bag_outlined),
+        _FintechItem('Marketplace Products', Icons.inventory_2_outlined),
+        _FintechItem('Marketplace Commission Settings', Icons.percent_outlined),
+        _FintechItem('Marketplace Delivery Settings', Icons.local_shipping_outlined),
+        _FintechItem('Marketplace Analytics', Icons.analytics_outlined),
+        _FintechItem('Marketplace Commission History', Icons.receipt_long_outlined),
+      ],
+    ),
+    _FintechSection(
       title: 'Delivery & Logistics',
       icon: Icons.local_shipping_rounded,
       items: [
@@ -307,6 +336,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           children: [
             _topBar(),
             _navigationBar(),
+            if (_marketplaceAccess != null &&
+                canViewMarketplace(_marketplaceAccess!))
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: TextButton.icon(
+                    key: const Key('marketplace-management-entry'),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/marketplace'),
+                    icon: const Icon(Icons.storefront_outlined),
+                    label: const Text('Marketplace Management'),
+                  ),
+                ),
+              ),
             Expanded(
               child: IndexedStack(
                 index: _selectedIndex,
@@ -348,6 +392,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           initialAccess: widget.initialAccess,
         ),
       'email' => const AdminBulkEmailScreen(),
+      'marketplace' => AdminMarketplaceManagementScreen(
+          initialAccess: _marketplaceAccess,
+        ),
       _ => null,
     };
 
@@ -514,6 +561,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final q = _search.trim().toLowerCase();
 
     final filteredSections = _sections
+        .where((section) => section.title != 'Marketplace Management' ||
+            (_marketplaceAccess != null &&
+                canViewMarketplace(_marketplaceAccess!)))
         .map(
           (section) => _FintechSection(
             title: section.title,
@@ -792,6 +842,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _moduleInfo(String title) {
+    const marketplaceDestinations = <String, String>{
+      'Marketplace Management': '/marketplace',
+      'Merchant Management': '/marketplace/merchants',
+      'Marketplace Orders': '/marketplace/orders',
+      'Marketplace Products': '/marketplace/products',
+      'Marketplace Commission Settings': '/marketplace/settings',
+      'Marketplace Delivery Settings': '/marketplace/delivery',
+      'Marketplace Analytics': '/marketplace/analytics',
+      'Marketplace Commission History': '/marketplace/commissions',
+    };
+    final marketplaceDestination = marketplaceDestinations[title];
+    if (marketplaceDestination != null) {
+      Navigator.of(context).pushNamed(marketplaceDestination);
+      return;
+    }
     // SERVICEPAY_VERIFIED_FINTECH_NAVIGATION
     if (title == 'AI Support Center') {
       Navigator.of(context).push(

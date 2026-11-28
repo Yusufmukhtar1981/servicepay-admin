@@ -15,6 +15,7 @@ import '../school/school_session_gate.dart';
 import 'staff_management_screen.dart';
 import 'executive_control_screen.dart';
 import 'business_network/business_network_screen.dart';
+import 'admin_marketplace_management_screen.dart';
 
 void main() {
   runApp(const ServicepayAdminApp());
@@ -37,6 +38,10 @@ class ServicepayAdminApp extends StatelessWidget {
           ? const SchoolSessionGate()
           : const AdminSessionGate(),
       routes: <String, WidgetBuilder>{
+        for (final route in marketplaceAdminRoutes)
+          route: (_) => AdminSessionGate(
+                fallback: AdminMarketplaceManagementScreen(destination: route),
+              ),
         '/customer-intelligence': (_) => const AdminSessionGate(
               fallback: CustomerIntelligenceScreen(),
             ),

@@ -1342,6 +1342,11 @@ class _AdminExecutiveDashboardScreenState
   Widget _quickActionsPanel() {
     final actions = <Map<String, String>>[
       {
+        'label': 'Marketplace Management',
+        'permission': AdminPermissions.marketplaceView,
+        'module': 'marketplace'
+      },
+      {
         'label': 'Review KYC',
         'permission': AdminPermissions.kycView,
         'module': 'kyc'

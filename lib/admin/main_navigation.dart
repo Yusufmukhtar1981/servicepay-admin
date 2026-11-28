@@ -39,7 +39,7 @@ import 'admin_branch_management_screen.dart';
 
 import 'admin_cards_screen.dart';
 
-import 'admin_marketplace_screen.dart';
+import 'admin_marketplace_management_screen.dart';
 import 'admin_data_pricing_screen.dart';
 import 'admin_phone_financing_screen.dart';
 import 'admin_solar_screen.dart';
@@ -632,6 +632,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
       );
     }
 
+    if (canViewMarketplace(
+        AdminAccess(role: adminRole, permissions: permissions))) {
+      addNavigationPage(
+        page: AdminMarketplaceManagementScreen(
+          initialAccess: AdminAccess(role: adminRole, permissions: permissions),
+        ),
+        icon: Icons.storefront_outlined,
+        activeIcon: Icons.storefront_rounded,
+        label: 'Marketplace Management',
+      );
+    }
+
     if (canAccessExecutiveControlNavigation(
       role: adminRole,
       permissions: permissions,
@@ -1128,21 +1140,6 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
     }
 
     /*
-     * ============================================================
-     * MARKETPLACE
-     * ============================================================
-     * Product moderation is restricted to Head Office.
-     */
-    if (isHeadOffice) {
-      addNavigationPage(
-        page: const AdminMarketplaceScreen(),
-        icon: Icons.storefront_outlined,
-        activeIcon: Icons.storefront_rounded,
-        label: 'Marketplace',
-      );
-    }
-
-    /*
      * =====================================================
      * WALLET / FINANCE
      * =====================================================
@@ -1569,6 +1566,17 @@ class _AdminMainNavigationState extends State<AdminMainNavigation> {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: <Widget>[
+          if (canViewMarketplace(
+              AdminAccess(role: adminRole, permissions: permissions)))
+            TextButton.icon(
+              key: const Key('marketplace-main-menu-entry'),
+              onPressed: () =>
+                  Navigator.of(context).pushNamed('/marketplace'),
+              icon: const Icon(Icons.storefront_outlined),
+              label: Text(MediaQuery.sizeOf(context).width >= 700
+                  ? 'Marketplace Management'
+                  : 'Marketplace'),
+            ),
           if (isStaff && staffDepartment.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 12),

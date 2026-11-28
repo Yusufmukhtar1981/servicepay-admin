@@ -24,6 +24,12 @@ void main() {
     expect(dashboard, contains("Key('marketplace-management-entry')"));
     expect(dashboard, contains("title: 'Marketplace Management'"));
     expect(dashboard, contains('canViewMarketplace(_marketplaceAccess!)'));
+    final navigation =
+        File('lib/admin/main_navigation.dart').readAsStringSync();
+    expect(navigation, contains("Key('marketplace-main-menu-entry')"));
+    expect(navigation, contains("label: 'Marketplace Management'"));
+    expect(navigation, contains('page: AdminMarketplaceManagementScreen('));
+    expect(navigation, isNot(contains('page: const AdminMarketplaceScreen()')));
   });
 
   test('Marketplace presentation permissions retain Head Office and explicit viewers', () {

@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'admin_api_configuration.dart';
+import 'admin_marketplace_operations_screens.dart';
+
 class AdminMarketplaceScreen extends StatefulWidget {
   const AdminMarketplaceScreen({
     super.key,
@@ -16,7 +19,7 @@ class AdminMarketplaceScreen extends StatefulWidget {
 }
 
 class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
-  static const String baseUrl = 'https://api.servicepay.ng/api';
+  static const String baseUrl = AdminApiConfiguration.baseUrl;
 
   bool loading = true;
   bool actionLoading = false;
@@ -405,6 +408,16 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
     }
   }
 
+  void _openOperations(String target) {
+    final Widget screen = switch (target) {
+      'merchants' => const AdminMarketplaceMerchantsScreen(),
+      'orders' => const AdminMarketplaceOrdersScreen(),
+      'analytics' => const AdminMarketplaceAnalyticsScreen(),
+      _ => const AdminMarketplaceSettingsScreen(),
+    };
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = _visibleProducts;
@@ -419,6 +432,18 @@ class _AdminMarketplaceScreenState extends State<AdminMarketplaceScreen> {
           ),
         ),
         actions: [
+          PopupMenuButton<String>(
+            key: const Key('marketplace-operations-menu'),
+            tooltip: 'Marketplace operations',
+            icon: const Icon(Icons.dashboard_customize_outlined),
+            onSelected: _openOperations,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'merchants', child: Text('Merchants')),
+              PopupMenuItem(value: 'orders', child: Text('Orders')),
+              PopupMenuItem(value: 'analytics', child: Text('Analytics')),
+              PopupMenuItem(value: 'settings', child: Text('Commission and Delivery')),
+            ],
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: loading ? null : _loadProducts,
